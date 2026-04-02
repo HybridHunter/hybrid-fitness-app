@@ -40,10 +40,45 @@ export function AuthProvider({ children }) {
     setSession(currentUser);
   }, [currentUser, setSession]);
 
-  const login = (username, password) => {
-    // Check staff accounts (includes defaults)
+  const login = async (username, password) => {
+    // Check local staff accounts (includes defaults for this gym)
     let user = users.find(u => u.username === username && u.password === password);
-    if (user) { setCurrentUser(user); return { success: true, user }; }
+    if (user) {
+      // Set gym context if user has a gymId
+      if (user.gymId) {
+        localStorage.setItem("hf_gym_id", user.gymId);
+      }
+      setCurrentUser(user);
+      return { success: true, user };
+    }
+
+    // Check Supabase for users from other gyms
+    try {
+      const SUPABASE_URL = 'https://qzvxnklyeadbroesccxt.supabase.co';
+      const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM';
+
+      // Search all gyms' user lists in Supabase
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/data_store?key=eq.hf_users&select=gym_id,value`, {
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        for (const row of rows) {
+          const gymUsers = Array.isArray(row.value) ? row.value : [];
+          const found = gymUsers.find(u => u.username === username && u.password === password);
+          if (found) {
+            // Set gym context to this user's gym
+            localStorage.setItem("hf_gym_id", row.gym_id);
+            // Clear local data caches so the hook fetches fresh data for this gym
+            const keysToKeep = ["hf_theme", "hf_session", "hf_users", "hf_gym_id", "hf_onboarding_complete"];
+            Object.keys(localStorage).filter(k => k.startsWith("hf_") && !keysToKeep.includes(k)).forEach(k => localStorage.removeItem(k));
+            const gymUser = { ...found, gymId: row.gym_id };
+            setCurrentUser(gymUser);
+            return { success: true, user: gymUser, requiresReload: true };
+          }
+        }
+      }
+    } catch (e) { console.log("Supabase user lookup failed:", e); }
 
     // Check member accounts (email as username, PIN as password)
     try {
@@ -59,7 +94,11 @@ export function AuthProvider({ children }) {
     return { success: false, error: "Invalid credentials" };
   };
 
-  const logout = () => setCurrentUser(null);
+  const logout = () => {
+    setCurrentUser(null);
+    // Reset to default gym
+    localStorage.setItem("hf_gym_id", "default");
+  };
   const isAdmin = currentUser?.role === "admin";
   const isCoach = currentUser?.role === "coach";
   const isClient = currentUser?.role === "client";

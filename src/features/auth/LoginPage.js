@@ -12,16 +12,30 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [shake, setShake] = useState(false);
 
-  const handleSubmit = (e) => {
+  const [loggingIn, setLoggingIn] = useState(false);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    const result = login(username.trim(), password);
-    if (result.success) {
-      navigate("/");
-    } else {
-      setError(result.error);
-      setShake(true);
-      setTimeout(() => setShake(false), 500);
+    setLoggingIn(true);
+    try {
+      const result = await login(username.trim(), password);
+      if (result.success) {
+        if (result.requiresReload) {
+          // Switching gyms — need full reload to clear cached data
+          window.location.href = "/";
+        } else {
+          navigate("/");
+        }
+      } else {
+        setError(result.error);
+        setShake(true);
+        setTimeout(() => setShake(false), 500);
+      }
+    } catch (err) {
+      setError("Login failed. Please try again.");
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -167,7 +181,7 @@ export default function LoginPage() {
             onMouseEnter={(e) => (e.target.style.opacity = "0.85")}
             onMouseLeave={(e) => (e.target.style.opacity = "1")}
           >
-            Sign In
+            {loggingIn ? "Signing in..." : "Sign In"}
           </button>
         </form>
 
