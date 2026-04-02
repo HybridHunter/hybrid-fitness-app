@@ -1,0 +1,149 @@
+import { useState } from "react";
+import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
+import { ThemeCtx, DARK, LIGHT } from "./context/ThemeContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { useLocalStorage } from "./hooks/useLocalStorage";
+import { EX } from "./data/exercises";
+import Shell from "./components/layout/Shell";
+import LoginPage from "./features/auth/LoginPage";
+import ClientPortal from "./features/client-portal/ClientPortal";
+import StationDisplay from "./features/station/StationDisplay";
+
+// Feature views
+import BuildView from "./features/workout-builder/BuildView";
+import WorkoutsView from "./features/workout-builder/WorkoutsView";
+import ProgramsView from "./features/workout-builder/ProgramsView";
+import LibraryView from "./features/library/LibraryView";
+
+// New feature stubs
+import CoachingDashboard from "./features/dashboard/CoachingDashboard";
+import BusinessDashboard from "./features/dashboard/BusinessDashboard";
+import MembersView from "./features/members/MembersView";
+import MemberProfile from "./features/members/MemberProfile";
+import AssessmentView from "./features/assessment/AssessmentView";
+import MatrixView from "./features/movement-matrix/MatrixView";
+import CommandView from "./features/coach-command/CommandView";
+import ScheduleView from "./features/scheduling/ScheduleView";
+import CheckInView from "./features/attendance/CheckInView";
+import BillingView from "./features/billing/BillingView";
+import AnalyticsView from "./features/analytics/AnalyticsView";
+import GamificationView from "./features/gamification/GamificationView";
+
+
+import ContentLibraryView from "./features/content/ContentLibraryView";
+import ShopView from "./features/shop/ShopView";
+import MessagingView from "./features/messaging/MessagingView";
+
+import CommunityFeed from "./features/community/CommunityFeed";
+import ClassroomView from "./features/classroom/ClassroomView";
+import EventsView from "./features/events/EventsView";
+import ResourcesView from "./features/resources/ResourcesView";
+
+import WaiverView from "./features/waivers/WaiverView";
+import SettingsView from "./features/settings/SettingsView";
+import AutomationsView from "./features/settings/AutomationsView";
+import StationSetup from "./features/station/StationSetup";
+
+function AuthGate() {
+  const { currentUser } = useAuth();
+  const location = useLocation();
+  const [theme, setTheme] = useLocalStorage("hf_theme", "dark");
+  const [exercises, setExercises] = useLocalStorage("hf_ex", [...EX]);
+  const [workouts, setWorkouts] = useLocalStorage("hf_w", []);
+  const [programs, setPrograms] = useLocalStorage("hf_p", []);
+  const [loadedWorkout, setLoadedWorkout] = useState(null);
+  const navigate = useNavigate();
+  const B = theme === "dark" ? DARK : LIGHT;
+
+  const handleLoadWorkout = (w) => {
+    setLoadedWorkout(w);
+    navigate("/build");
+  };
+
+  // Station display — render outside Shell/auth (dedicated tablet URL)
+  if (location.pathname.startsWith("/station/")) {
+    return (
+      <Routes>
+        <Route path="/station/:stationId" element={<StationDisplay />} />
+      </Routes>
+    );
+  }
+
+  // Not logged in — show login page
+  if (!currentUser) return <LoginPage />;
+
+  // Client role — mobile-first client portal (no sidebar)
+  if (currentUser.role === "client") {
+    return (
+      <ThemeCtx.Provider value={B}>
+        <ClientPortal />
+      </ThemeCtx.Provider>
+    );
+  }
+
+  // Staff (admin / coach) — full app with role-filtered sidebar
+  return (
+    <ThemeCtx.Provider value={B}>
+      <Shell theme={theme} onToggleTheme={() => setTheme(t => t === "dark" ? "light" : "dark")}>
+        <Routes>
+          <Route path="/" element={<CoachingDashboard />} />
+          <Route path="/business" element={<BusinessDashboard />} />
+          <Route path="/build" element={
+            <BuildView
+              exercises={exercises} setExercises={setExercises}
+              workouts={workouts} setWorkouts={setWorkouts}
+              loadedWorkout={loadedWorkout}
+              onSaved={() => setLoadedWorkout(null)}
+            />
+          } />
+          <Route path="/workouts" element={
+            <WorkoutsView
+              workouts={workouts} setWorkouts={setWorkouts}
+              exercises={exercises}
+              onLoad={handleLoadWorkout}
+            />
+          } />
+          <Route path="/programs" element={
+            <ProgramsView programs={programs} setPrograms={setPrograms} workouts={workouts} />
+          } />
+          <Route path="/library" element={
+            <LibraryView exercises={exercises} setExercises={setExercises} />
+          } />
+          <Route path="/matrix" element={<MatrixView />} />
+          <Route path="/members" element={<MembersView />} />
+          <Route path="/members/:id" element={<MemberProfile />} />
+          <Route path="/assessments" element={<AssessmentView />} />
+          <Route path="/command" element={<CommandView />} />
+          <Route path="/stations" element={<StationSetup />} />
+          <Route path="/schedule" element={<ScheduleView />} />
+          <Route path="/checkin" element={<CheckInView />} />
+          <Route path="/billing" element={<BillingView />} />
+          <Route path="/analytics" element={<AnalyticsView />} />
+          <Route path="/gamification" element={<GamificationView />} />
+
+
+          <Route path="/content" element={<ContentLibraryView />} />
+          <Route path="/shop" element={<ShopView />} />
+          <Route path="/messages" element={<MessagingView />} />
+
+          <Route path="/community" element={<CommunityFeed />} />
+          <Route path="/classroom" element={<ClassroomView />} />
+          <Route path="/events" element={<EventsView />} />
+          <Route path="/resources" element={<ResourcesView />} />
+
+          <Route path="/waivers" element={<WaiverView />} />
+          <Route path="/settings" element={<SettingsView />} />
+          <Route path="/automations" element={<AutomationsView />} />
+        </Routes>
+      </Shell>
+    </ThemeCtx.Provider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
+  );
+}

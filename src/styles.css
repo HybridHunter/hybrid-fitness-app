@@ -1,0 +1,16 @@
+* { box-sizing: border-box; }
+body { margin: 0; }
+
+/* Responsive utilities */
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+  .full-width-mobile { width: 100% !important; max-width: 100% !important; }
+}
+
+/* Print styles */
+@media print {
+  body > * { display: none !important; }
+  #print-area { display: block !important; position: fixed; left: 0; top: 0; width: 100%; padding: 24px; box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; font-size: 11px; z-index: 99999; }
+  #print-area * { visibility: visible !important; color: #000 !important; }
+  .no-print { display: none !important; }
+}

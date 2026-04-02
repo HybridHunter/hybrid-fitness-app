@@ -1,0 +1,20 @@
+app = "hybrid-fitness-api"
+primary_region = "ord"
+
+[build]
+  builder = "heroku/buildpacks:20"
+
+[env]
+  PORT = "3002"
+
+[http_service]
+  internal_port = 3002
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
