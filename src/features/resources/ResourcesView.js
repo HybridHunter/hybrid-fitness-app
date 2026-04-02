@@ -64,9 +64,9 @@ function generateDemoResources() {
   return [
     {
       id: uuid(),
-      title: "Hybrid Fitness Member Handbook",
+      title: "Hybrid Fitness Client Handbook",
       description:
-        "Everything new members need to know: gym hours, policies, class descriptions, coach bios, and FAQs. Start here!",
+        "Everything new clients need to know: gym hours, policies, session descriptions, coach bios, and FAQs. Start here!",
       category: "Forms & Documents",
       type: "pdf",
       url: "https://example.com/member-handbook.pdf",
@@ -772,7 +772,7 @@ export default function ResourcesView() {
               flexShrink: 0,
             }}
           >
-            \u2699
+            {"\u2699"}
           </button>
         )}
       </div>
@@ -824,7 +824,7 @@ export default function ResourcesView() {
             }}
             title="Grid view"
           >
-            \u25a6
+            {"\u25A6"}
           </button>
           <button
             onClick={() => setViewMode("list")}
@@ -840,7 +840,7 @@ export default function ResourcesView() {
             }}
             title="List view"
           >
-            \u2630
+            {"\u2630"}
           </button>
         </div>
       </div>
@@ -895,7 +895,7 @@ export default function ResourcesView() {
                         background: "rgba(0,0,0,0.3)",
                       }}
                     >
-                      <span style={{ fontSize: 36 }}>\u25b6\ufe0f</span>
+                      <span style={{ fontSize: 36 }}>{"\u25B6\uFE0F"}</span>
                     </div>
                   </div>
                 )}
@@ -913,7 +913,7 @@ export default function ResourcesView() {
                         letterSpacing: 0.5,
                       }}
                     >
-                      \ud83d\udccc Pinned
+                      {"\uD83D\uDCCC"} Pinned
                     </div>
                   )}
 

@@ -373,10 +373,32 @@ function CheckPaymentForm({ amount, onSuccess, onClose }) {
 }
 
 /* ── Main PaymentModal ── */
+function getDiscountRules() {
+  try { return JSON.parse(localStorage.getItem('hf_payment_discounts') || '[]'); } catch { return []; }
+}
+
+function calcDiscount(amount, methodKey) {
+  const rules = getDiscountRules();
+  const methodMap = { card: null, ach: 'ACH', cash: 'Cash', check: 'Check' };
+  const methodName = methodMap[methodKey];
+  if (!methodName) return null;
+  const rule = rules.find(r => r.method === methodName && r.active && r.value > 0);
+  if (!rule) return null;
+  let discount = 0;
+  if (rule.discountType === 'Percentage') {
+    discount = amount * (rule.value / 100);
+  } else {
+    discount = rule.value;
+  }
+  discount = Math.min(discount, amount);
+  return { rule, discount: Math.round(discount * 100) / 100, adjusted: Math.round((amount - discount) * 100) / 100 };
+}
+
 export default function PaymentModal({ isOpen, onClose, onSuccess, amount = 0, memberName = '', memberEmail = '', description = '', memberId = null, savedMethods = null }) {
   const B = useTheme();
   const isDark = B.darker === '#080c12';
   const [tab, setTab] = useState('card');
+  const [isFEO, setIsFEO] = useState(false);
   const stripePromise = useMemo(() => loadStripe(getStripeKey()), []);
   const resolvedSavedMethods = savedMethods || (memberId ? getSavedMethods(memberId) : []);
 
@@ -399,11 +421,36 @@ export default function PaymentModal({ isOpen, onClose, onSuccess, amount = 0, m
         </div>
 
         {/* Amount */}
-        <div style={{ background: isDark ? '#16162a' : '#eef2ff', borderRadius: 10, padding: 16, marginBottom: 20, textAlign: 'center' }}>
-          <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: isDark ? '#818cf8' : '#4f46e5' }}>${amount.toFixed(2)}</p>
-          {memberName && <p style={{ margin: '4px 0 0', fontSize: 14, color: isDark ? '#aaa' : '#666' }}>{memberName}</p>}
-          {description && <p style={{ margin: '2px 0 0', fontSize: 13, color: isDark ? '#888' : '#999' }}>{description}</p>}
-        </div>
+        {(() => {
+          const disc = calcDiscount(amount, tab);
+          return (
+            <div style={{ background: isDark ? '#16162a' : '#eef2ff', borderRadius: 10, padding: 16, marginBottom: 20, textAlign: 'center' }}>
+              {disc ? (
+                <>
+                  <p style={{ margin: 0, fontSize: 16, color: isDark ? '#888' : '#999', textDecoration: 'line-through' }}>${amount.toFixed(2)}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 28, fontWeight: 700, color: '#4ade80' }}>${disc.adjusted.toFixed(2)}</p>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 600, color: '#4ade80' }}>
+                    {disc.rule.discountType === 'Percentage' ? `${disc.rule.value}% ${disc.rule.method} discount` : `$${disc.rule.value} ${disc.rule.method} discount`}
+                    {' '}&mdash; saving ${disc.discount.toFixed(2)}
+                  </p>
+                </>
+              ) : (
+                <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: isDark ? '#818cf8' : '#4f46e5' }}>${amount.toFixed(2)}</p>
+              )}
+              {memberName && <p style={{ margin: '4px 0 0', fontSize: 14, color: isDark ? '#aaa' : '#666' }}>{memberName}</p>}
+              {description && <p style={{ margin: '2px 0 0', fontSize: 13, color: isDark ? '#888' : '#999' }}>{description}</p>}
+            </div>
+          );
+        })()}
+
+        {/* FEO toggle */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer', fontSize: 13, color: isDark ? '#aaa' : '#666', padding: '8px 12px', borderRadius: 8, background: isFEO ? (isDark ? '#16a34a18' : '#f0fdf4') : 'transparent', border: isFEO ? '1px solid #16a34a40' : '1px solid transparent', transition: 'all 0.15s' }}>
+          <input type="checkbox" checked={isFEO} onChange={e => setIsFEO(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#16a34a', cursor: 'pointer' }} />
+          <div>
+            <div style={{ fontWeight: 600, color: isFEO ? '#16a34a' : (isDark ? '#ccc' : '#444') }}>Front End Offer (FEO)</div>
+            <div style={{ fontSize: 11, color: isDark ? '#666' : '#999' }}>Mark as FEO — counts under FEO Collected on dashboard</div>
+          </div>
+        </label>
 
         {/* Tabs */}
         <div style={{ display: 'flex', marginBottom: 20, borderRadius: 8, overflow: 'hidden', border: `1px solid ${isDark ? '#333' : '#ddd'}` }}>
@@ -415,10 +462,15 @@ export default function PaymentModal({ isOpen, onClose, onSuccess, amount = 0, m
         </div>
 
         {/* Content */}
-        {tab === 'card' && <Elements stripe={stripePromise}><CardPaymentForm amount={amount} memberName={memberName} memberEmail={memberEmail} description={description} onSuccess={onSuccess} onClose={onClose} memberId={memberId} savedMethods={resolvedSavedMethods} /></Elements>}
-        {tab === 'ach' && <AchPaymentForm amount={amount} memberName={memberName} memberEmail={memberEmail} description={description} onSuccess={onSuccess} onClose={onClose} memberId={memberId} savedMethods={resolvedSavedMethods} />}
-        {tab === 'cash' && <CashPaymentForm amount={amount} onSuccess={onSuccess} onClose={onClose} />}
-        {tab === 'check' && <CheckPaymentForm amount={amount} onSuccess={onSuccess} onClose={onClose} />}
+        {(() => {
+          const wrappedSuccess = onSuccess ? (data) => onSuccess({ ...data, isFEO }) : undefined;
+          return <>
+            {tab === 'card' && <Elements stripe={stripePromise}><CardPaymentForm amount={amount} memberName={memberName} memberEmail={memberEmail} description={description} onSuccess={wrappedSuccess} onClose={onClose} memberId={memberId} savedMethods={resolvedSavedMethods} /></Elements>}
+            {tab === 'ach' && <AchPaymentForm amount={amount} memberName={memberName} memberEmail={memberEmail} description={description} onSuccess={wrappedSuccess} onClose={onClose} memberId={memberId} savedMethods={resolvedSavedMethods} />}
+            {tab === 'cash' && <CashPaymentForm amount={amount} onSuccess={wrappedSuccess} onClose={onClose} />}
+            {tab === 'check' && <CheckPaymentForm amount={amount} onSuccess={wrappedSuccess} onClose={onClose} />}
+          </>;
+        })()}
       </div>
     </div>
   );

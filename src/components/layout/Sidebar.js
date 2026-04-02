@@ -1,75 +1,85 @@
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useUnreadCount } from "../../features/messaging/MessagingView";
+import EditProfileModal from "../../features/auth/EditProfileModal";
 
 const NAV_GROUPS = [
   {
     label: "Coaching",
+    icon: "\uD83C\uDFCB\uFE0F",
     adminOnly: false,
     items: [
-      { label: "Coaching", path: "/" },
-      { label: "Build", path: "/build" },
-      { label: "Workouts", path: "/workouts" },
-      { label: "Programs", path: "/programs" },
-      { label: "Library", path: "/library" },
-      { label: "Movement Matrix", path: "/matrix" },
-      { label: "Command View", path: "/command" },
-      { label: "Stations", path: "/stations" },
+      { label: "Coaching Dashboard", path: "/coaching", icon: "\uD83D\uDCCA" },
+      { label: "Build", path: "/build", icon: "\uD83D\uDD28" },
+      { label: "Workouts", path: "/workouts", icon: "\uD83D\uDCCB" },
+      { label: "Programs", path: "/programs", icon: "\uD83D\uDCC1" },
+      { label: "Library", path: "/library", icon: "\uD83D\uDCDA" },
+      { label: "Progression Engine", path: "/matrix", icon: "\u2699\uFE0F" },
+      { label: "Session View", path: "/command", icon: "\uD83D\uDCFA" },
+      { label: "Stations", path: "/stations", icon: "\uD83D\uDCF1" },
     ],
   },
   {
     label: "Community",
+    icon: "\uD83D\uDC65",
     adminOnly: false,
     items: [
-      { label: "Feed", path: "/community" },
-      { label: "Classroom", path: "/classroom" },
-      { label: "Events", path: "/events" },
-      { label: "Resources", path: "/resources" },
+      { label: "Feed", path: "/community", icon: "\uD83D\uDCAC" },
+      { label: "Classroom", path: "/classroom", icon: "\uD83C\uDF93" },
+      { label: "Events", path: "/events", icon: "\uD83C\uDF89" },
+      { label: "Resources", path: "/resources", icon: "\uD83D\uDCC2" },
     ],
   },
   {
-    label: "Members",
+    label: "Clients",
+    icon: "\uD83D\uDC64",
     adminOnly: false,
     items: [
-      { label: "Members", path: "/members" },
-      { label: "Assessments", path: "/assessments" },
-      { label: "Gamification", path: "/gamification" },
+      { label: "Clients", path: "/members", icon: "\uD83D\uDC65" },
+      { label: "Assessments", path: "/assessments", icon: "\uD83D\uDCCB" },
+      { label: "Gamification", path: "/gamification", icon: "\uD83C\uDFC6" },
     ],
   },
   {
     label: "Operations",
+    icon: "\u2699\uFE0F",
     adminOnly: false,
     items: [
-      { label: "Schedule", path: "/schedule" },
-      { label: "Check-in", path: "/checkin" },
-      { label: "Waivers", path: "/waivers" },
+      { label: "Schedule", path: "/schedule", icon: "\uD83D\uDCC5" },
+      { label: "Check-in", path: "/checkin", icon: "\u2705" },
+      { label: "Waivers", path: "/waivers", icon: "\uD83D\uDCDD" },
     ],
   },
   {
     label: "Communication",
+    icon: "\uD83D\uDCE8",
     adminOnly: false,
     items: [
-      { label: "Messages", path: "/messages" },
+      { label: "Messages", path: "/messages", icon: "\uD83D\uDCE9" },
     ],
   },
   {
     label: "Business",
+    icon: "\uD83D\uDCB0",
     adminOnly: true,
     items: [
-      { label: "Business Dashboard", path: "/business" },
-      { label: "Billing", path: "/billing" },
-      { label: "Analytics", path: "/analytics" },
-      { label: "Content", path: "/content" },
-      { label: "Shop", path: "/shop" },
+      { label: "Business Dashboard", path: "/business", icon: "\uD83D\uDCC8" },
+      { label: "Billing", path: "/billing", icon: "\uD83D\uDCB3" },
+      { label: "Analytics", path: "/analytics", icon: "\uD83D\uDCC9" },
     ],
   },
   {
     label: "Admin",
+    icon: "\uD83D\uDD12",
     adminOnly: true,
     items: [
-      { label: "Settings", path: "/settings" },
-      { label: "Automations", path: "/automations" },
+      { label: "Settings", path: "/settings", icon: "\u2699\uFE0F" },
+      { label: "Automations", path: "/automations", icon: "\u26A1" },
+      { label: "Integrations", path: "/integrations", icon: "\uD83D\uDD17" },
+      { label: "Data Migration", path: "/migration", icon: "\uD83D\uDCE5" },
+      { label: "Super Admin", path: "/super-admin", icon: "\uD83D\uDC51" },
     ],
   },
 ];
@@ -86,19 +96,27 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
   const navigate = useNavigate();
   const unreadCount = useUnreadCount();
   const { currentUser, isClient, isCoach, isAdmin, logout } = useAuth();
+  // All groups start collapsed
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    const initial = {};
+    NAV_GROUPS.forEach(g => { initial[g.label] = true; });
+    return initial;
+  });
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
 
-  // Clients don't see the sidebar at all
   if (isClient) return null;
 
-  // Filter nav groups based on role
   const visibleGroups = NAV_GROUPS.filter((group) => {
     if (group.adminOnly && !isAdmin) return false;
     return true;
   });
 
-  // On mobile: always show full labels (not abbreviated)
   const showFull = mobile || !collapsed;
-  const width = mobile ? 260 : collapsed ? 56 : 200;
+  const width = mobile ? 260 : collapsed ? 56 : 220;
+
+  const toggleGroup = (label) => {
+    setCollapsedGroups(prev => ({ ...prev, [label]: !prev[label] }));
+  };
 
   const handleNavClick = (path) => {
     navigate(path);
@@ -120,8 +138,10 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
   const initials = currentUser?.displayName
     ? currentUser.displayName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
     : "??";
-
   const roleColor = ROLE_COLORS[currentUser?.role] || B.muted;
+
+  // Check if any item in a group is active
+  const isGroupActive = (group) => group.items.some(item => location.pathname === item.path);
 
   return (
     <nav
@@ -139,41 +159,19 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
         ...mobileStyles,
       }}
     >
-      {/* Top bar: hamburger toggle on desktop, close button on mobile */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px" }}>
+      {/* Top bar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px", minHeight: 48 }}>
         {!mobile && (
-          <button
-            onClick={onToggle}
-            style={{
-              background: "none",
-              border: "none",
-              color: B.text,
-              fontSize: 20,
-              cursor: "pointer",
-              padding: "12px 8px",
-              textAlign: "left",
-            }}
-            aria-label="Toggle sidebar"
-          >
-            ☰
+          <button onClick={onToggle} style={{ background: "none", border: "none", color: B.muted, fontSize: 18, cursor: "pointer", padding: "12px 8px" }} aria-label="Toggle sidebar">
+            {collapsed ? "\u25B6" : "\u25C0"}
           </button>
         )}
         {mobile && (
           <>
-            <div style={{ padding: "12px 8px", fontSize: 13, fontWeight: 700, color: B.text }}>Menu</div>
-            <button
-              onClick={onClose}
-              style={{
-                background: "none",
-                border: "none",
-                color: B.text,
-                fontSize: 22,
-                cursor: "pointer",
-                padding: "12px 8px",
-                lineHeight: 1,
-              }}
-              aria-label="Close sidebar"
-            >
+            <div style={{ padding: "12px 8px", fontSize: 14, fontWeight: 700, color: B.text, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ color: "#8fbf3b" }}>Gym</span>Kit
+            </div>
+            <button onClick={onClose} style={{ background: "none", border: "none", color: B.muted, fontSize: 20, cursor: "pointer", padding: "12px 8px", lineHeight: 1 }} aria-label="Close sidebar">
               ✕
             </button>
           </>
@@ -181,140 +179,220 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
       </div>
 
       {/* Nav groups */}
-      <div style={{ flex: 1 }}>
-        {visibleGroups.map((group) => (
-          <div key={group.label} style={{ marginBottom: 8 }}>
-            <div
-              style={{
-                padding: showFull ? "8px 16px 4px" : "8px 8px 4px",
-                fontSize: 10,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: 1,
-                color: B.muted,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-              }}
-            >
-              {showFull ? group.label : group.label.slice(0, 2)}
-            </div>
+      <div style={{ flex: 1, padding: "4px 0" }}>
+        {visibleGroups.map((group) => {
+          const isCollapsed = collapsedGroups[group.label];
+          const groupActive = isGroupActive(group);
 
-            {group.items.map((item) => {
-              const active = location.pathname === item.path;
-              return (
-                <button
-                  key={item.path}
-                  onClick={() => handleNavClick(item.path)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    width: "100%",
-                    textAlign: "left",
-                    background: active ? `${B.accent}22` : "transparent",
-                    color: active ? B.accent : B.text,
-                    border: "none",
-                    borderLeft: active ? `3px solid ${B.accent}` : "3px solid transparent",
-                    padding: showFull ? "6px 16px" : "6px 8px",
-                    fontSize: 13,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    transition: "background 0.15s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!active) e.currentTarget.style.background = `${B.border}`;
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!active) e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  <span>{showFull ? item.label : item.label.slice(0, 2)}</span>
-                  {item.path === "/messages" && unreadCount > 0 && (
-                    <span style={{ minWidth: 18, height: 18, borderRadius: 9, background: B.accent, color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px", marginLeft: 6 }}>{unreadCount}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+          return (
+            <div key={group.label} style={{ marginBottom: 2 }}>
+              {/* Group header — clickable to collapse */}
+              <button
+                onClick={() => { if (showFull) toggleGroup(group.label); else handleNavClick(group.items[0].path); }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  width: "100%",
+                  padding: showFull ? "8px 12px" : "8px",
+                  background: groupActive && isCollapsed ? `${B.accent}08` : "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  gap: 8,
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = `${B.border}44`; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = groupActive && isCollapsed ? `${B.accent}08` : "transparent"; }}
+              >
+                <span style={{ fontSize: 14, flexShrink: 0, width: 20, textAlign: "center" }}>{group.icon}</span>
+                {showFull && (
+                  <>
+                    <span style={{
+                      flex: 1,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.8,
+                      color: groupActive ? B.accent : B.muted,
+                      textAlign: "left",
+                    }}>
+                      {group.label}
+                    </span>
+                    <span style={{
+                      fontSize: 10,
+                      color: B.dim,
+                      transition: "transform 0.2s",
+                      transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                    }}>
+                      ▾
+                    </span>
+                  </>
+                )}
+              </button>
+
+              {/* Group items — collapsible */}
+              {showFull && !isCollapsed && (
+                <div style={{
+                  overflow: "hidden",
+                  transition: "max-height 0.2s ease",
+                }}>
+                  {group.items.map((item) => {
+                    const active = location.pathname === item.path;
+                    return (
+                      <button
+                        key={item.path}
+                        onClick={() => handleNavClick(item.path)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          width: "100%",
+                          textAlign: "left",
+                          background: active ? `${B.accent}15` : "transparent",
+                          color: active ? B.accent : B.text,
+                          border: "none",
+                          borderLeft: active ? `3px solid ${B.accent}` : "3px solid transparent",
+                          padding: "7px 12px 7px 20px",
+                          fontSize: 13,
+                          fontWeight: active ? 600 : 400,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          transition: "all 0.15s",
+                          borderRadius: "0 6px 6px 0",
+                          marginRight: 6,
+                        }}
+                        onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = `${B.border}55`; }}
+                        onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <span style={{ fontSize: 13, flexShrink: 0, width: 18, textAlign: "center", opacity: active ? 1 : 0.6 }}>{item.icon}</span>
+                        <span style={{ flex: 1 }}>{item.label}</span>
+                        {item.path === "/messages" && unreadCount > 0 && (
+                          <span style={{
+                            minWidth: 18, height: 18, borderRadius: 9,
+                            background: B.accent, color: "#fff",
+                            fontSize: 10, fontWeight: 700,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            padding: "0 5px",
+                          }}>
+                            {unreadCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Collapsed sidebar — nothing here, group icon button above is enough */}
+            </div>
+          );
+        })}
       </div>
 
-      {/* User info at bottom */}
-      {currentUser && showFull && (
-        <div
-          style={{
-            padding: "12px 16px",
-            borderTop: `1px solid ${B.border}`,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          {/* Avatar */}
-          <div
+      {/* Help & Feedback standalone link */}
+      {showFull && (
+        <div style={{ padding: "4px 6px 4px 0" }}>
+          <button
+            onClick={() => handleNavClick("/feedback")}
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: roleColor + "33",
-              color: roleColor,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 12,
-              fontWeight: 700,
-              flexShrink: 0,
+              display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+              background: location.pathname === "/feedback" ? `${B.accent}15` : "transparent",
+              color: location.pathname === "/feedback" ? B.accent : B.muted,
+              border: "none",
+              borderLeft: location.pathname === "/feedback" ? `3px solid ${B.accent}` : "3px solid transparent",
+              padding: "8px 12px 8px 12px", fontSize: 13,
+              fontWeight: location.pathname === "/feedback" ? 600 : 400,
+              cursor: "pointer", borderRadius: "0 6px 6px 0", transition: "all 0.15s",
             }}
+            onMouseEnter={e => { if (location.pathname !== "/feedback") e.currentTarget.style.background = `${B.border}55`; }}
+            onMouseLeave={e => { if (location.pathname !== "/feedback") e.currentTarget.style.background = "transparent"; }}
           >
-            {initials}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: B.text,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {currentUser.displayName}
+            <span style={{ fontSize: 13, flexShrink: 0, width: 18, textAlign: "center", opacity: location.pathname === "/feedback" ? 1 : 0.6 }}>{"\u2753"}</span>
+            <span>Help & Feedback</span>
+          </button>
+        </div>
+      )}
+
+      {/* Divider */}
+      <div style={{ height: 1, background: B.border, margin: "0 12px" }} />
+
+      {/* User info at bottom */}
+      {currentUser && (
+        <div style={{
+          padding: showFull ? "14px 12px" : "14px 4px",
+          display: "flex",
+          alignItems: showFull ? "center" : "center",
+          flexDirection: showFull ? "row" : "column",
+          gap: showFull ? 10 : 6,
+        }}>
+          <div
+            onClick={() => setEditProfileOpen(true)}
+            title="Edit Profile"
+            style={{
+              display: "flex", alignItems: showFull ? "center" : "center",
+              flexDirection: showFull ? "row" : "column",
+              gap: showFull ? 10 : 4, cursor: "pointer",
+              flex: showFull ? 1 : undefined, minWidth: 0,
+              borderRadius: 8, padding: showFull ? "4px 6px" : "4px",
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = `${B.border}44`; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <div style={{
+              width: 34, height: 34, borderRadius: 10,
+              background: `${roleColor}22`, color: roleColor,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 12, fontWeight: 700, flexShrink: 0,
+              border: `1.5px solid ${roleColor}44`,
+            }}>
+              {initials}
             </div>
-            <span
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: 0.5,
-                color: roleColor,
-              }}
-            >
-              {currentUser.role}
-            </span>
+            {showFull && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 12, fontWeight: 600, color: B.text,
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                }}>
+                  {currentUser.displayName}
+                </div>
+                <div style={{
+                  display: "inline-block",
+                  fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+                  letterSpacing: 0.5, color: roleColor,
+                  background: `${roleColor}15`, padding: "1px 6px",
+                  borderRadius: 4, marginTop: 2,
+                }}>
+                  {currentUser.role}
+                </div>
+              </div>
+            )}
           </div>
           <button
             onClick={logout}
             title="Sign Out"
             style={{
-              background: "none",
-              border: "none",
-              color: B.muted,
-              fontSize: 16,
+              background: `${B.red}15`,
+              border: `1px solid ${B.red}30`,
+              color: B.red,
+              fontSize: 11,
+              fontWeight: 600,
               cursor: "pointer",
-              padding: 4,
+              padding: showFull ? "5px 10px" : "5px 8px",
+              borderRadius: 6,
               flexShrink: 0,
-              lineHeight: 1,
+              transition: "all 0.15s",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#ef4444")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = B.muted)}
+            onMouseEnter={(e) => { e.currentTarget.style.background = B.red; e.currentTarget.style.color = "#fff"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = `${B.red}15`; e.currentTarget.style.color = B.red; }}
           >
-            ⏻
+            {showFull ? "Sign Out" : "\u23FB"}
           </button>
         </div>
       )}
+
+      <EditProfileModal isOpen={editProfileOpen} onClose={() => setEditProfileOpen(false)} />
     </nav>
   );
 }

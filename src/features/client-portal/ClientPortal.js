@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
+import EditProfileModal from "../auth/EditProfileModal";
 import { autoIndividualize } from "../../utils/autoIndividualize";
 import { DEFAULT_MATRIX } from "../../data/movementMatrix";
 import { EX } from "../../data/exercises";
@@ -140,6 +141,8 @@ export default function ClientPortal() {
 
   // Video modal
   const [videoModal, setVideoModal] = useState(null);
+  // Edit profile modal
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
 
   // Community sub-tab state
   const [communitySubTab, setCommunitySubTab] = useState("feed");
@@ -326,10 +329,7 @@ export default function ClientPortal() {
           <div style={{ ...cardStyle, textAlign: "center", padding: "14px 8px" }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: B.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>Level</div>
             <div style={{ fontSize: 24, fontWeight: 800, color: B.accent }}>{gam.level || 1}</div>
-            <div style={{ ...pillBadge((RANK_COLORS[member.rank?.current] || B.muted) + "22", RANK_COLORS[member.rank?.current] || B.muted), marginTop: 6, fontSize: 10 }}>
-              {member.rank?.current || "White"}
             </div>
-          </div>
           <div style={{ ...cardStyle, textAlign: "center", padding: "14px 8px" }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: B.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>Streak</div>
             <div style={{ fontSize: 24, fontWeight: 800, color: "#f59e0b" }}>
@@ -396,7 +396,7 @@ export default function ClientPortal() {
                   }}>
                     <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{ch.title}</div>
                     <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 2 }}>
-                      Day {elapsed} of {totalDays} &middot; {ch.participants.length} members
+                      Day {elapsed} of {totalDays} &middot; {ch.participants.length} clients
                     </div>
                   </div>
                   <div style={{ padding: "12px 16px" }}>
@@ -430,7 +430,7 @@ export default function ClientPortal() {
         {/* Upcoming Classes */}
         {upcomingClasses.length > 0 && (
           <>
-            <h3 style={sectionTitle}>&#x1F4C5; Upcoming Classes</h3>
+            <h3 style={sectionTitle}>&#x1F4C5; Upcoming Sessions</h3>
             {upcomingClasses.map(cls => (
               <div key={cls.id + cls._dayLabel} style={cardStyle}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -707,9 +707,9 @@ export default function ClientPortal() {
           }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>&#x1F4AD;</div>
             <div style={{ fontSize: 16, fontWeight: 600, color: B.text, marginBottom: 4 }}>No workout today</div>
-            <div style={{ ...mutedText, fontSize: 14 }}>Book a class to see your personalized workout here.</div>
+            <div style={{ ...mutedText, fontSize: 14 }}>Book a session to see your personalized workout here.</div>
             <button onClick={() => switchTab("book")} style={touchBtn(B.accent, B.darker, { marginTop: 16, fontSize: 14 })}>
-              &#x1F4C5; Book a Class
+              &#x1F4C5; Book a Session
             </button>
           </div>
         )}
@@ -800,7 +800,7 @@ export default function ClientPortal() {
           <div style={{ width: 36, height: 4, borderRadius: 2, background: B.muted, margin: "0 auto" }} />
         </div>
 
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Book a Class</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Book a Session</h1>
         <p style={mutedText}>This week's schedule</p>
 
         {/* Day selector pills */}
@@ -907,8 +907,8 @@ export default function ClientPortal() {
         {classes.length === 0 && (
           <div style={{ ...cardStyle, textAlign: "center", padding: "32px 20px", marginTop: 20 }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>&#x1F4C5;</div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: B.text }}>No classes scheduled</div>
-            <div style={{ ...mutedText, marginTop: 4 }}>Check back later for updated class times.</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: B.text }}>No sessions scheduled</div>
+            <div style={{ ...mutedText, marginTop: 4 }}>Check back later for updated session times.</div>
           </div>
         )}
 
@@ -1309,7 +1309,7 @@ export default function ClientPortal() {
             )}
             <div style={{ display: "flex", gap: 16, marginTop: 12, fontSize: 12, color: "rgba(255,255,255,0.8)" }}>
               <span>Day {elapsed} of {totalDays}</span>
-              <span>&#x1F465; {ch.participants?.length || 0} members</span>
+              <span>&#x1F465; {ch.participants?.length || 0} clients</span>
             </div>
             {/* Progress */}
             <div style={{ height: 5, background: "rgba(255,255,255,0.25)", borderRadius: 3, marginTop: 10, overflow: "hidden" }}>
@@ -1687,9 +1687,6 @@ export default function ClientPortal() {
               <div style={{ fontSize: 36, fontWeight: 900, color: B.accent, lineHeight: 1 }}>{gam.level || 1}</div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={pillBadge((RANK_COLORS[member.rank?.current] || B.muted) + "22", RANK_COLORS[member.rank?.current] || B.muted)}>
-                {member.rank?.current || "White"} Rank
-              </div>
               <div style={{ fontSize: 12, color: B.muted, marginTop: 4 }}>
                 {(gam.xp || 0).toLocaleString()} XP
               </div>
@@ -1891,7 +1888,7 @@ export default function ClientPortal() {
             {member.firstName} {member.lastName}
           </h1>
           <p style={{ ...mutedText, margin: 0 }}>
-            Member since {memberSince ? fmtDateNice(memberSince) : "N/A"}
+            Client since {memberSince ? fmtDateNice(memberSince) : "N/A"}
           </p>
         </div>
 
@@ -1911,9 +1908,6 @@ export default function ClientPortal() {
               </span>
             </div>
           </div>
-          <span style={pillBadge((RANK_COLORS[member.rank?.current] || B.muted) + "22", RANK_COLORS[member.rank?.current] || B.muted)}>
-            {member.rank?.current || "White"} Rank
-          </span>
         </div>
 
         {/* Contact Info */}
@@ -1977,6 +1971,18 @@ export default function ClientPortal() {
               padding: "2px 8px", borderRadius: 10, marginLeft: 4,
             }}>{unreadCount}</span>
           )}
+        </button>
+
+        {/* Edit Profile */}
+        <button
+          onClick={() => setEditProfileOpen(true)}
+          style={{
+            ...touchBtn(B.card, B.text, { width: "100%", marginTop: 8, border: `1px solid ${B.border}`, gap: 10 }),
+            boxSizing: "border-box",
+          }}
+        >
+          <span style={{ fontSize: 18 }}>&#x270F;&#xFE0F;</span>
+          Edit Profile
         </button>
 
         {/* Payment Methods */}
@@ -2202,6 +2208,9 @@ export default function ClientPortal() {
           </div>
         </div>
       )}
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal isOpen={editProfileOpen} onClose={() => setEditProfileOpen(false)} />
 
       {/* Inline keyframes for toast animation */}
       <style>{`

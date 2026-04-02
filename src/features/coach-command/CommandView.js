@@ -205,7 +205,7 @@ function ClientWorkoutCard({ member, individualizedSlots, B, onAdjust, checkedIn
               </span>
             )}
           </div>
-          <div style={{ fontSize: 11, color: B.muted }}>{member.rank?.current || "Unranked"} {member.membershipStatus === "active" ? "" : "(" + member.membershipStatus + ")"}</div>
+          <div style={{ fontSize: 11, color: B.muted }}>{member.membershipStatus === "active" ? "" : "(" + member.membershipStatus + ")"}</div>
         </div>
       </div>
 
@@ -503,7 +503,7 @@ export default function CommandView() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* HEADER */}
       <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: 0 }}>Command View</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: 0 }}>Session View</h1>
         <p style={{ color: B.muted, fontSize: 13, margin: "4px 0 0" }}>See every client's individualized workout in one session view.</p>
       </div>
 
@@ -519,7 +519,7 @@ export default function CommandView() {
             }}>
             <option value="custom">Custom Session</option>
             {todayClasses.map((c) => (
-              <option key={c.id} value={c.id}>{c.name || c.title || "Class"} ({fmtTime(c.startTime)} - {fmtTime(c.endTime)})</option>
+              <option key={c.id} value={c.id}>{c.name || c.title || "Session"} ({fmtTime(c.startTime)} - {fmtTime(c.endTime)})</option>
             ))}
           </select>
         </div>
@@ -572,7 +572,7 @@ export default function CommandView() {
       {/* CUSTOM SESSION MEMBER PICKER */}
       {sessionMode === "custom" && (
         <Card style={{ marginBottom: 16, padding: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Select Members</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Select Clients</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {activeMembers.map((m) => {
               const sel = customSelected.includes(m.id);
@@ -594,7 +594,7 @@ export default function CommandView() {
                 </button>
               );
             })}
-            {activeMembers.length === 0 && <span style={{ color: B.dim, fontSize: 13 }}>No active members found</span>}
+            {activeMembers.length === 0 && <span style={{ color: B.dim, fontSize: 13 }}>No active clients found</span>}
           </div>
         </Card>
       )}
@@ -605,7 +605,7 @@ export default function CommandView() {
           B={B}
           checkedInCount={checkedInCount}
           totalBooked={sessionMembers.length}
-          className={selectedClass.name || selectedClass.title || "Class"}
+          className={selectedClass.name || selectedClass.title || "Session"}
           classTime={`${fmtTime(selectedClass.startTime)} - ${fmtTime(selectedClass.endTime)}`}
           workoutName={workout?.name || workout?.title || (workouts.length === 0 ? "No template" : null)}
           isLive={isLive}
@@ -618,12 +618,12 @@ export default function CommandView() {
           <Card style={{ padding: 48, textAlign: "center" }}>
             <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.3 }}>&#9776;</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: B.muted, marginBottom: 6 }}>
-              {showCheckedInOnly && sessionMembers.length > 0 ? "No checked-in members" : "No clients selected"}
+              {showCheckedInOnly && sessionMembers.length > 0 ? "No checked-in clients" : "No clients selected"}
             </div>
             <div style={{ fontSize: 13, color: B.dim }}>
               {showCheckedInOnly && sessionMembers.length > 0
-                ? `${sessionMembers.length} member${sessionMembers.length !== 1 ? "s" : ""} booked but none have checked in yet.`
-                : sessionMode === "custom" ? "Pick members above to build your session." : "This class has no members assigned."}
+                ? `${sessionMembers.length} client${sessionMembers.length !== 1 ? "s" : ""} booked but none have checked in yet.`
+                : sessionMode === "custom" ? "Pick clients above to build your session." : "This session has no clients assigned."}
             </div>
           </Card>
         ) : (

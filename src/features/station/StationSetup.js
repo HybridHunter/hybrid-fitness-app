@@ -39,7 +39,7 @@ export default function StationSetup() {
   // Effective workout ID: override > class workout
   const effectiveWorkoutId = workoutOverrideId || selectedClass?.workoutId || "";
   const effectiveWorkout = useMemo(
-    () => workouts.find(w => w.id === effectiveWorkoutId) || null,
+    () => workouts.find(w => w.id === effectiveWorkoutId || String(w.id) === String(effectiveWorkoutId)) || null,
     [workouts, effectiveWorkoutId]
   );
 
@@ -215,7 +215,7 @@ export default function StationSetup() {
           Station Setup
         </h1>
         <p style={{ color: B.muted, fontSize: 14, marginTop: 4 }}>
-          Assign members to stations before class
+          Assign clients to stations before session
         </p>
       </div>
 
@@ -223,21 +223,21 @@ export default function StationSetup() {
       <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
           <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: B.muted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Today's Class
+            Today's Session
           </label>
           <select
             value={selectedClassId}
             onChange={e => handleClassChange(e.target.value)}
             style={selectStyle}
           >
-            <option value="">-- Select a class --</option>
+            <option value="">-- Select a session --</option>
             {todaysClasses.map(c => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.startTime} - {c.endTime})
               </option>
             ))}
             {todaysClasses.length === 0 && (
-              <option disabled>No classes today</option>
+              <option disabled>No sessions today</option>
             )}
           </select>
         </div>
@@ -446,14 +446,14 @@ export default function StationSetup() {
                       fontSize: 13,
                       marginBottom: 10,
                     }}>
-                      Assign Member
+                      Assign Client
                     </div>
                     <select
                       value=""
                       onChange={e => assignMember(station.id, e.target.value)}
                       style={{ ...selectStyle, marginBottom: 8 }}
                     >
-                      <option value="">-- Select member --</option>
+                      <option value="">-- Select client --</option>
                       {bookedMemberIds.length > 0 && (
                         <optgroup label="Booked">
                           {bookedMemberIds.map(mid => {
@@ -467,7 +467,7 @@ export default function StationSetup() {
                           })}
                         </optgroup>
                       )}
-                      <optgroup label="All Active Members">
+                      <optgroup label="All Active Clients">
                         {activeMembers
                           .filter(m => !assignedMemberIds.has(m.id))
                           .map(m => (
@@ -503,7 +503,7 @@ export default function StationSetup() {
           Station URLs
         </h3>
         <p style={{ color: B.muted, fontSize: 13, marginBottom: 16 }}>
-          Bookmark these URLs on each iPad. The station will auto-load the assigned member's workout.
+          Bookmark these URLs on each iPad. The station will auto-load the assigned client's workout.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {stations.map(station => {

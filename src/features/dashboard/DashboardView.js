@@ -321,7 +321,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 16 }}>{collapsed ? "\u25B6" : "\u25BC"}</span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: B.text }}>Member Engagement Alerts</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: B.text }}>Client Engagement Alerts</span>
           <span style={{
             padding: "2px 10px", borderRadius: 10, background: B.red, color: "#fff",
             fontSize: 11, fontWeight: 700, lineHeight: "18px",
@@ -500,7 +500,7 @@ export default function DashboardView() {
     { label: "Jumpstart Closes", count: currentMetrics.jumpstartCloses, color: "#a855f7" },
     { label: "Total Strat Sessions", count: currentMetrics.totalStratSessions, color: "#eab308" },
     { label: "Trial Closes", count: currentMetrics.trialCloses, color: "#06b6d4" },
-    { label: "New Members", count: newMemberCount || currentMetrics.newTrials, color: "#22c55e" },
+    { label: "New Clients", count: newMemberCount || currentMetrics.newTrials, color: "#22c55e" },
   ];
 
   /* ---- Marketing calculated values ---- */
@@ -599,7 +599,7 @@ export default function DashboardView() {
         display: "flex", alignItems: "center", justifyContent: "space-between",
         marginBottom: sectionGap, flexWrap: "wrap", gap: 12,
       }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: 0 }}>Hybrid Fitness Dashboard</h1>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: 0 }}>GymKit Dashboard</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {[
             { key: "this_month", label: "This Month" },
@@ -789,9 +789,9 @@ export default function DashboardView() {
 
             {/* Row 3 */}
             <MiniKpi label="Cost Per Call" B={B} editable value={currentMetrics.costPerCall} prefix="$" onChange={v => updateMetric("costPerCall", v)} />
-            <MiniKpi label="Cost Per New Member" B={B} value={costPerNewMember} prefix="$" calculated />
+            <MiniKpi label="Cost Per New Client" B={B} value={costPerNewMember} prefix="$" calculated />
             <MiniKpi label="Jumpstart Closes" B={B} editable value={currentMetrics.jumpstartCloses} onChange={v => updateMetric("jumpstartCloses", v)} />
-            <MiniKpi label="New Members" B={B} value={newMemberCount || currentMetrics.newTrials} calculated />
+            <MiniKpi label="New Clients" B={B} value={newMemberCount || currentMetrics.newTrials} calculated />
           </div>
         </Card>
       </div>
@@ -880,7 +880,7 @@ export default function DashboardView() {
           <div style={{ fontSize: 14, fontWeight: 700, color: B.text, marginBottom: 12 }}>Today's Schedule</div>
           {todayClasses.length === 0 ? (
             <div style={{ padding: "32px 0", textAlign: "center", color: B.dim, fontSize: 13 }}>
-              No classes scheduled for {todayDay}. Add classes in the Schedule section.
+              No sessions scheduled for {todayDay}. Add sessions in the Schedule section.
             </div>
           ) : (
             todayClasses.map((cls, i) => {
@@ -898,7 +898,7 @@ export default function DashboardView() {
                     {cls.time || "--"}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: B.text }}>{cls.name || cls.title || "Class"}</div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: B.text }}>{cls.name || cls.title || "Session"}</div>
                     <div style={{ fontSize: 11, color: B.dim }}>{booked}/{cap} booked</div>
                   </div>
                 </div>

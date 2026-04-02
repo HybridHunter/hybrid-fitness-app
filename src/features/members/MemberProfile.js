@@ -5,6 +5,7 @@ import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import PaymentModal from "../../components/shared/PaymentModal";
 
 const PATTERNS = ["Squat", "Hinge", "Lunge", "Push", "Pull", "Core", "Carry"];
 const SCORE_RANGE = [-3, -2, -1, 0, 1, 2, 3];
@@ -34,6 +35,7 @@ export default function MemberProfile() {
   const [attendance] = useLocalStorage("hf_attendance", []);
   const [schedule] = useLocalStorage("hf_schedule", []);
   const [editingMethod, setEditingMethod] = useState(null);
+  const [addPaymentMethodOpen, setAddPaymentMethodOpen] = useState(false);
   const [scanModalOpen, setScanModalOpen] = useState(false);
   const [scanForm, setScanForm] = useState({ date: "", weight: "", bodyFatPercent: "", skeletalMuscleMass: "", bmi: "", bmr: "", bodyFatMass: "", totalBodyWater: "", visceralFatLevel: "", leftArm: "", rightArm: "", trunk: "", leftLeg: "", rightLeg: "" });
   const [inbodyApiKey, setInbodyApiKey] = useLocalStorage("hf_inbody_api_key", "");
@@ -44,8 +46,8 @@ export default function MemberProfile() {
   if (!member) {
     return (
       <div style={{ padding: 48, textAlign: "center" }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: B.text, marginBottom: 8 }}>Member not found</div>
-        <button onClick={() => navigate("/members")} style={{ background: B.accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Back to Members</button>
+        <div style={{ fontSize: 18, fontWeight: 700, color: B.text, marginBottom: 8 }}>Client not found</div>
+        <button onClick={() => navigate("/members")} style={{ background: B.accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Back to Clients</button>
       </div>
     );
   }
@@ -118,7 +120,7 @@ export default function MemberProfile() {
   const renderOverview = () => (
     <>
       <div style={s.card}>
-        <div style={s.cardTitle}>Member Info</div>
+        <div style={s.cardTitle}>Client Info</div>
         {[
           ["Email", member.email],
           ["Phone", member.phone],
@@ -154,10 +156,6 @@ export default function MemberProfile() {
         <div style={s.statBox}>
           <div style={s.statValue}>{g.level || 1}</div>
           <div style={s.statLabel}>Level</div>
-        </div>
-        <div style={s.statBox}>
-          <div style={{ ...s.statValue, color: B.purple }}>{member.rank?.current || "---"}</div>
-          <div style={s.statLabel}>Rank</div>
         </div>
       </div>
     </>
@@ -512,6 +510,29 @@ export default function MemberProfile() {
         ) : (
           <div style={{ color: B.dim, fontSize: 13 }}>No plan assigned. Select one above.</div>
         )}
+        {/* Auto-charge toggle */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, padding: "12px 0", borderTop: "1px solid " + B.border + "44" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: B.text }}>Auto-charge</div>
+            <div style={{ fontSize: 11, color: B.dim }}>Automatically charge this client on their billing date</div>
+          </div>
+          <button
+            onClick={() => updateMember(member.id, { autoCharge: !member.autoCharge })}
+            style={{
+              width: 46, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+              background: member.autoCharge ? B.accent : B.border,
+              position: "relative", transition: "background 0.2s", flexShrink: 0,
+            }}
+          >
+            <div style={{
+              width: 18, height: 18, borderRadius: 9, background: "#fff",
+              position: "absolute", top: 3,
+              left: member.autoCharge ? 25 : 3,
+              transition: "left 0.2s",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+            }} />
+          </button>
+        </div>
       </div>
 
       {/* Saved Payment Methods */}
@@ -520,7 +541,10 @@ export default function MemberProfile() {
           <div style={s.cardTitle}>Saved Payment Methods</div>
         </div>
         {memberMethods.length === 0 ? (
-          <div style={{ color: B.dim, fontSize: 13, padding: "12px 0" }}>No saved payment methods. Payment methods are saved when processing a payment with "Save for future" checked.</div>
+          <div style={{ padding: "12px 0" }}>
+            <div style={{ color: B.dim, fontSize: 13, marginBottom: 12 }}>No saved payment methods. Payment methods are saved when processing a payment with "Save for future" checked.</div>
+            <button onClick={() => setAddPaymentMethodOpen(true)} style={{ background: B.accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Add Payment Method</button>
+          </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {memberMethods.map(pm => (
@@ -575,6 +599,21 @@ export default function MemberProfile() {
           </div>
         )}
       </div>
+
+      {/* Add Payment Method Modal */}
+      {addPaymentMethodOpen && (
+        <PaymentModal
+          isOpen
+          onClose={() => setAddPaymentMethodOpen(false)}
+          amount={0}
+          memberName={member.firstName + " " + member.lastName}
+          memberEmail={member.email}
+          description="Save payment method"
+          memberId={member.id}
+          savedMethods={memberMethods}
+          onSuccess={() => setAddPaymentMethodOpen(false)}
+        />
+      )}
     </>
   );
 
@@ -607,7 +646,7 @@ export default function MemberProfile() {
   return (
     <div style={s.page}>
       <button style={s.backBtn} onClick={() => navigate("/members")}>
-        &#8592; Back to Members
+        &#8592; Back to Clients
       </button>
 
       {/* Header */}
@@ -619,8 +658,7 @@ export default function MemberProfile() {
             <span style={s.metaText}>{member.email}</span>
             <span style={s.metaText}>{member.phone}</span>
             <span style={s.badge(statusColor)}>{member.membershipStatus}</span>
-            {member.rank?.current && <span style={s.badge(B.purple)}>{member.rank.current}</span>}
-            <span style={s.metaText}>Member since {formatDate(member.startDate)}</span>
+            <span style={s.metaText}>Client since {formatDate(member.startDate)}</span>
           </div>
         </div>
       </div>

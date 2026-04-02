@@ -341,9 +341,9 @@ export default function MessagingView() {
           <div style={s.modal} onClick={e => e.stopPropagation()}>
             <div style={s.modalTitle}>New Message</div>
             <div style={s.field}>
-              <label style={s.label}>Member</label>
+              <label style={s.label}>Client</label>
               <select style={s.select} value={newMsgMemberId} onChange={e => setNewMsgMemberId(e.target.value)}>
-                <option value="">Select a member...</option>
+                <option value="">Select a client...</option>
                 {members.filter(m => m.membershipStatus !== "inactive").map(m => (
                   <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
                 ))}

@@ -120,7 +120,7 @@ export default function MatrixView() {
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
         <div>
           <h1 style={{ fontSize: 26, fontWeight: 800, color: B.text, margin: 0, letterSpacing: -0.5 }}>
-            Movement Matrix
+            Progression Engine
           </h1>
           <p style={{ color: B.muted, fontSize: 14, margin: "6px 0 0" }}>
             7-level progression chains for exercise individualization
@@ -344,7 +344,7 @@ export default function MatrixView() {
             onClick={e => e.stopPropagation()}
           >
             <div style={{ fontSize: 18, fontWeight: 700, color: B.text, marginBottom: 12 }}>
-              Reset Movement Matrix?
+              Reset Progression Engine?
             </div>
             <p style={{ color: B.muted, fontSize: 14, lineHeight: 1.5, marginBottom: 24 }}>
               This will discard all your custom changes and restore the default progression chains. This cannot be undone.

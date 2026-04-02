@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
@@ -35,12 +36,12 @@ function timeToMinutes(t) {
 }
 
 const INITIAL_CLASSES = [
-  {id:crypto.randomUUID(),name:"6AM Semi-Private",instructor:"Coach Mike",dayOfWeek:0,startTime:"06:00",endTime:"06:45",capacity:8,bookings:[],waitlist:[],recurring:true,workoutId:""},
-  {id:crypto.randomUUID(),name:"7AM Strength",instructor:"Coach Sarah",dayOfWeek:1,startTime:"07:00",endTime:"08:00",capacity:12,bookings:[],waitlist:[],recurring:true,workoutId:""},
-  {id:crypto.randomUUID(),name:"9AM Open Gym",instructor:"Staff",dayOfWeek:2,startTime:"09:00",endTime:"10:00",capacity:20,bookings:[],waitlist:[],recurring:true,workoutId:""},
-  {id:crypto.randomUUID(),name:"12PM Lunch Express",instructor:"Coach Mike",dayOfWeek:3,startTime:"12:00",endTime:"12:30",capacity:6,bookings:[],waitlist:[],recurring:true,workoutId:""},
-  {id:crypto.randomUUID(),name:"5PM Evening Semi-Private",instructor:"Coach Sarah",dayOfWeek:4,startTime:"17:00",endTime:"17:45",capacity:8,bookings:[],waitlist:[],recurring:true,workoutId:""},
-  {id:crypto.randomUUID(),name:"6PM Advanced",instructor:"Coach Mike",dayOfWeek:5,startTime:"18:00",endTime:"19:00",capacity:10,bookings:[],waitlist:[],recurring:true,workoutId:""},
+  {id:crypto.randomUUID(),name:"6AM Semi-Private",instructor:"Coach Mike",dayOfWeek:0,startTime:"06:00",endTime:"06:45",capacity:8,bookings:[],waitlist:[],recurring:true,workoutId:"",_demo:true},
+  {id:crypto.randomUUID(),name:"7AM Strength",instructor:"Coach Sarah",dayOfWeek:1,startTime:"07:00",endTime:"08:00",capacity:12,bookings:[],waitlist:[],recurring:true,workoutId:"",_demo:true},
+  {id:crypto.randomUUID(),name:"9AM Open Gym",instructor:"Staff",dayOfWeek:2,startTime:"09:00",endTime:"10:00",capacity:20,bookings:[],waitlist:[],recurring:true,workoutId:"",_demo:true},
+  {id:crypto.randomUUID(),name:"12PM Lunch Express",instructor:"Coach Mike",dayOfWeek:3,startTime:"12:00",endTime:"12:30",capacity:6,bookings:[],waitlist:[],recurring:true,workoutId:"",_demo:true},
+  {id:crypto.randomUUID(),name:"5PM Evening Semi-Private",instructor:"Coach Sarah",dayOfWeek:4,startTime:"17:00",endTime:"17:45",capacity:8,bookings:[],waitlist:[],recurring:true,workoutId:"",_demo:true},
+  {id:crypto.randomUUID(),name:"6PM Advanced",instructor:"Coach Mike",dayOfWeek:5,startTime:"18:00",endTime:"19:00",capacity:10,bookings:[],waitlist:[],recurring:true,workoutId:"",_demo:true},
 ];
 
 const EMPTY_FORM = {name:"",instructor:"",dayOfWeek:0,startTime:"06:00",endTime:"06:45",capacity:8,recurring:true,workoutId:""};
@@ -48,7 +49,13 @@ const EMPTY_FORM = {name:"",instructor:"",dayOfWeek:0,startTime:"06:00",endTime:
 export default function ScheduleView() {
   const B = useTheme();
   const { members, getMember } = useMembers();
+  const auth = useAuth();
+  const staffUsers = useMemo(() => {
+    const users = auth?.users || [];
+    return users.filter(u => u.role === "admin" || u.role === "coach");
+  }, [auth]);
   const [classes, setClasses] = useLocalStorage("hf_schedule", INITIAL_CLASSES);
+  const [instructorCustom, setInstructorCustom] = useState(false);
   const [workouts] = useLocalStorage("hf_w", []);
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedClass, setSelectedClass] = useState(null);
@@ -153,10 +160,10 @@ export default function ScheduleView() {
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
         <div>
           <h1 style={{fontSize:24,fontWeight:800,color:B.text,margin:0}}>Schedule</h1>
-          <p style={{color:B.muted,margin:"4px 0 0",fontSize:14}}>Weekly class calendar, booking, and waitlists.</p>
+          <p style={{color:B.muted,margin:"4px 0 0",fontSize:14}}>Weekly session calendar, booking, and waitlists.</p>
         </div>
         <button onClick={()=>{setForm({...EMPTY_FORM});setShowNewModal(true)}} style={btn({background:B.accent,color:B.darker,fontSize:14,padding:"10px 20px"})}>
-          + New Class
+          + New Session
         </button>
       </div>
 
@@ -361,9 +368,9 @@ export default function ScheduleView() {
               </div>
             )}
 
-            {/* Book Member */}
+            {/* Book Client */}
             <div style={{marginBottom:20}}>
-              <h3 style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:8}}>Book a Member</h3>
+              <h3 style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:8}}>Book a Client</h3>
               <div style={{display:"flex",gap:8}}>
                 <select value={bookingMemberId} onChange={e=>setBookingMemberId(e.target.value)}
                   style={{...inputStyle,flex:1,cursor:"pointer"}}
@@ -390,7 +397,7 @@ export default function ScheduleView() {
               <button onClick={()=>handleDeleteClass(activeClass.id)}
                 style={btn({background:B.red+"22",color:B.red,padding:"8px 20px"})}
               >
-                Delete Class
+                Delete Session
               </button>
             </div>
           </div>
@@ -402,7 +409,7 @@ export default function ScheduleView() {
         <div style={overlay} onClick={()=>setShowNewModal(false)}>
           <div style={modal} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <h2 style={{fontSize:20,fontWeight:800,color:B.text,margin:0}}>New Class</h2>
+              <h2 style={{fontSize:20,fontWeight:800,color:B.text,margin:0}}>New Session</h2>
               <button onClick={()=>setShowNewModal(false)} style={btn({background:B.border,color:B.text,padding:"4px 10px",fontSize:16})}>
                 &times;
               </button>
@@ -410,12 +417,23 @@ export default function ScheduleView() {
 
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               <div>
-                <label style={labelStyle}>Class Name</label>
+                <label style={labelStyle}>Session Name</label>
                 <input style={inputStyle} value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Morning Strength" />
               </div>
               <div>
                 <label style={labelStyle}>Instructor</label>
-                <input style={inputStyle} value={form.instructor} onChange={e=>setForm(f=>({...f,instructor:e.target.value}))} placeholder="e.g. Coach Mike" />
+                {instructorCustom ? (
+                  <div style={{display:"flex",gap:8}}>
+                    <input style={{...inputStyle,flex:1}} value={form.instructor} onChange={e=>setForm(f=>({...f,instructor:e.target.value}))} placeholder="e.g. Coach Mike" />
+                    <button type="button" onClick={()=>{setInstructorCustom(false);setForm(f=>({...f,instructor:""}))}} style={{padding:"8px 12px",borderRadius:8,border:"1px solid "+B.border,background:"transparent",color:B.muted,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>Use List</button>
+                  </div>
+                ) : (
+                  <select style={{...inputStyle,cursor:"pointer"}} value={form.instructor} onChange={e=>{if(e.target.value==="__custom__"){setInstructorCustom(true);setForm(f=>({...f,instructor:""}));}else{setForm(f=>({...f,instructor:e.target.value}));}}}>
+                    <option value="">Select instructor...</option>
+                    {staffUsers.map(u=><option key={u.id} value={u.displayName||u.username}>{u.displayName||u.username} ({u.role})</option>)}
+                    <option value="__custom__">Custom...</option>
+                  </select>
+                )}
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
                 <div>
@@ -452,14 +470,14 @@ export default function ScheduleView() {
                 <input type="checkbox" checked={form.recurring} onChange={e=>setForm(f=>({...f,recurring:e.target.checked}))}
                   style={{width:16,height:16,accentColor:B.accent}}
                 />
-                Recurring weekly class
+                Recurring weekly session
               </label>
             </div>
 
             <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:20}}>
               <button onClick={()=>setShowNewModal(false)} style={btn({background:B.border,color:B.text})}>Cancel</button>
               <button onClick={handleCreateClass} style={btn({background:B.accent,color:B.darker,opacity:form.name.trim()?"1":"0.5"})} disabled={!form.name.trim()}>
-                Create Class
+                Create Session
               </button>
             </div>
           </div>

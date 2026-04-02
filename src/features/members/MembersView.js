@@ -150,9 +150,9 @@ export default function MembersView() {
       {/* Header */}
       <div style={s.header}>
         <h1 style={s.title}>
-          Members<span style={s.count}>({members.length})</span>
+          Clients<span style={s.count}>({members.length})</span>
         </h1>
-        <button style={s.addBtn} onClick={openAdd}>+ Add Member</button>
+        <button style={s.addBtn} onClick={openAdd}>+ Add Client</button>
       </div>
 
       {/* Search + Filter */}
@@ -172,7 +172,7 @@ export default function MembersView() {
 
       {/* Member Cards */}
       {filtered.length === 0 ? (
-        <div style={s.empty}>No members match your filters.</div>
+        <div style={s.empty}>No clients match your filters.</div>
       ) : (
         <div style={s.grid}>
           {filtered.map((m) => {
@@ -188,7 +188,6 @@ export default function MembersView() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
                     <span style={s.badge(color)}>{m.membershipStatus}</span>
-                    {m.rank?.current && <span style={s.rankBadge}>{m.rank.current}</span>}
                   </div>
                 </div>
 
@@ -229,7 +228,7 @@ export default function MembersView() {
       {modalOpen && (
         <div style={s.overlay} onClick={() => setModalOpen(false)}>
           <div style={s.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={s.modalTitle}>{editId ? "Edit Member" : "Add Member"}</div>
+            <div style={s.modalTitle}>{editId ? "Edit Client" : "Add Client"}</div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <div style={s.field}>
@@ -306,7 +305,7 @@ export default function MembersView() {
 
             <div style={s.modalActions}>
               <button style={s.cancelBtn} onClick={() => setModalOpen(false)}>Cancel</button>
-              <button style={s.saveBtn} onClick={handleSave}>{editId ? "Save Changes" : "Add Member"}</button>
+              <button style={s.saveBtn} onClick={handleSave}>{editId ? "Save Changes" : "Add Client"}</button>
             </div>
           </div>
         </div>
@@ -317,7 +316,7 @@ export default function MembersView() {
         <div style={s.confirmOverlay} onClick={() => setConfirmDeleteId(null)}>
           <div style={s.confirmBox} onClick={(e) => e.stopPropagation()}>
             <div style={s.confirmText}>
-              <strong>Delete this member?</strong><br />
+              <strong>Delete this client?</strong><br />
               This action cannot be undone.
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>

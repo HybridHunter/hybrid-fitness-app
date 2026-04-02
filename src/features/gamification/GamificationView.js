@@ -44,6 +44,7 @@ export default function GamificationView() {
   const [attendance] = useLocalStorage("hf_attendance", []);
   const [showDidntReach, setShowDidntReach] = useState(false);
   const [showDidntReachCurrent, setShowDidntReachCurrent] = useState(false);
+  const [drillDown, setDrillDown] = useState(null); // "prev" | "current" | null
 
   const activeMembers = members.filter((m) => m.membershipStatus === "active");
   const tab = LEADERBOARD_TABS.find((t) => t.key === activeTab);
@@ -210,7 +211,7 @@ export default function GamificationView() {
           </div>
           <div style={s.statBox}>
             <div style={s.statValue}>{avgLevel}</div>
-            <div style={s.statLabel}>Average Member Level</div>
+            <div style={s.statLabel}>Average Client Level</div>
           </div>
           <div style={s.statBox}>
             <div style={s.statValue}>{mostCommonBadge}</div>
@@ -222,17 +223,60 @@ export default function GamificationView() {
       {/* Monthly Attendance Goal */}
       <div style={s.section}>
         <div style={s.sectionTitle}>{"\ud83d\udcc5"} Monthly Attendance Goal</div>
-        <div style={{ ...s.subtitle, marginTop: -10, marginBottom: 16 }}>Members who attended 8+ sessions last month</div>
+        <div style={{ ...s.subtitle, marginTop: -10, marginBottom: 16 }}>Clients who attended 8+ sessions last month</div>
+
+        {/* Drill-down detail view */}
+        {drillDown && (() => {
+          const isPrev = drillDown === "prev";
+          const title = isPrev ? prevMonthName + " Results" : curMonthName + " So Far";
+          const hitGoal = isPrev ? prevHitGoal : curOnTrack;
+          const missedGoal = isPrev ? [...prevAttendedNotGoal, ...prevNoAttendance] : [...curNeedWork, ...curNoAttendance];
+          return (
+            <div style={s.kpiCard}>
+              <button onClick={() => setDrillDown(null)} style={{ background: "none", border: "1px solid " + B.border, borderRadius: 8, padding: "6px 14px", color: B.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 16 }}>
+                {"\u2190"} Back
+              </button>
+              <div style={{ fontSize: 18, fontWeight: 800, color: B.text, marginBottom: 16 }}>{title} - Detail</div>
+
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#22c55e", marginBottom: 8 }}>
+                Hit 8+ sessions ({hitGoal.length} client{hitGoal.length !== 1 ? "s" : ""})
+              </div>
+              {hitGoal.length === 0 && <div style={{ color: B.dim, fontSize: 13, marginBottom: 16, padding: "4px 12px" }}>None</div>}
+              {hitGoal.map((m) => (
+                <div key={m.id} style={s.memberRow}>
+                  <div style={s.memberAvatar}>{getInitials(m.firstName, m.lastName)}</div>
+                  <div style={s.memberName}>{m.firstName} {m.lastName}</div>
+                  <div style={s.memberCount}>{m.sessionCount} sessions</div>
+                  <span style={{ fontSize: 16 }}>{"\ud83c\udfc6"}</span>
+                </div>
+              ))}
+
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#ef4444", marginTop: 20, marginBottom: 8 }}>
+                Did not hit goal ({missedGoal.length} client{missedGoal.length !== 1 ? "s" : ""})
+              </div>
+              {missedGoal.length === 0 && <div style={{ color: B.dim, fontSize: 13, padding: "4px 12px" }}>None</div>}
+              {missedGoal.map((m) => (
+                <div key={m.id} style={s.memberRow}>
+                  <div style={s.memberAvatar}>{getInitials(m.firstName, m.lastName)}</div>
+                  <div style={s.memberName}>{m.firstName} {m.lastName}</div>
+                  <div style={{ ...s.memberCount, color: m.sessionCount > 0 ? B.muted : B.dim }}>{m.sessionCount} session{m.sessionCount !== 1 ? "s" : ""}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {!drillDown && (
         <div style={s.attendanceGrid}>
           {/* Previous Month Card */}
-          <div style={s.kpiCard}>
+          <div style={{ ...s.kpiCard, cursor: "pointer", transition: "box-shadow 0.2s" }} onClick={() => setDrillDown("prev")} onMouseEnter={e => e.currentTarget.style.boxShadow = "0 0 0 2px " + B.accent + "44"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
             <div style={{ fontSize: 13, fontWeight: 700, color: B.muted, marginBottom: 12 }}>{prevMonthName} Results</div>
             <div style={{ ...s.kpiBig, color: prevBarColor }}>{prevHitGoal.length}</div>
-            <div style={s.kpiSub}>of {activeMembers.length} active members hit the goal</div>
+            <div style={s.kpiSub}>of {activeMembers.length} active clients hit the goal</div>
             <div style={s.progressBar}>
               <div style={s.progressFill(prevGoalPct, prevBarColor)} />
             </div>
-            <div style={{ ...s.pctLabel, color: prevBarColor }}>{prevGoalPct}% of members</div>
+            <div style={{ ...s.pctLabel, color: prevBarColor }}>{prevGoalPct}% of clients</div>
 
             {/* Members who hit the goal */}
             {prevHitGoal.length > 0 && (
@@ -252,7 +296,7 @@ export default function GamificationView() {
             {prevAttendedNotGoal.length > 0 && (
               <div>
                 <button style={s.collapseBtn} onClick={() => setShowDidntReach(!showDidntReach)}>
-                  {showDidntReach ? "\u25bc" : "\u25b6"} Didn't reach goal ({prevAttendedNotGoal.length} member{prevAttendedNotGoal.length !== 1 ? "s" : ""})
+                  {showDidntReach ? "\u25bc" : "\u25b6"} Didn't reach goal ({prevAttendedNotGoal.length} client{prevAttendedNotGoal.length !== 1 ? "s" : ""})
                 </button>
                 {showDidntReach && prevAttendedNotGoal.map((m) => (
                   <div key={m.id} style={s.memberRow}>
@@ -281,10 +325,10 @@ export default function GamificationView() {
           </div>
 
           {/* This Month So Far Card */}
-          <div style={s.kpiCard}>
+          <div style={{ ...s.kpiCard, cursor: "pointer", transition: "box-shadow 0.2s" }} onClick={() => setDrillDown("current")} onMouseEnter={e => e.currentTarget.style.boxShadow = "0 0 0 2px " + B.accent + "44"} onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
             <div style={{ fontSize: 13, fontWeight: 700, color: B.muted, marginBottom: 12 }}>{curMonthName} So Far <span style={{ fontWeight: 500 }}>(Day {dayElapsed} of {daysInCurMonth})</span></div>
             <div style={{ ...s.kpiBig, color: curBarColor }}>{curOnTrack.length}</div>
-            <div style={s.kpiSub}>of {activeMembers.length} active members on track</div>
+            <div style={s.kpiSub}>of {activeMembers.length} active clients on track</div>
             <div style={s.progressBar}>
               <div style={s.progressFill(curOnTrackPct, curBarColor)} />
             </div>
@@ -293,7 +337,7 @@ export default function GamificationView() {
             {/* On track members */}
             {curOnTrack.length > 0 && (
               <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#22c55e", marginBottom: 6, padding: "0 12px" }}>{curOnTrack.length} member{curOnTrack.length !== 1 ? "s" : ""} on track</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#22c55e", marginBottom: 6, padding: "0 12px" }}>{curOnTrack.length} client{curOnTrack.length !== 1 ? "s" : ""} on track</div>
                 {curOnTrack.map((m) => (
                   <div key={m.id} style={s.memberRow}>
                     <div style={s.memberAvatar}>{getInitials(m.firstName, m.lastName)}</div>
@@ -309,7 +353,7 @@ export default function GamificationView() {
             {curNeedWork.length > 0 && (
               <div>
                 <button style={s.collapseBtn} onClick={() => setShowDidntReachCurrent(!showDidntReachCurrent)}>
-                  {showDidntReachCurrent ? "\u25bc" : "\u25b6"} {curNeedWork.length} member{curNeedWork.length !== 1 ? "s" : ""} need to pick it up
+                  {showDidntReachCurrent ? "\u25bc" : "\u25b6"} {curNeedWork.length} client{curNeedWork.length !== 1 ? "s" : ""} need to pick it up
                 </button>
                 {showDidntReachCurrent && curNeedWork.map((m) => (
                   <div key={m.id} style={s.memberRow}>
@@ -337,6 +381,7 @@ export default function GamificationView() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Leaderboard */}
@@ -389,7 +434,7 @@ export default function GamificationView() {
 
           {sorted.length === 0 && (
             <div style={{ textAlign: "center", padding: 32, color: B.dim, fontSize: 14 }}>
-              No active members to display
+              No active clients to display
             </div>
           )}
         </div>
@@ -408,7 +453,7 @@ export default function GamificationView() {
                 <div style={s.badgeName}>{badge.key}</div>
                 <div style={s.badgeDesc}>{badge.desc}</div>
                 <div style={s.badgeCount}>
-                  {count} member{count !== 1 ? "s" : ""} earned
+                  {count} client{count !== 1 ? "s" : ""} earned
                 </div>
               </div>
             );

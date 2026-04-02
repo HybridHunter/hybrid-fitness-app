@@ -46,7 +46,7 @@ function WaitingScreen({ stationLabel }) {
         display: "flex", alignItems: "center", justifyContent: "center",
         fontSize: 36, fontWeight: 800,
       }}>
-        HF
+        <span style={{color:"#8fbf3b"}}>G</span>K
       </div>
       <div style={{ fontSize: 36, fontWeight: 700, color: B.text }}>
         {stationLabel}
@@ -191,7 +191,10 @@ export default function StationDisplay() {
   const [showCues, setShowCues] = useState(false);
   const [videoUrl, setVideoUrl] = useState(null);
   const [weightInput, setWeightInput] = useState("");
+  const [repsInput, setRepsInput] = useState("");
+  const [rpeInput, setRpeInput] = useState("");
   const [finished, setFinished] = useState(false);
+  const [stationSettings] = useLocalStorage("hf_station_settings", { showWeight: true, showReps: true, showRPE: true, showMedia: true });
 
   const timerRef = useRef(null);
   const touchStartX = useRef(null);
@@ -229,7 +232,11 @@ export default function StationDisplay() {
   );
 
   const rawWorkout = useMemo(
-    () => (station?.workoutId ? allWorkouts.find(w => w.id === station.workoutId) : null),
+    () => {
+      if (!station?.workoutId) return null;
+      const wid = station.workoutId;
+      return allWorkouts.find(w => w.id === wid || String(w.id) === String(wid)) || null;
+    },
     [station?.workoutId, allWorkouts]
   );
 
@@ -299,9 +306,11 @@ export default function StationDisplay() {
     );
   }, [workoutLogs, member, stationId]);
 
-  const logWeight = useCallback(() => {
-    const w = parseFloat(weightInput);
-    if (!w || !currentEx || !member) return;
+  const logExercise = useCallback(() => {
+    const w = parseFloat(weightInput) || 0;
+    const r = parseInt(repsInput) || 0;
+    const rpe = parseInt(rpeInput) || 0;
+    if ((!w && !r && !rpe) || !currentEx || !member) return;
     setWorkoutLogs(prev => [
       ...prev,
       {
@@ -310,11 +319,15 @@ export default function StationDisplay() {
         stationId,
         exerciseName: currentEx.n,
         weight: w,
+        reps: r,
+        rpe: rpe,
         timestamp: new Date().toISOString(),
       },
     ]);
     setWeightInput("");
-  }, [weightInput, currentEx, member, stationId, setWorkoutLogs]);
+    setRepsInput("");
+    setRpeInput("");
+  }, [weightInput, repsInput, rpeInput, currentEx, member, stationId, setWorkoutLogs]);
 
   const totalLoggedWeight = useMemo(() => {
     if (!member) return 0;
@@ -609,7 +622,7 @@ export default function StationDisplay() {
               )}
 
               {/* GIF or Video thumbnail */}
-              {currentEx.g ? (
+              {!stationSettings.showMedia ? null : currentEx.g ? (
                 <div style={{ width: 360, maxWidth: "100%", borderRadius: 12, overflow: "hidden", border: `2px solid ${B.border}` }}>
                   <img src={currentEx.g} alt={currentEx.n} style={{ width: "100%", display: "block", borderRadius: 10 }} />
                 </div>
@@ -687,26 +700,59 @@ export default function StationDisplay() {
                 </div>
               )}
 
-              {/* Weight log input */}
+              {/* Exercise logging inputs */}
               <div style={{
-                display: "flex", alignItems: "center", gap: 12,
-                marginTop: 4,
+                display: "flex", alignItems: "center", gap: 10,
+                marginTop: 4, flexWrap: "wrap", justifyContent: "center",
               }}>
-                <input
-                  type="number"
-                  placeholder="Weight (lbs)"
-                  value={weightInput}
-                  onChange={e => setWeightInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && logWeight()}
-                  style={{
-                    width: 160, padding: "14px 16px", fontSize: 20, fontWeight: 600,
-                    background: B.dark, color: B.text,
-                    border: `2px solid ${B.border}`, borderRadius: 12,
-                    textAlign: "center", outline: "none",
-                  }}
-                />
+                {stationSettings.showWeight && (
+                  <input
+                    type="number"
+                    placeholder="Weight (lbs)"
+                    value={weightInput}
+                    onChange={e => setWeightInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && logExercise()}
+                    style={{
+                      width: 140, padding: "14px 12px", fontSize: 18, fontWeight: 600,
+                      background: B.dark, color: B.text,
+                      border: `2px solid ${B.border}`, borderRadius: 12,
+                      textAlign: "center", outline: "none",
+                    }}
+                  />
+                )}
+                {stationSettings.showReps && (
+                  <input
+                    type="number"
+                    placeholder="Reps"
+                    value={repsInput}
+                    onChange={e => setRepsInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && logExercise()}
+                    style={{
+                      width: 100, padding: "14px 12px", fontSize: 18, fontWeight: 600,
+                      background: B.dark, color: B.text,
+                      border: `2px solid ${B.border}`, borderRadius: 12,
+                      textAlign: "center", outline: "none",
+                    }}
+                  />
+                )}
+                {stationSettings.showRPE && (
+                  <input
+                    type="number"
+                    placeholder="RPE"
+                    min="1" max="10"
+                    value={rpeInput}
+                    onChange={e => setRpeInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && logExercise()}
+                    style={{
+                      width: 90, padding: "14px 12px", fontSize: 18, fontWeight: 600,
+                      background: B.dark, color: B.text,
+                      border: `2px solid ${B.border}`, borderRadius: 12,
+                      textAlign: "center", outline: "none",
+                    }}
+                  />
+                )}
                 <button
-                  onClick={logWeight}
+                  onClick={logExercise}
                   style={{
                     background: B.accent, color: "#fff", border: "none",
                     borderRadius: 12, padding: "14px 28px",
@@ -718,7 +764,7 @@ export default function StationDisplay() {
               </div>
               {lastLogged && (
                 <div style={{ fontSize: 14, color: B.dim }}>
-                  Last time: {lastLogged.weight} lbs
+                  Last: {lastLogged.weight ? lastLogged.weight + " lbs" : ""}{lastLogged.reps ? " × " + lastLogged.reps + " reps" : ""}{lastLogged.rpe ? " @ RPE " + lastLogged.rpe : ""}
                 </div>
               )}
             </div>

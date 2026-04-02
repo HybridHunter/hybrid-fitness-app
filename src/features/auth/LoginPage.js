@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 const ACCENT = "#4ADE80";
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -14,7 +16,9 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     const result = login(username.trim(), password);
-    if (!result.success) {
+    if (result.success) {
+      navigate("/");
+    } else {
       setError(result.error);
       setShake(true);
       setTimeout(() => setShake(false), 500);
@@ -46,34 +50,9 @@ export default function LoginPage() {
       >
         {/* Logo / Branding */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
-              background: `linear-gradient(135deg, ${ACCENT}, #22c55e)`,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: 16,
-              fontSize: 24,
-              fontWeight: 800,
-              color: "#0f172a",
-            }}
-          >
-            HF
+          <div style={{fontWeight:900,fontSize:32,letterSpacing:-1,marginBottom:16}}>
+            <span style={{color:"#8fbf3b"}}>Gym</span><span style={{color:"#f1f5f9"}}>Kit</span>
           </div>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 700,
-              color: "#f1f5f9",
-              margin: "0 0 4px",
-              letterSpacing: "-0.5px",
-            }}
-          >
-            Hybrid Fitness
-          </h1>
           <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>
             Sign in to your account
           </p>
@@ -214,9 +193,10 @@ export default function LoginPage() {
             Demo Accounts
           </p>
           {[
-            { role: "Admin", creds: "admin / admin123", color: "#f59e0b" },
-            { role: "Coach", creds: "coach / coach123", color: "#3b82f6" },
-            { role: "Client", creds: "member email / their PIN", color: ACCENT },
+            { role: "Super Admin", creds: "superadmin / gymkit2026", color: "#ef4444", note: "All locations" },
+            { role: "Gym Admin", creds: "hunter / hybrid123", color: "#f59e0b", note: "Hybrid Fitness" },
+            { role: "Coach", creds: "coach / coach123", color: "#3b82f6", note: "Hybrid Fitness" },
+            { role: "Client", creds: "sarah@example.com / 1234", color: ACCENT, note: "Client portal" },
           ].map((d) => (
             <div
               key={d.role}
@@ -244,9 +224,10 @@ export default function LoginPage() {
               >
                 {d.role}
               </span>
-              <span style={{ fontFamily: "monospace", fontSize: 11 }}>
+              <span style={{ fontFamily: "monospace", fontSize: 11, flex: 1 }}>
                 {d.creds}
               </span>
+              {d.note && <span style={{ fontSize: 10, color: "#475569" }}>{d.note}</span>}
             </div>
           ))}
         </div>

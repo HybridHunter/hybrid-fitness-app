@@ -48,7 +48,7 @@ export function exportMembers(members) {
 export function exportPayments(payments) {
   const columns = [
     { key: "date", label: "Date" },
-    { key: "memberName", label: "Member" },
+    { key: "memberName", label: "Client" },
     { key: "amount", label: "Amount" },
     { key: "method", label: "Method" },
     { key: "status", label: "Status" },
@@ -76,7 +76,7 @@ export function exportAttendance(attendance, members) {
 
   const columns = [
     { key: "date", label: "Date" },
-    { key: "memberName", label: "Member" },
+    { key: "memberName", label: "Client" },
     { key: "type", label: "Type" },
     { key: "time", label: "Time" },
   ];

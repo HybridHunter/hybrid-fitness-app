@@ -227,8 +227,8 @@ export default function AssessmentView() {
   // --- Render Steps ---
   const renderSelect = () => (
     <div style={s.card}>
-      <div style={s.sectionTitle}>{"\ud83d\udc64"} Select Member</div>
-      <label style={s.label}>Search Members</label>
+      <div style={s.sectionTitle}>{"\ud83d\udc64"} Select Client</div>
+      <label style={s.label}>Search Clients</label>
       <input
         style={{ ...s.input, marginBottom: 12 }}
         placeholder="Type to search..."
@@ -246,7 +246,7 @@ export default function AssessmentView() {
           </div>
         ))}
         {filteredMembers.length === 0 && (
-          <div style={{ padding: 20, textAlign: "center", color: B.dim, fontSize: 13 }}>No members found</div>
+          <div style={{ padding: 20, textAlign: "center", color: B.dim, fontSize: 13 }}>No clients found</div>
         )}
       </div>
       <label style={s.label}>Assessor Name</label>
@@ -374,10 +374,10 @@ export default function AssessmentView() {
         </div>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           <button style={s.btnPrimary(false)} onClick={handleReset}>
-            Assess Another Member
+            Assess Another Client
           </button>
           <button style={s.btnSecondary} onClick={() => navigate("/members/" + selectedMemberId)}>
-            View Member Profile
+            View Client Profile
           </button>
         </div>
       </div>
@@ -397,7 +397,7 @@ export default function AssessmentView() {
     }
     return sorted.map((a) => {
       const m = getMember(a.memberId);
-      const name = m ? m.firstName + " " + m.lastName : "Unknown Member";
+      const name = m ? m.firstName + " " + m.lastName : "Unknown Client";
       const expanded = expandedAssessment === a.id;
       return (
         <div key={a.id} style={s.historyRow(expanded)} onClick={() => setExpandedAssessment(expanded ? null : a.id)}>
@@ -438,7 +438,7 @@ export default function AssessmentView() {
     <div style={s.page}>
       {/* Header */}
       <div style={s.header}>
-        <div style={s.title}>Body Mapping Assessment</div>
+        <div style={s.title}>Movement Assessment</div>
         <div style={s.subtitle}>Score clients on 7 movement patterns (-3 to +3)</div>
       </div>
 

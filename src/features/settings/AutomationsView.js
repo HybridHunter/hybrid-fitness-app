@@ -17,7 +17,7 @@ const DEFAULT_AUTOMATIONS = [
   {
     id: "missed-session",
     name: "Missed Session Reminder",
-    trigger: "Member hasn't checked in for 7 days",
+    trigger: "Client hasn't checked in for 7 days",
     action: "Send reminder email",
     enabled: true,
     subject: "We miss you!",
@@ -34,8 +34,8 @@ const DEFAULT_AUTOMATIONS = [
   },
   {
     id: "class-reminder",
-    name: "Class Reminder",
-    trigger: "24 hours before booked class",
+    name: "Session Reminder",
+    trigger: "24 hours before booked session",
     action: "Send reminder",
     enabled: true,
     subject: "See you tomorrow!",
@@ -53,7 +53,7 @@ const DEFAULT_AUTOMATIONS = [
   {
     id: "birthday",
     name: "Birthday",
-    trigger: "Member's birthday",
+    trigger: "Client's birthday",
     action: "Send birthday email",
     enabled: false,
     subject: "Happy Birthday, {firstName}!",
@@ -71,13 +71,13 @@ const DEFAULT_AUTOMATIONS = [
 ];
 
 const TRIGGER_OPTIONS = [
-  "Member Joins",
-  "Member Cancels",
+  "Client Joins",
+  "Client Cancels",
   "Check-In",
   "Missed 7 Days",
   "Payment Overdue",
   "Assessment Due",
-  "Class Booked",
+  "Session Booked",
 ];
 
 const ACTION_OPTIONS = [
@@ -89,16 +89,16 @@ const ACTION_OPTIONS = [
 
 /* ── Demo log entries ──────────────────────────────────────── */
 const DEMO_LOG = [
-  { id: 1, date: "2026-03-31 09:12", automation: "Welcome Email", member: "David Martinez", action: "Email sent", status: "sent" },
-  { id: 2, date: "2026-03-31 08:00", automation: "Class Reminder", member: "Sarah Johnson", action: "Email sent", status: "sent" },
-  { id: 3, date: "2026-03-30 18:00", automation: "Missed Session Reminder", member: "James Williams", action: "Email sent", status: "sent" },
-  { id: 4, date: "2026-03-30 10:30", automation: "Payment Reminder", member: "Lisa Park", action: "Email sent", status: "pending" },
-  { id: 5, date: "2026-03-29 14:00", automation: "Assessment Due", member: "Emily Rodriguez", action: "Coach alerted", status: "sent" },
-  { id: 6, date: "2026-03-29 09:00", automation: "Class Reminder", member: "Tom Baker", action: "Email sent", status: "sent" },
-  { id: 7, date: "2026-03-28 07:45", automation: "Welcome Email", member: "New Member (Trial)", action: "Email sent", status: "failed" },
-  { id: 8, date: "2026-03-27 12:00", automation: "Missed Session Reminder", member: "Rachel Kim", action: "Email sent", status: "sent" },
-  { id: 9, date: "2026-03-27 08:00", automation: "Birthday", member: "Mike Chen", action: "Email sent", status: "sent" },
-  { id: 10, date: "2026-03-26 16:30", automation: "Payment Reminder", member: "Tom Baker", action: "Email sent", status: "sent" },
+  { id: 1, date: "2026-03-31 09:12", automation: "Welcome Email", member: "David Martinez", action: "Email sent", status: "sent", _demo: true },
+  { id: 2, date: "2026-03-31 08:00", automation: "Session Reminder", member: "Sarah Johnson", action: "Email sent", status: "sent", _demo: true },
+  { id: 3, date: "2026-03-30 18:00", automation: "Missed Session Reminder", member: "James Williams", action: "Email sent", status: "sent", _demo: true },
+  { id: 4, date: "2026-03-30 10:30", automation: "Payment Reminder", member: "Lisa Park", action: "Email sent", status: "pending", _demo: true },
+  { id: 5, date: "2026-03-29 14:00", automation: "Assessment Due", member: "Emily Rodriguez", action: "Coach alerted", status: "sent", _demo: true },
+  { id: 6, date: "2026-03-29 09:00", automation: "Session Reminder", member: "Tom Baker", action: "Email sent", status: "sent", _demo: true },
+  { id: 7, date: "2026-03-28 07:45", automation: "Welcome Email", member: "New Client (Trial)", action: "Email sent", status: "failed", _demo: true },
+  { id: 8, date: "2026-03-27 12:00", automation: "Missed Session Reminder", member: "Rachel Kim", action: "Email sent", status: "sent", _demo: true },
+  { id: 9, date: "2026-03-27 08:00", automation: "Birthday", member: "Mike Chen", action: "Email sent", status: "sent", _demo: true },
+  { id: 10, date: "2026-03-26 16:30", automation: "Payment Reminder", member: "Tom Baker", action: "Email sent", status: "sent", _demo: true },
 ];
 
 /* ── Component ──────────────────────────────────────────────── */
@@ -320,7 +320,7 @@ export default function AutomationsView() {
             <input
               value={customName}
               onChange={(e) => setCustomName(e.target.value)}
-              placeholder="e.g. Post-Class Survey"
+              placeholder="e.g. Post-Session Survey"
               style={inputStyle}
             />
           </div>

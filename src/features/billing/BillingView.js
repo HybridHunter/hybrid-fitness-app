@@ -8,9 +8,9 @@ import PaymentModal from "../../components/shared/PaymentModal";
 
 /* ── Default Plans ────────────────────────────────── */
 const DEFAULT_PLANS = [
-  { id: "plan_unlimited", name: "Unlimited", price: 199, billingCycle: "monthly", sessionsIncluded: null, description: "Full gym access with unlimited sessions", features: "Unlimited sessions,All equipment,Locker access", active: true },
-  { id: "plan_3x", name: "3x/Week", price: 149, billingCycle: "monthly", sessionsIncluded: 12, description: "Perfect for consistent training", features: "12 sessions/month,All equipment,Locker access", active: true },
-  { id: "plan_dropin", name: "Drop-In", price: 25, billingCycle: "per-session", sessionsIncluded: 1, description: "Single session access", features: "1 session,All equipment", active: true },
+  { id: "plan_unlimited", name: "Unlimited", price: 199, billingCycle: "monthly", sessionsIncluded: null, description: "Full gym access with unlimited sessions", features: "Unlimited sessions,All equipment,Locker access", active: true, _demo: true },
+  { id: "plan_3x", name: "3x/Week", price: 149, billingCycle: "monthly", sessionsIncluded: 12, description: "Perfect for consistent training", features: "12 sessions/month,All equipment,Locker access", active: true, _demo: true },
+  { id: "plan_dropin", name: "Drop-In", price: 25, billingCycle: "per-session", sessionsIncluded: 1, description: "Single session access", features: "1 session,All equipment", active: true, _demo: true },
 ];
 
 /* ── Demo Payments ── */
@@ -35,6 +35,7 @@ function buildDemoPayments() {
       amount: prices[mi],
       status: statuses[i],
       method: methods[mi],
+      _demo: true,
     });
   }
   return rows;
@@ -65,7 +66,7 @@ function formatDate(d) {
 
 /* ── Badge Component ── */
 function StatusBadge({ status, B }) {
-  const colors = { paid: B.green, current: B.green, overdue: B.red, due: B.orange, pending: B.orange, "no plan": B.dim };
+  const colors = { paid: B.green, current: B.green, overdue: B.red, due: B.orange, pending: B.orange, refunded: B.purple || "#a855f7", refund: B.purple || "#a855f7", "no plan": B.dim };
   const bg = colors[status] || B.dim;
   return (
     <span style={{ display: "inline-block", padding: "2px 10px", borderRadius: 9999, fontSize: 11, fontWeight: 700, color: "#fff", background: bg, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" }}>
@@ -86,8 +87,8 @@ function KPI({ label, value, sub, B, color }) {
 }
 
 /* ── Plan Form Modal ── */
-function PlanModal({ plan, onSave, onClose, B }) {
-  const [form, setForm] = useState(plan || { name: "", price: "", billingCycle: "monthly", sessionsIncluded: "", description: "", features: "", active: true });
+function PlanModal({ plan, onSave, onClose, B, schedule }) {
+  const [form, setForm] = useState(plan || { name: "", price: "", billingCycle: "monthly", sessionsIncluded: "", description: "", features: "", active: true, allowedSessionIds: [], allSessions: true });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const labelStyle = { display: "block", fontSize: 12, fontWeight: 600, color: B.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 };
   const inputStyle = { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 14, outline: "none", boxSizing: "border-box" };
@@ -108,6 +109,7 @@ function PlanModal({ plan, onSave, onClose, B }) {
             <label style={labelStyle}>Billing Cycle</label>
             <select style={{ ...inputStyle, cursor: "pointer" }} value={form.billingCycle} onChange={e => set("billingCycle", e.target.value)}>
               <option value="monthly">Monthly</option>
+              <option value="every-4-weeks">Every 4 Weeks</option>
               <option value="annual">Annual</option>
               <option value="weekly">Weekly</option>
               <option value="per-session">Per Session</option>
@@ -125,6 +127,36 @@ function PlanModal({ plan, onSave, onClose, B }) {
             <label style={labelStyle}>Features (comma-separated)</label>
             <input style={inputStyle} value={form.features || ""} onChange={e => set("features", e.target.value)} placeholder="Unlimited sessions, All equipment, Locker access" />
           </div>
+          {/* Allowed Sessions */}
+          <div>
+            <label style={labelStyle}>Allowed Sessions</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <input type="checkbox" checked={form.allSessions !== false} onChange={e => { set("allSessions", e.target.checked); if (e.target.checked) set("allowedSessionIds", []); }} style={{ width: 16, height: 16, accentColor: B.accent, cursor: "pointer" }} />
+              <label style={{ fontSize: 13, fontWeight: 600, color: B.text, cursor: "pointer" }}>All sessions (unlimited access)</label>
+            </div>
+            {!form.allSessions && (
+              <div style={{ maxHeight: 180, overflowY: "auto", border: "1px solid " + B.border, borderRadius: 8, padding: 8, background: B.dark }}>
+                {(schedule || []).length === 0 ? (
+                  <div style={{ color: B.dim, fontSize: 12, padding: 8 }}>No sessions in schedule yet.</div>
+                ) : (
+                  (schedule || []).map(sess => {
+                    const dayNames = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+                    const checked = (form.allowedSessionIds || []).includes(sess.id);
+                    const fmtT = (t) => { const [h,m] = (t||"").split(":").map(Number); const ap = h >= 12 ? "PM" : "AM"; const hr = h === 0 ? 12 : h > 12 ? h - 12 : h; return `${hr}:${String(m).padStart(2,"0")} ${ap}`; };
+                    return (
+                      <label key={sess.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 4px", cursor: "pointer", fontSize: 13, color: B.text }}>
+                        <input type="checkbox" checked={checked} onChange={e => {
+                          const ids = form.allowedSessionIds || [];
+                          set("allowedSessionIds", e.target.checked ? [...ids, sess.id] : ids.filter(id => id !== sess.id));
+                        }} style={{ width: 15, height: 15, accentColor: B.accent }} />
+                        {sess.name} - {dayNames[sess.dayOfWeek] || "?"} {fmtT(sess.startTime)}-{fmtT(sess.endTime)}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input type="checkbox" checked={form.active !== false} onChange={e => set("active", e.target.checked)} style={{ width: 16, height: 16, accentColor: B.accent, cursor: "pointer" }} />
             <label style={{ fontSize: 13, fontWeight: 600, color: B.text, cursor: "pointer" }}>Active</label>
@@ -132,7 +164,7 @@ function PlanModal({ plan, onSave, onClose, B }) {
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 22, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontWeight: 600, fontSize: 13 }}>Cancel</button>
-          <button onClick={() => { if (!form.name || !form.price) return; onSave({ ...form, price: Number(form.price), id: form.id || "plan_" + Date.now() }); }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>Save Plan</button>
+          <button onClick={() => { if (!form.name || !form.price) return; onSave({ ...form, price: Number(form.price), id: form.id || "plan_" + Date.now(), allowedSessionIds: form.allSessions ? [] : (form.allowedSessionIds || []), allSessions: form.allSessions !== false }); }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>Save Plan</button>
         </div>
       </div>
     </div>
@@ -148,7 +180,7 @@ function SettingsModal({ onClose, B, recurringEnabled, setRecurringEnabled }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderBottom: "1px solid " + B.border }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Auto-charge on billing date</div>
-            <div style={{ fontSize: 12, color: B.dim, marginTop: 2 }}>Automatically charge members with saved payment methods on their billing date.</div>
+            <div style={{ fontSize: 12, color: B.dim, marginTop: 2 }}>Automatically charge clients with saved payment methods on their billing date.</div>
           </div>
           <button
             onClick={() => setRecurringEnabled(!recurringEnabled)}
@@ -221,6 +253,7 @@ export default function BillingView() {
   const [plans, setPlans] = useLocalStorage("hf_plans", DEFAULT_PLANS);
   const [payments, setPayments] = useLocalStorage("hf_payments", buildDemoPayments());
   const [recurringEnabled, setRecurringEnabled] = useLocalStorage("hf_recurring_enabled", false);
+  const [schedule] = useLocalStorage("hf_schedule", []);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editPlan, setEditPlan] = useState(null);
   const [paymentTarget, setPaymentTarget] = useState(null);
@@ -228,6 +261,10 @@ export default function BillingView() {
   const [historyMember, setHistoryMember] = useState(null);
   const [activeSection, setActiveSection] = useState("overview");
   const [paymentFilter, setPaymentFilter] = useState("all");
+  const [pendingPlanChange, setPendingPlanChange] = useState(null);
+  const [discountRules, setDiscountRules] = useLocalStorage("hf_payment_discounts", [
+    { id: "disc_1", method: "ACH", discountType: "Percentage", value: 5, active: true },
+  ]);
   const { logEvent } = useMembershipEvents();
 
   /* ── KPI Calculations ── */
@@ -244,6 +281,7 @@ export default function BillingView() {
       const plan = plans.find(p => p.id === m.membershipPlanId);
       if (!plan) return sum;
       if (plan.billingCycle === "monthly") return sum + plan.price;
+      if (plan.billingCycle === "every-4-weeks") return sum + Math.round(plan.price * 13 / 12);
       if (plan.billingCycle === "annual") return sum + Math.round(plan.price / 12);
       if (plan.billingCycle === "weekly") return sum + Math.round(plan.price * 4.33);
       return sum;
@@ -265,6 +303,27 @@ export default function BillingView() {
 
   /* ── Payment handlers ── */
   const markPaid = (id) => setPayments(prev => prev.map(p => p.id === id ? { ...p, status: "paid" } : p));
+  const [refundTarget, setRefundTarget] = useState(null);
+  const processRefund = (payment, refundAmount, reason) => {
+    setPayments(prev => {
+      const updated = prev.map(p => p.id === payment.id ? { ...p, status: "refunded", refundedAt: new Date().toISOString(), refundAmount, refundReason: reason } : p);
+      // Add a refund record
+      const refundRecord = {
+        id: "ref_" + Date.now(),
+        date: new Date().toISOString().slice(0, 10),
+        member: payment.member,
+        memberId: payment.memberId,
+        plan: payment.plan,
+        amount: -refundAmount,
+        method: payment.method,
+        status: "refund",
+        originalPaymentId: payment.id,
+        refundReason: reason,
+      };
+      return [refundRecord, ...updated];
+    });
+    setRefundTarget(null);
+  };
   const sendReminder = (name) => alert("Reminder sent to " + name + "!");
 
   const handlePaymentSuccess = (detail) => {
@@ -288,14 +347,14 @@ export default function BillingView() {
     setPaymentTarget(null);
   };
 
-  const assignPlan = (memberId, planId) => {
+  const assignPlan = (memberId, planId, changeType) => {
     const member = members.find(m => m.id === memberId);
     const oldPlan = plans.find(p => p.id === member?.membershipPlanId);
     const newPlan = plans.find(p => p.id === planId);
     const memberName = member ? member.firstName + " " + member.lastName : "Unknown";
 
+    const eventType = changeType || (oldPlan && newPlan ? "plan_change" : "plan_change");
     if (oldPlan && newPlan && oldPlan.id !== newPlan.id) {
-      const eventType = oldPlan.price < newPlan.price ? "upgrade" : oldPlan.price > newPlan.price ? "downgrade" : "plan_change";
       logEvent(memberId, memberName, eventType, { oldPlan: oldPlan.name, newPlan: newPlan.name, oldPrice: oldPlan.price, newPrice: newPlan.price });
     } else if (!oldPlan && newPlan) {
       logEvent(memberId, memberName, "plan_change", { newPlan: newPlan.name, newPrice: newPlan.price });
@@ -358,14 +417,108 @@ export default function BillingView() {
   });
 
   const sections = [
-    { key: "overview", label: "Member Billing" },
+    { key: "overview", label: "Client Billing" },
     { key: "plans", label: "Plans" },
     { key: "payments", label: "Payment History" },
     { key: "recurring", label: "Recurring" },
+    { key: "discounts", label: "Discounts" },
   ];
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+      {/* Refund Modal */}
+      {refundTarget && (() => {
+        const RefundModal = () => {
+          const [refundAmount, setRefundAmount] = useState(refundTarget.amount);
+          const [reason, setReason] = useState("");
+          const [refundType, setRefundType] = useState("full");
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+              <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 440, width: "90%" }}>
+                <h3 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700, color: B.text }}>Process Refund</h3>
+                <div style={{ padding: 12, borderRadius: 8, background: B.darker, marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, color: B.muted }}>Original Payment</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: B.text, marginTop: 4 }}>${refundTarget.amount} — {refundTarget.member}</div>
+                  <div style={{ fontSize: 12, color: B.dim, marginTop: 2 }}>{refundTarget.date} via {refundTarget.method}</div>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                  {[{ key: "full", label: "Full Refund" }, { key: "partial", label: "Partial Refund" }].map(t => (
+                    <button key={t.key} onClick={() => { setRefundType(t.key); if (t.key === "full") setRefundAmount(refundTarget.amount); }}
+                      style={{ flex: 1, padding: "10px 0", borderRadius: 8, cursor: "pointer", border: refundType === t.key ? `2px solid ${B.red}` : "1px solid " + B.border, background: refundType === t.key ? B.red + "15" : B.dark, color: refundType === t.key ? B.red : B.muted, fontWeight: 700, fontSize: 13, transition: "all 0.15s" }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                {refundType === "partial" && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Refund Amount ($)</div>
+                    <input type="number" step="0.01" min="0.01" max={refundTarget.amount} value={refundAmount} onChange={e => setRefundAmount(Math.min(parseFloat(e.target.value) || 0, refundTarget.amount))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 16, fontWeight: 700, outline: "none", boxSizing: "border-box", textAlign: "center" }} />
+                  </div>
+                )}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Reason (optional)</div>
+                  <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason for refund..." rows={2} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 13, outline: "none", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }} />
+                </div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button onClick={() => setRefundTarget(null)} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+                  <button onClick={() => processRefund(refundTarget, refundAmount, reason)} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: B.red, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Refund ${refundAmount.toFixed ? refundAmount.toFixed(2) : refundAmount}</button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+        return <RefundModal />;
+      })()}
+
+      {/* Plan Change Confirmation — asks upgrade/downgrade/lateral */}
+      {pendingPlanChange && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+          <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 480, width: "90%" }}>
+            <h3 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700, color: B.text }}>Confirm Plan Change</h3>
+            <p style={{ color: B.text, fontSize: 14, lineHeight: 1.6, margin: "0 0 8px" }}>
+              Change <strong>{pendingPlanChange.memberName}</strong>'s plan?
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", margin: "8px 0 16px" }}>
+              <div style={{ padding: "6px 12px", borderRadius: 8, background: B.red + "15", color: B.red, fontSize: 13, fontWeight: 600 }}>
+                {pendingPlanChange.oldName}
+              </div>
+              <span style={{ color: B.muted, fontSize: 18 }}>&rarr;</span>
+              <div style={{ padding: "6px 12px", borderRadius: 8, background: B.accent + "15", color: B.accent, fontSize: 13, fontWeight: 600 }}>
+                {pendingPlanChange.newName}
+              </div>
+            </div>
+            <p style={{ color: B.text, fontSize: 13, fontWeight: 600, margin: "0 0 10px" }}>How should this change be classified?</p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              {[
+                { type: "upgrade", label: "Upgrade", color: B.accent, icon: "\u2B06" },
+                { type: "downgrade", label: "Downgrade", color: B.orange, icon: "\u2B07" },
+                { type: "plan_change", label: "Lateral Change", color: B.blue || "#3b82f6", icon: "\u2194" },
+              ].map(opt => (
+                <button key={opt.type} onClick={() => setPendingPlanChange(prev => ({ ...prev, changeType: opt.type }))}
+                  style={{
+                    flex: 1, padding: "12px 8px", borderRadius: 10, cursor: "pointer", textAlign: "center",
+                    border: pendingPlanChange.changeType === opt.type ? `2px solid ${opt.color}` : `1px solid ${B.border}`,
+                    background: pendingPlanChange.changeType === opt.type ? opt.color + "15" : B.dark,
+                    color: pendingPlanChange.changeType === opt.type ? opt.color : B.muted,
+                    transition: "all 0.15s",
+                  }}>
+                  <div style={{ fontSize: 20, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setPendingPlanChange(null)} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+              <button onClick={() => { assignPlan(pendingPlanChange.memberId, pendingPlanChange.planId, pendingPlanChange.changeType); setPendingPlanChange(null); }}
+                disabled={!pendingPlanChange.changeType}
+                style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: pendingPlanChange.changeType ? B.accent : B.dim, color: "#fff", cursor: pendingPlanChange.changeType ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, opacity: pendingPlanChange.changeType ? 1 : 0.5 }}>
+                Confirm {pendingPlanChange.changeType === "upgrade" ? "Upgrade" : pendingPlanChange.changeType === "downgrade" ? "Downgrade" : pendingPlanChange.changeType === "plan_change" ? "Change" : "Change"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment Modal */}
       {paymentTarget && (
         <PaymentModal
@@ -382,7 +535,7 @@ export default function BillingView() {
       )}
 
       {/* Plan Modal */}
-      {showPlanModal && <PlanModal plan={editPlan} onSave={savePlan} onClose={() => { setShowPlanModal(false); setEditPlan(null); }} B={B} />}
+      {showPlanModal && <PlanModal plan={editPlan} onSave={savePlan} onClose={() => { setShowPlanModal(false); setEditPlan(null); }} B={B} schedule={schedule} />}
 
       {/* Settings Modal */}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} B={B} recurringEnabled={recurringEnabled} setRecurringEnabled={setRecurringEnabled} />}
@@ -414,7 +567,7 @@ export default function BillingView() {
       {/* ── B. KPI Row ── */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28 }}>
         <KPI label="Monthly Revenue" value={"$" + kpi.totalRevenue.toLocaleString()} sub="This month" B={B} />
-        <KPI label="Active Members" value={kpi.activeCount} sub="Active + trial" B={B} />
+        <KPI label="Active Clients" value={kpi.activeCount} sub="Active + trial" B={B} />
         <KPI label="Overdue" value={kpi.overdueCount} sub="Needs follow-up" B={B} color={kpi.overdueCount > 0 ? B.red : undefined} />
         <KPI label="MRR" value={"$" + kpi.mrr.toLocaleString()} sub="Monthly recurring" B={B} color={B.accent} />
       </div>
@@ -432,19 +585,20 @@ export default function BillingView() {
       {activeSection === "overview" && (
         <div style={{ marginBottom: 32 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <h2 style={sectionTitle}>Member Billing Overview</h2>
-            <div style={{ fontSize: 12, color: B.dim }}>{members.length} members</div>
+            <h2 style={sectionTitle}>Client Billing Overview</h2>
+            <div style={{ fontSize: 12, color: B.dim }}>{members.length} clients</div>
           </div>
           <Card style={{ padding: 0, overflow: "hidden" }}>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: B.darker }}>
-                    <th style={thStyle}>Member</th>
+                    <th style={thStyle}>Client</th>
                     <th style={thStyle}>Plan</th>
                     <th style={thStyle}>Payment Method</th>
                     <th style={thStyle}>Last Payment</th>
                     <th style={thStyle}>Status</th>
+                    <th style={{...thStyle, textAlign: "center"}}>Auto-charge</th>
                     <th style={thStyle}>Actions</th>
                   </tr>
                 </thead>
@@ -465,7 +619,14 @@ export default function BillingView() {
                         <td style={tdStyle}>
                           <select
                             value={m.membershipPlanId || ""}
-                            onChange={e => assignPlan(m.id, e.target.value)}
+                            onChange={e => {
+                              const newPlanId = e.target.value;
+                              const oldPlan = plans.find(p => p.id === m.membershipPlanId);
+                              const newPlan = plans.find(p => p.id === newPlanId);
+                              const oldName = oldPlan ? oldPlan.name + " ($" + oldPlan.price + ")" : "No plan";
+                              const newName = newPlan ? newPlan.name + " ($" + newPlan.price + ")" : "No plan";
+                              setPendingPlanChange({ memberId: m.id, memberName: m.firstName + " " + m.lastName, planId: newPlanId, oldName, newName });
+                            }}
                             style={{
                               padding: "4px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer",
                               border: "1px solid " + B.border, background: B.dark, color: B.text, outline: "none",
@@ -497,6 +658,24 @@ export default function BillingView() {
                         </td>
                         <td style={tdStyle}>
                           <StatusBadge status={m.billingStatus} B={B} />
+                        </td>
+                        <td style={{...tdStyle, textAlign: "center"}}>
+                          <button
+                            onClick={() => updateMember(m.id, { autoCharge: !m.autoCharge })}
+                            style={{
+                              width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
+                              background: m.autoCharge ? B.accent : B.border,
+                              position: "relative", transition: "background 0.2s",
+                            }}
+                          >
+                            <div style={{
+                              width: 16, height: 16, borderRadius: 8, background: "#fff",
+                              position: "absolute", top: 3,
+                              left: m.autoCharge ? 21 : 3,
+                              transition: "left 0.2s",
+                              boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                            }} />
+                          </button>
                         </td>
                         <td style={tdStyle}>
                           <div style={{ display: "flex", gap: 6 }}>
@@ -544,7 +723,7 @@ export default function BillingView() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
             {plans.map(p => {
               const memberCount = planMemberCounts[p.id] || 0;
-              const cycleLabel = { monthly: "Monthly", annual: "Annual", weekly: "Weekly", "per-session": "Per Session" }[p.billingCycle] || p.billingCycle;
+              const cycleLabel = { monthly: "Monthly", "every-4-weeks": "Every 4 Weeks", annual: "Annual", weekly: "Weekly", "per-session": "Per Session" }[p.billingCycle] || p.billingCycle;
               const features = (p.features || "").split(",").map(f => f.trim()).filter(Boolean);
               return (
                 <Card key={p.id} style={{ opacity: p.active ? 1 : 0.5, position: "relative" }}>
@@ -569,7 +748,7 @@ export default function BillingView() {
                     </div>
                   )}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, padding: "6px 10px", borderRadius: 6, background: B.darker }}>
-                    <span style={{ fontSize: 11, color: B.muted, fontWeight: 600 }}>Members on plan</span>
+                    <span style={{ fontSize: 11, color: B.muted, fontWeight: 600 }}>Clients on plan</span>
                     <span style={{ fontSize: 14, fontWeight: 800, color: B.text }}>{memberCount}</span>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -596,6 +775,7 @@ export default function BillingView() {
                 { key: "pending", label: "Pending" },
                 { key: "cash", label: "Cash" },
                 { key: "check", label: "Check" },
+                { key: "refund", label: "Refunds" },
               ].map(f => (
                 <button
                   key={f.key}
@@ -624,7 +804,7 @@ export default function BillingView() {
                 <thead>
                   <tr style={{ background: B.darker }}>
                     <th style={thStyle}>Date</th>
-                    <th style={thStyle}>Member</th>
+                    <th style={thStyle}>Client</th>
                     <th style={thStyle}>Plan</th>
                     <th style={thStyle}>Amount</th>
                     <th style={thStyle}>Method</th>
@@ -651,13 +831,21 @@ export default function BillingView() {
                       </td>
                       <td style={tdStyle}><StatusBadge status={p.status} B={B} /></td>
                       <td style={tdStyle}>
-                        {(p.status === "overdue" || p.status === "pending") && (
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <button onClick={() => sendReminder(p.member)} style={btnSmall(B.orange)}>Remind</button>
-                            <button onClick={() => setPaymentTarget({ amount: p.amount, memberName: p.member, memberEmail: "", description: p.plan + " - " + p.member, paymentId: p.id, memberId: null, planName: p.plan })} style={btnSmall(B.accent)}>Collect</button>
-                            <button onClick={() => markPaid(p.id)} style={btnSmall(B.green)}>Mark Paid</button>
-                          </div>
-                        )}
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {(p.status === "overdue" || p.status === "pending") && (
+                            <>
+                              <button onClick={() => sendReminder(p.member)} style={btnSmall(B.orange)}>Remind</button>
+                              <button onClick={() => setPaymentTarget({ amount: p.amount, memberName: p.member, memberEmail: "", description: p.plan + " - " + p.member, paymentId: p.id, memberId: null, planName: p.plan })} style={btnSmall(B.accent)}>Collect</button>
+                              <button onClick={() => markPaid(p.id)} style={btnSmall(B.green)}>Mark Paid</button>
+                            </>
+                          )}
+                          {p.status === "paid" && p.amount > 0 && (
+                            <button onClick={() => setRefundTarget(p)} style={btnSmall(B.red)}>Refund</button>
+                          )}
+                          {(p.status === "refunded" || p.status === "refund") && (
+                            <span style={{ fontSize: 11, color: B.red, fontWeight: 600 }}>{p.status === "refund" ? "Refund" : "Refunded"}</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -711,7 +899,7 @@ export default function BillingView() {
                   <span style={{ fontSize: 18, color: B.green }}>{"\u2713"}</span>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Auto-charge is active</div>
-                    <div style={{ fontSize: 12, color: B.dim }}>Members with saved payment methods and an assigned plan will be charged automatically on their billing date.</div>
+                    <div style={{ fontSize: 12, color: B.dim }}>Clients with saved payment methods and an assigned plan will be charged automatically on their billing date.</div>
                   </div>
                 </div>
               </Card>
@@ -720,7 +908,7 @@ export default function BillingView() {
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ background: B.darker }}>
-                        <th style={thStyle}>Member</th>
+                        <th style={thStyle}>Client</th>
                         <th style={thStyle}>Plan</th>
                         <th style={thStyle}>Amount</th>
                         <th style={thStyle}>Payment Method</th>
@@ -762,6 +950,107 @@ export default function BillingView() {
               </Card>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── H. Payment Method Discounts ── */}
+      {activeSection === "discounts" && (
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <h2 style={sectionTitle}>Payment Method Discounts</h2>
+            <button
+              onClick={() => setDiscountRules(prev => [...prev, { id: "disc_" + Date.now(), method: "ACH", discountType: "Percentage", value: 0, active: true }])}
+              style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+            >
+              + Add Discount Rule
+            </button>
+          </div>
+          <p style={{ color: B.muted, fontSize: 13, marginBottom: 16 }}>
+            Define discounts for specific payment methods. When a client pays using a method with an active discount, the adjusted amount will be shown in the payment modal.
+          </p>
+          <Card style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ background: B.darker }}>
+                    <th style={thStyle}>Payment Method</th>
+                    <th style={thStyle}>Discount Type</th>
+                    <th style={thStyle}>Value</th>
+                    <th style={thStyle}>Active</th>
+                    <th style={thStyle}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {discountRules.map(rule => (
+                    <tr key={rule.id}>
+                      <td style={tdStyle}>
+                        <select
+                          value={rule.method}
+                          onChange={e => setDiscountRules(prev => prev.map(r => r.id === rule.id ? { ...r, method: e.target.value } : r))}
+                          style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 13 }}
+                        >
+                          <option value="ACH">ACH</option>
+                          <option value="Cash">Cash</option>
+                          <option value="Check">Check</option>
+                          <option value="Annual Pre-pay">Annual Pre-pay</option>
+                        </select>
+                      </td>
+                      <td style={tdStyle}>
+                        <select
+                          value={rule.discountType}
+                          onChange={e => setDiscountRules(prev => prev.map(r => r.id === rule.id ? { ...r, discountType: e.target.value } : r))}
+                          style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 13 }}
+                        >
+                          <option value="Percentage">Percentage</option>
+                          <option value="Fixed Amount">Fixed Amount</option>
+                        </select>
+                      </td>
+                      <td style={tdStyle}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          {rule.discountType === "Fixed Amount" && <span style={{ color: B.muted, fontSize: 13 }}>$</span>}
+                          <input
+                            type="number"
+                            min="0"
+                            value={rule.value}
+                            onChange={e => setDiscountRules(prev => prev.map(r => r.id === rule.id ? { ...r, value: Number(e.target.value) } : r))}
+                            style={{ width: 80, padding: "5px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 13 }}
+                          />
+                          {rule.discountType === "Percentage" && <span style={{ color: B.muted, fontSize: 13 }}>%</span>}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <button
+                          onClick={() => setDiscountRules(prev => prev.map(r => r.id === rule.id ? { ...r, active: !r.active } : r))}
+                          style={{
+                            width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", position: "relative",
+                            background: rule.active ? B.green : (B.border || "#555"), transition: "background 0.2s",
+                          }}
+                        >
+                          <div style={{
+                            width: 18, height: 18, borderRadius: "50%", background: "#fff", position: "absolute", top: 3,
+                            left: rule.active ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                          }} />
+                        </button>
+                      </td>
+                      <td style={tdStyle}>
+                        <button
+                          onClick={() => setDiscountRules(prev => prev.filter(r => r.id !== rule.id))}
+                          style={btnSmall(B.red || "#e74c3c")}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {discountRules.length === 0 && (
+                    <tr>
+                      <td colSpan={5} style={{ ...tdStyle, textAlign: "center", padding: 32, color: B.dim }}>No discount rules defined. Click "+ Add Discount Rule" to create one.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </div>
       )}
     </div>

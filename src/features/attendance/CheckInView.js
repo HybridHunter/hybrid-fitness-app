@@ -54,7 +54,8 @@ function buildDemoAttendance(members) {
         id: crypto.randomUUID(),
         memberId: m.id,
         checkInTime: t.toISOString(),
-        method: "pin"
+        method: "pin",
+        _demo: true,
       });
     }
   });
@@ -398,7 +399,7 @@ export default function CheckInView() {
       {todayClasses.length > 0 && (
         <Card style={{ padding: 20 }}>
           <h3 style={{ fontSize: 15, fontWeight: 700, color: B.text, margin: "0 0 12px" }}>
-            Today's Classes
+            Today's Sessions
             <span style={{
               marginLeft: 8, fontSize: 12, fontWeight: 600, color: B.accent,
               background: B.accent + "18", padding: "2px 8px", borderRadius: 10

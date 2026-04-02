@@ -184,7 +184,7 @@ export default function CoachingDashboard() {
         {/* Quick Member Lookup */}
         <div style={{ position: "relative", minWidth: 280 }}>
           <input
-            placeholder="Search members..."
+            placeholder="Search clients..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onFocus={() => setSearchFocused(true)}
@@ -243,7 +243,7 @@ export default function CoachingDashboard() {
       <div style={{ marginBottom: 28 }}>
         <h2 style={sectionTitle}>Today&rsquo;s Sessions</h2>
         {todaySessions.length === 0 ? (
-          <Card><p style={{ color: B.muted, margin: 0, fontSize: 16 }}>No classes scheduled for today.</p></Card>
+          <Card><p style={{ color: B.muted, margin: 0, fontSize: 16 }}>No sessions scheduled for today.</p></Card>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
             {todaySessions.map(cls => {
@@ -346,7 +346,7 @@ export default function CoachingDashboard() {
                     }}
                     onMouseEnter={e => e.currentTarget.style.background = B.accent + "15"}
                     onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                  >Open Command View</button>
+                  >Open Session View</button>
                 </Card>
               );
             })}
@@ -359,8 +359,8 @@ export default function CoachingDashboard() {
         <h2 style={sectionTitle}>Quick Actions</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
           {[
-            { label: "Check In Member", icon: "&#10003;", route: "/checkin", color: B.green },
-            { label: "Open Command View", icon: "&#9654;", route: "/command", color: B.blue || B.accent },
+            { label: "Check In Client", icon: "&#10003;", route: "/checkin", color: B.green },
+            { label: "Open Session View", icon: "&#9654;", route: "/command", color: B.blue || B.accent },
             { label: "New Assessment", icon: "&#9881;", route: "/assessments", color: B.purple },
             { label: "Send Message", icon: "&#9993;", route: "/messages", color: B.orange },
           ].map(action => (
@@ -381,9 +381,9 @@ export default function CoachingDashboard() {
 
         {/* ===== SECTION 3: AT-RISK MEMBERS ===== */}
         <Card style={{ padding: 20 }}>
-          <h2 style={{ ...sectionTitle, marginBottom: 16 }}>At-Risk Members</h2>
+          <h2 style={{ ...sectionTitle, marginBottom: 16 }}>At-Risk Clients</h2>
           {atRiskMembers.length === 0 ? (
-            <p style={{ color: B.muted, margin: 0 }}>All members are active. No one flagged.</p>
+            <p style={{ color: B.muted, margin: 0 }}>All clients are active. No one flagged.</p>
           ) : (
             <>
               {atRiskMembers.slice(0, 5).map(m => {
@@ -424,7 +424,7 @@ export default function CoachingDashboard() {
                   onClick={() => navigate("/members")}
                   style={{ textAlign: "center", padding: "10px 0", color: B.accent, fontWeight: 600, fontSize: 14, cursor: "pointer", marginTop: 8 }}
                 >
-                  View all {atRiskMembers.length} at-risk members
+                  View all {atRiskMembers.length} at-risk clients
                 </div>
               )}
             </>

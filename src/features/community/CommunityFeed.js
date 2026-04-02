@@ -75,7 +75,7 @@ const TODAY = "2026-04-01";
 const DEMO_POSTS = [
   {
     id: uuid(), authorId: "coach", authorName: "Coach", category: "Announcements",
-    content: "Big update! The new Movement Matrix is now live in your member dashboard. Check your scores, see where you stand, and let's build a plan to level up your weak links. Drop a comment if you have questions — I'll be doing a live walkthrough this Thursday at 6 PM.",
+    content: "Big update! The new Progression Engine is now live in your member dashboard. Check your scores, see where you stand, and let's build a plan to level up your weak links. Drop a comment if you have questions — I'll be doing a live walkthrough this Thursday at 6 PM.",
     mediaType: null, mediaUrl: "", pollOptions: [],
     likes: ["sarah", "mike", "emily", "tom", "lisa"],
     comments: [
@@ -129,7 +129,7 @@ const DEMO_POSTS = [
   },
   {
     id: uuid(), authorId: "coach", authorName: "Coach", category: "General",
-    content: "Curious about this — what time slots work best for you for small group classes? Thinking about adding a couple more to the schedule. Vote below!",
+    content: "Curious about this — what time slots work best for you for small group sessions? Thinking about adding a couple more to the schedule. Vote below!",
     mediaType: "poll", mediaUrl: "", pollOptions: [
       { text: "6:00 AM", votes: ["sarah", "tom", "emily"] },
       { text: "12:00 PM (Lunch)", votes: ["mike", "james"] },
@@ -832,6 +832,15 @@ function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
               display: "inline-block", marginTop: 10, fontSize: 13, color: "#fff", fontWeight: 600
             }}>{"\uD83C\uDFAF"} Daily Target: {challenge.targetDescription}</div>
           )}
+          {challenge.prize && challenge.prizeType !== "none" && (
+            <div style={{
+              background: "rgba(251,191,36,0.2)", padding: "6px 12px", borderRadius: 8,
+              display: "inline-block", marginTop: 10, marginLeft: 8, fontSize: 13, color: "#fbbf24", fontWeight: 600
+            }}>
+              {challenge.prizeType === "physical" ? "\uD83C\uDF81" : challenge.prizeType === "credit" ? "\uD83D\uDCB0" : challenge.prizeType === "discount" ? "\uD83C\uDFF7\uFE0F" : challenge.prizeType === "badge" ? "\uD83C\uDFC5" : "\u2B50"}{" "}
+              Prize: {challenge.prize}
+            </div>
+          )}
           <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
             <span style={{ color: "rgba(255,255,255,0.9)", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
               <CalendarIcon size={14} color="rgba(255,255,255,0.9)" />
@@ -1384,6 +1393,8 @@ function CreateChallengeModal({ onClose, onCreate, B }) {
   const [targetDescription, setTargetDescription] = useState("");
   const [startDate, setStartDate] = useState(TODAY);
   const [endDate, setEndDate] = useState(toDateStr(new Date(now.getTime() + 30 * 86400000)));
+  const [prize, setPrize] = useState("");
+  const [prizeType, setPrizeType] = useState("none");
 
   const handleCreate = () => {
     if (!title.trim() || !description.trim() || !startDate || !endDate) return;
@@ -1399,7 +1410,9 @@ function CreateChallengeModal({ onClose, onCreate, B }) {
       createdAt: new Date().toISOString(),
       participants: [],
       submissions: {},
-      dailyPosts: {}
+      dailyPosts: {},
+      prize: prize.trim(),
+      prizeType,
     };
     onCreate(challenge);
     onClose();
@@ -1483,6 +1496,34 @@ function CreateChallengeModal({ onClose, onCreate, B }) {
           </div>
         )}
 
+        {/* Prize */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 13, fontWeight: 600, color: B.text, display: "block", marginBottom: 10 }}>Prize (optional)</label>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            {[
+              { key: "none", label: "No Prize", icon: "" },
+              { key: "physical", label: "Physical", icon: "\uD83C\uDF81" },
+              { key: "credit", label: "Account Credit", icon: "\uD83D\uDCB0" },
+              { key: "badge", label: "Badge/Title", icon: "\uD83C\uDFC5" },
+              { key: "discount", label: "Discount", icon: "\uD83C\uDFF7\uFE0F" },
+              { key: "other", label: "Other", icon: "\u2B50" },
+            ].map(p => (
+              <button key={p.key} onClick={() => setPrizeType(p.key)} style={{
+                padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 600,
+                border: prizeType === p.key ? `2px solid ${B.accent}` : `1px solid ${B.border}`,
+                background: prizeType === p.key ? B.accent + "15" : B.dark,
+                color: prizeType === p.key ? B.accent : B.muted,
+                transition: "all 0.15s",
+              }}>{p.icon} {p.label}</button>
+            ))}
+          </div>
+          {prizeType !== "none" && (
+            <input value={prize} onChange={(e) => setPrize(e.target.value)}
+              placeholder={prizeType === "physical" ? "e.g. Free t-shirt, water bottle" : prizeType === "credit" ? "e.g. $25 account credit" : prizeType === "discount" ? "e.g. 20% off next month" : prizeType === "badge" ? "e.g. Challenge Champion badge" : "Describe the prize..."}
+              style={inputStyle} />
+          )}
+        </div>
+
         <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
           <div style={{ flex: 1 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: B.text, display: "block", marginBottom: 6 }}>Start Date</label>
@@ -1546,6 +1587,16 @@ function ChallengeFeedCard({ challenge, onClick, B }) {
             color: B.orange || B.accent, fontSize: 12, fontWeight: 600,
             padding: "3px 10px", borderRadius: 6, marginBottom: 10
           }}>{"\uD83C\uDFAF"} Daily Target: {challenge.targetDescription}</div>
+        )}
+        {challenge.prize && challenge.prizeType !== "none" && (
+          <div style={{
+            display: "inline-block", background: "#fbbf2418",
+            color: "#fbbf24", fontSize: 12, fontWeight: 600,
+            padding: "4px 12px", borderRadius: 6, marginBottom: 10, marginLeft: challenge.type === "adherence_target" ? 8 : 0,
+          }}>
+            {challenge.prizeType === "physical" ? "\uD83C\uDF81" : challenge.prizeType === "credit" ? "\uD83D\uDCB0" : challenge.prizeType === "discount" ? "\uD83C\uDFF7\uFE0F" : challenge.prizeType === "badge" ? "\uD83C\uDFC5" : "\u2B50"}{" "}
+            Prize: {challenge.prize}
+          </div>
         )}
 
         <div style={{ display: "flex", gap: 16, marginBottom: 10, flexWrap: "wrap" }}>

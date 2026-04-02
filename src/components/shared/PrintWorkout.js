@@ -18,11 +18,9 @@ export default function PrintWorkout({ workout }) {
           marginBottom: 14,
         }}
       >
-        <img
-          src="https://hybridfitnessgym.com/wp-content/uploads/2020/11/hybrid-fitness-long-website.png"
-          alt="Hybrid Fitness"
-          style={{ height: 36, objectFit: "contain" }}
-        />
+        <div style={{ fontWeight: 900, fontSize: 24, letterSpacing: -1 }}>
+          <span style={{ color: "#8fbf3b" }}>Gym</span><span>Kit</span>
+        </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 18, fontWeight: 800 }}>{w.name || "Workout"}</div>
           <div style={{ fontSize: 12, color: "#555" }}>
@@ -124,7 +122,7 @@ export default function PrintWorkout({ workout }) {
           paddingTop: 8,
         }}
       >
-        hybridfitnessgym.com &middot; Hybrid Systems, LLC
+        gymkit.io &middot; GymKit, LLC
       </div>
     </div>
   );

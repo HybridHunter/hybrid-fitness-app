@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { DSEC, getLabel } from "../../data/constants";
 import VideoModal from "../../components/shared/VideoModal";
@@ -16,7 +17,7 @@ return(<div id="print-area"><style>{`
 @media screen{#print-area{display:none}}
 `}</style>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"3px solid #1a1a1a",paddingBottom:10,marginBottom:14}}>
-  <img src="https://hybridfitnessgym.com/wp-content/uploads/2020/11/hybrid-fitness-long-website.png" alt="Hybrid Fitness" style={{height:36,objectFit:"contain"}}/>
+  <div style={{fontWeight:900,fontSize:24,letterSpacing:-1}}><span style={{color:"#8fbf3b"}}>Gym</span><span>Kit</span></div>
   <div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:800}}>{w.name||"Workout"}</div><div style={{fontSize:12,color:"#555"}}>{w.phase} &middot; {w.workoutLabel}</div></div>
 </div>
 {w.description&&<div style={{fontSize:11,color:"#444",marginBottom:12,fontStyle:"italic",borderLeft:"3px solid #ccc",paddingLeft:8}}>{w.description}</div>}
@@ -35,11 +36,12 @@ return(<div id="print-area"><style>{`
     </tr>);})}</tbody>
   </table>
 </div>);})}
-<div style={{textAlign:"center",marginTop:16,fontSize:9,color:"#aaa",borderTop:"1px solid #ddd",paddingTop:8}}>hybridfitnessgym.com &middot; Hybrid Systems, LLC</div>
+<div style={{textAlign:"center",marginTop:16,fontSize:9,color:"#aaa",borderTop:"1px solid #ddd",paddingTop:8}}>gymkit.io &middot; GymKit, LLC</div>
 </div>);}
 
 export default function WorkoutsView({workouts,setWorkouts,exercises,onLoad}){
   const B=useTheme();
+  const navigate=useNavigate();
   const[confirm,setConfirm]=useState(null);
   const[printW,setPrintW]=useState(null);
   const[video,setVideo]=useState(null);
@@ -52,8 +54,11 @@ export default function WorkoutsView({workouts,setWorkouts,exercises,onLoad}){
     {video&&<VideoModal url={video.url} title={video.title} onClose={()=>setVideo(null)}/>}
     <PrintArea w={printW}/>
 
-    <div style={{fontSize:18,fontWeight:700,marginBottom:16}}>Saved Workouts <span style={{color:B.muted,fontSize:13}}>({workouts.length})</span></div>
-    {workouts.length===0?(<div style={{textAlign:"center",padding:60,color:B.dim}}><div style={{fontSize:42,marginBottom:12}}>&#127947;&#65039;</div><div style={{fontSize:15,fontWeight:600}}>No saved workouts yet</div></div>):(
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div style={{fontSize:18,fontWeight:700}}>Saved Workouts <span style={{color:B.muted,fontSize:13}}>({workouts.length})</span></div>
+      <button onClick={()=>navigate("/build")} style={{padding:"8px 20px",borderRadius:8,border:"none",background:B.accent,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:700}}>+ Create Workout</button>
+    </div>
+    {workouts.length===0?(<div style={{textAlign:"center",padding:60,color:B.dim}}><div style={{fontSize:42,marginBottom:12}}>&#127947;&#65039;</div><div style={{fontSize:15,fontWeight:600}}>No saved workouts yet</div><button onClick={()=>navigate("/build")} style={{marginTop:16,padding:"10px 24px",borderRadius:8,border:"none",background:B.accent,color:"#fff",fontSize:13,cursor:"pointer",fontWeight:700}}>Create Your First Workout</button></div>):(
     <div style={{display:"grid",gap:12}}>{workouts.map(w=>(
       <div key={w.id} style={{background:B.card,borderRadius:12,border:"1px solid "+B.border,padding:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>

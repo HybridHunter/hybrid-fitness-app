@@ -232,7 +232,7 @@ export default function WaiverView() {
       <div style={s.section}>
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-            <h2 style={{ ...s.sectionTitle, margin: 0 }}>Member Waiver Status</h2>
+            <h2 style={{ ...s.sectionTitle, margin: 0 }}>Client Waiver Status</h2>
             <div>
               {["all", "signed", "unsigned"].map(f => (
                 <button key={f} style={s.filterBtn(filter === f)} onClick={() => setFilter(f)}>
@@ -246,7 +246,7 @@ export default function WaiverView() {
             <table style={s.table}>
               <thead>
                 <tr>
-                  <th style={s.th}>Member</th>
+                  <th style={s.th}>Client</th>
                   <th style={s.th}>Status</th>
                   <th style={s.th}>Date Signed</th>
                   <th style={s.th}>Actions</th>
@@ -284,7 +284,7 @@ export default function WaiverView() {
                   );
                 })}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={4} style={{ ...s.td, textAlign: "center", color: B.muted, padding: 32 }}>No members match this filter.</td></tr>
+                  <tr><td colSpan={4} style={{ ...s.td, textAlign: "center", color: B.muted, padding: 32 }}>No clients match this filter.</td></tr>
                 )}
               </tbody>
             </table>
@@ -369,7 +369,7 @@ export default function WaiverView() {
 
             {viewingMember && (
               <p style={{ color: B.muted, fontSize: 13, marginBottom: 12 }}>
-                Member: <strong style={{ color: B.text }}>{viewingMember.firstName} {viewingMember.lastName}</strong>
+                Client: <strong style={{ color: B.text }}>{viewingMember.firstName} {viewingMember.lastName}</strong>
               </p>
             )}
 

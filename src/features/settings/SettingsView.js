@@ -5,7 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
 
 /* ========== constants ========== */
-const TABS = ["General", "Integrations", "Branding", "Locations", "Users"];
+const TABS = ["General", "Integrations", "Branding", "Locations", "Users", "Stations", "Data"];
 const TIMEZONES = [
   "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
   "America/Phoenix", "America/Anchorage", "Pacific/Honolulu", "America/Toronto",
@@ -40,7 +40,7 @@ const DEFAULT_LOCATIONS = [
 
 export default function SettingsView() {
   const B = useTheme();
-  const { currentUser, users, addUser, removeUser } = useAuth();
+  const { currentUser, users, addUser, removeUser, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState("General");
   const [toast, setToast] = useState("");
 
@@ -50,6 +50,7 @@ export default function SettingsView() {
     inbody: { apiKey: "", environment: "sandbox", lastSync: null },
   });
   const [branding, setBranding] = useLocalStorage("hf_branding", DEFAULT_BRANDING);
+  const [stationSettings, setStationSettings] = useLocalStorage("hf_station_settings", { showWeight: true, showReps: true, showRPE: true, showMedia: true });
   const [locations, setLocations] = useLocalStorage("hf_locations", DEFAULT_LOCATIONS);
   const [newUser, setNewUser] = useState({ username: "", password: "", role: "coach", displayName: "" });
 
@@ -233,19 +234,24 @@ export default function SettingsView() {
           <div>
             <label style={s.label}>Primary Color</label>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="color" value={branding.primaryColor || "#8fbf3b"} onChange={e => setBranding(prev => ({ ...prev, primaryColor: e.target.value }))} style={{ width: 44, height: 36, border: "1px solid " + B.border, borderRadius: 8, padding: 2, cursor: "pointer", background: "transparent" }} />
               <input style={{ ...s.input, flex: 1 }} value={branding.primaryColor} onChange={e => setBranding(prev => ({ ...prev, primaryColor: e.target.value }))} placeholder="#8fbf3b" />
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: branding.primaryColor, border: "1px solid " + B.border, flexShrink: 0 }} />
             </div>
           </div>
           <div>
             <label style={s.label}>Secondary Color</label>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="color" value={branding.secondaryColor || "#063461"} onChange={e => setBranding(prev => ({ ...prev, secondaryColor: e.target.value }))} style={{ width: 44, height: 36, border: "1px solid " + B.border, borderRadius: 8, padding: 2, cursor: "pointer", background: "transparent" }} />
               <input style={{ ...s.input, flex: 1 }} value={branding.secondaryColor} onChange={e => setBranding(prev => ({ ...prev, secondaryColor: e.target.value }))} placeholder="#063461" />
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: branding.secondaryColor, border: "1px solid " + B.border, flexShrink: 0 }} />
             </div>
           </div>
         </div>
-        <button style={s.btn()} onClick={() => showToast("Branding applied!")}>Apply Branding</button>
+        <button style={s.btn()} onClick={() => {
+          // Force save to localStorage and reload so Logo + theme pick up changes
+          try { localStorage.setItem("hf_branding", JSON.stringify(branding)); } catch {}
+          showToast("Branding applied! Reloading...");
+          setTimeout(() => window.location.reload(), 500);
+        }}>Apply Branding</button>
       </Card>
 
       <Card>
@@ -269,7 +275,7 @@ export default function SettingsView() {
             </div>
             <div>
               <div style={{ fontWeight: 600, color: B.text, fontSize: 14 }}>{branding.gymName || "Your Gym"}</div>
-              <div style={{ color: B.muted, fontSize: 12 }}>Member Portal Header</div>
+              <div style={{ color: B.muted, fontSize: 12 }}>Client Portal Header</div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
@@ -362,13 +368,27 @@ export default function SettingsView() {
                 <td style={s.td}>{u.displayName}</td>
                 <td style={{ ...s.td, color: B.muted }}>{u.username}</td>
                 <td style={s.td}>
-                  <span style={s.badge(u.role === "admin" ? B.purple : B.green)}>{u.role}</span>
+                  {currentUser?.id === u.id || u.isSuperAdmin ? (
+                    <span style={s.badge(u.role === "admin" ? B.purple : B.green)}>{u.role}</span>
+                  ) : (
+                    <select value={u.role} onChange={e => {
+                      if (window.confirm(`Change ${u.displayName}'s role to ${e.target.value}?`)) {
+                        updateUser(u.id, { role: e.target.value });
+                        showToast(`${u.displayName} is now ${e.target.value}.`);
+                      }
+                    }} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 12, fontWeight: 600, cursor: "pointer", outline: "none" }}>
+                      <option value="admin">Admin</option>
+                      <option value="coach">Coach</option>
+                    </select>
+                  )}
                 </td>
                 <td style={s.td}>
                   {currentUser?.id === u.id ? (
                     <span style={{ fontSize: 12, color: B.muted }}>Current user</span>
+                  ) : u.isSuperAdmin ? (
+                    <span style={{ fontSize: 12, color: B.muted }}>Super Admin</span>
                   ) : (
-                    <button style={s.btnSm(B.red + "22", B.red)} onClick={() => { removeUser(u.id); showToast("User removed."); }}>Delete</button>
+                    <button style={s.btnSm(B.red + "22", B.red)} onClick={() => { if (window.confirm(`Delete ${u.displayName}?`)) { removeUser(u.id); showToast("User removed."); } }}>Delete</button>
                   )}
                 </td>
               </tr>
@@ -428,6 +448,139 @@ export default function SettingsView() {
       {activeTab === "Branding" && renderBranding()}
       {activeTab === "Locations" && renderLocations()}
       {activeTab === "Users" && renderUsers()}
+      {activeTab === "Stations" && (
+        <div style={{ display: "grid", gap: 20 }}>
+          <Card>
+            <h3 style={{ ...s.sectionTitle, marginTop: 0 }}>Station Display Settings</h3>
+            <p style={{ color: B.muted, fontSize: 13, marginBottom: 20 }}>Configure what clients see on their station tablets.</p>
+            {[
+              { key: "showWeight", label: "Weight Logging", desc: "Show weight (lbs) input on station" },
+              { key: "showReps", label: "Reps Logging", desc: "Show reps input on station" },
+              { key: "showRPE", label: "RPE Logging", desc: "Show RPE (1-10) input on station" },
+              { key: "showMedia", label: "Exercise Demos", desc: "Show GIFs and video thumbnails on station" },
+            ].map(setting => (
+              <div key={setting.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid " + B.border + "44" }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{setting.label}</div>
+                  <div style={{ fontSize: 12, color: B.dim }}>{setting.desc}</div>
+                </div>
+                <button onClick={() => setStationSettings(prev => ({ ...prev, [setting.key]: !prev[setting.key] }))}
+                  style={{
+                    width: 46, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                    background: stationSettings[setting.key] ? B.accent : B.border,
+                    position: "relative", transition: "background 0.2s", flexShrink: 0,
+                  }}>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 9, background: "#fff",
+                    position: "absolute", top: 3,
+                    left: stationSettings[setting.key] ? 25 : 3,
+                    transition: "left 0.2s",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  }} />
+                </button>
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+      {activeTab === "Data" && (() => {
+        const dataKeys = [
+          { key: "hf_members", label: "Demo Clients" },
+          { key: "hf_payments", label: "Demo Payments" },
+          { key: "hf_membership_events", label: "Membership Events" },
+          { key: "hf_attendance", label: "Attendance Records" },
+          { key: "hf_schedule", label: "Demo Sessions" },
+          { key: "hf_community_posts", label: "Community Posts" },
+          { key: "hf_challenges", label: "Challenges" },
+          { key: "hf_messages", label: "Messages" },
+          { key: "hf_notifications", label: "Notifications" },
+          { key: "hf_waivers", label: "Waivers" },
+          { key: "hf_assessments", label: "Assessments" },
+          { key: "hf_stations", label: "Stations" },
+          { key: "hf_community_events", label: "Events" },
+          { key: "hf_resources", label: "Resources" },
+          { key: "hf_courses", label: "Courses" },
+          { key: "hf_workout_logs", label: "Workout Logs" },
+          { key: "hf_automation_log", label: "Automation Log" },
+          { key: "hf_plans", label: "Plans" },
+        ];
+        const getDemoCount = (key) => {
+          try { const arr = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(arr) ? arr.filter(r => r._demo === true).length : 0; } catch { return 0; }
+        };
+        const stripDemo = (key) => {
+          try { const arr = JSON.parse(localStorage.getItem(key) || "[]"); if (!Array.isArray(arr)) return; localStorage.setItem(key, JSON.stringify(arr.filter(r => r._demo !== true))); } catch { /* ignore */ }
+        };
+        const demoLoaded = localStorage.getItem("hf_demo_loaded") === "true";
+        const totalDemo = dataKeys.reduce((sum, item) => sum + getDemoCount(item.key), 0);
+        return (
+        <div>
+          {/* Load Demo Data */}
+          <Card style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: B.text, margin: "0 0 8px" }}>Sample Data</h3>
+            <p style={{ color: B.muted, fontSize: 13, marginBottom: 16 }}>
+              {demoLoaded
+                ? "Demo data is loaded. You can clear it below to keep only your real records."
+                : "Your account starts empty. Load sample data to explore the app with realistic demo members, sessions, payments, and more."}
+            </p>
+            {!demoLoaded ? (
+              <button onClick={() => {
+                if (window.confirm("Load demo data? This adds sample members, sessions, payments, and other records to explore the app. You can remove them later.")) {
+                  localStorage.setItem("hf_demo_loaded", "true");
+                  localStorage.removeItem("hf_demo_cleared");
+                  // Clear existing empty arrays so hooks regenerate with demo defaults
+                  dataKeys.forEach(item => localStorage.removeItem(item.key));
+                  window.location.reload();
+                }
+              }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                Load Demo Data
+              </button>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 13, color: B.accent, fontWeight: 600 }}>Demo data loaded ({totalDemo} records)</span>
+              </div>
+            )}
+          </Card>
+
+          {/* Clear Demo Data */}
+          {totalDemo > 0 && (
+          <Card style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: B.text, margin: "0 0 8px" }}>Clear Demo Data</h3>
+            <p style={{ color: B.muted, fontSize: 13, marginBottom: 16 }}>Remove only demo records while keeping your real data intact.</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {dataKeys.map(item => {
+                const count = getDemoCount(item.key);
+                return (
+                <button key={item.key} onClick={() => {
+                  if (window.confirm(`Clear ${count} demo record(s) from ${item.label}?`)) {
+                    stripDemo(item.key);
+                    window.location.reload();
+                  }
+                }} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid " + B.border, background: B.dark, color: count > 0 ? B.muted : B.dim, fontSize: 12, fontWeight: 600, cursor: count > 0 ? "pointer" : "default", opacity: count > 0 ? 1 : 0.5 }} disabled={count === 0}>
+                  Clear {item.label}{count > 0 ? ` (${count})` : ""}
+                </button>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 16, borderTop: "1px solid " + B.border, paddingTop: 12 }}>
+              <button onClick={() => {
+                if (window.confirm(`Clear all ${totalDemo} demo records? Your real data is preserved.`)) {
+                  dataKeys.forEach(item => stripDemo(item.key));
+                  Object.keys(localStorage).filter(k => k.startsWith("hf_") && !dataKeys.some(d => d.key === k)).forEach(k => {
+                    try { const arr = JSON.parse(localStorage.getItem(k) || "[]"); if (Array.isArray(arr)) { localStorage.setItem(k, JSON.stringify(arr.filter(r => r._demo !== true))); } } catch {}
+                  });
+                  localStorage.removeItem("hf_demo_loaded");
+                  window.location.reload();
+                }
+              }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: B.red, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                Clear ALL Demo Data ({totalDemo} records)
+              </button>
+              <p style={{ color: B.dim, fontSize: 11, marginTop: 8 }}>Removes only demo records. Your real data is preserved.</p>
+            </div>
+          </Card>
+          )}
+        </div>
+        );
+      })()}
 
       {toast && <div style={s.toast}>{toast}</div>}
     </div>

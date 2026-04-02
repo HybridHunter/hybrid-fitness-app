@@ -229,7 +229,7 @@ export default function ClassroomView() {
   /* ── access badge ── */
   function accessBadge(c) {
     if (c.accessType === "level-locked") return { label: `Level ${c.requiredLevel}+`, bg: B.orange + "22", color: B.orange };
-    if (c.accessType === "members-only") return { label: "Members Only", bg: B.purple + "22", color: B.purple };
+    if (c.accessType === "members-only") return { label: "Clients Only", bg: B.purple + "22", color: B.purple };
     return { label: "Open", bg: B.green + "22", color: B.green };
   }
 
@@ -256,7 +256,7 @@ export default function ClassroomView() {
               <select value={editCourse.accessType} onChange={e => setEditCourse(p => ({ ...p, accessType: e.target.value }))} style={{ ...inputStyle, cursor: "pointer" }}>
                 <option value="open">Open Access</option>
                 <option value="level-locked">Level-Locked</option>
-                <option value="members-only">Members Only</option>
+                <option value="members-only">Clients Only</option>
               </select>
             </div>
           </div>

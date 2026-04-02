@@ -17,16 +17,16 @@ const TYPE_ICONS = {
 function buildDemoNotifications() {
   const now = Date.now();
   return [
-    { id: crypto.randomUUID(), type: "check_in", title: "Sarah Johnson checked in", message: "Front desk check-in via PIN", timestamp: new Date(now - 2 * 60000).toISOString(), read: false, link: "/members", icon: TYPE_ICONS.check_in },
-    { id: crypto.randomUUID(), type: "payment", title: "Payment received: $199", message: "Tom Baker \u2014 Monthly membership renewal", timestamp: new Date(now - 60 * 60000).toISOString(), read: false, link: "/billing", icon: TYPE_ICONS.payment },
-    { id: crypto.randomUUID(), type: "member_join", title: "New member: David Martinez", message: "Signed up for a free trial week", timestamp: new Date(now - 3 * 3600000).toISOString(), read: false, link: "/members", icon: TYPE_ICONS.member_join },
-    { id: crypto.randomUUID(), type: "waiver_signed", title: "Emily Rodriguez signed waiver", message: "Liability waiver completed and on file", timestamp: new Date(now - 26 * 3600000).toISOString(), read: false, link: "/waivers", icon: TYPE_ICONS.waiver_signed },
-    { id: crypto.randomUUID(), type: "class_booked", title: "Mike Chen booked 6AM Semi-Private", message: "Wednesday semi-private session", timestamp: new Date(now - 28 * 3600000).toISOString(), read: true, link: "/schedule", icon: TYPE_ICONS.class_booked },
-    { id: crypto.randomUUID(), type: "payment", title: "Payment received: $149", message: "Lisa Park \u2014 Monthly membership", timestamp: new Date(now - 48 * 3600000).toISOString(), read: true, link: "/billing", icon: TYPE_ICONS.payment },
-    { id: crypto.randomUUID(), type: "check_in", title: "Tom Baker checked in", message: "Morning session check-in", timestamp: new Date(now - 50 * 3600000).toISOString(), read: true, link: "/members", icon: TYPE_ICONS.check_in },
-    { id: crypto.randomUUID(), type: "alert", title: "Membership expiring soon", message: "James Williams \u2014 frozen membership expires in 5 days", timestamp: new Date(now - 72 * 3600000).toISOString(), read: true, link: "/members", icon: TYPE_ICONS.alert },
-    { id: crypto.randomUUID(), type: "message", title: "New message from Coach Mike", message: "Updated the programming for next week", timestamp: new Date(now - 96 * 3600000).toISOString(), read: true, link: "/messaging", icon: TYPE_ICONS.message },
-    { id: crypto.randomUUID(), type: "class_booked", title: "Emily Rodriguez booked Open Gym", message: "Saturday 9AM open gym slot", timestamp: new Date(now - 120 * 3600000).toISOString(), read: true, link: "/schedule", icon: TYPE_ICONS.class_booked },
+    { id: crypto.randomUUID(), type: "check_in", title: "Sarah Johnson checked in", message: "Front desk check-in via PIN", timestamp: new Date(now - 2 * 60000).toISOString(), read: false, link: "/members", icon: TYPE_ICONS.check_in, _demo: true },
+    { id: crypto.randomUUID(), type: "payment", title: "Payment received: $199", message: "Tom Baker \u2014 Monthly membership renewal", timestamp: new Date(now - 60 * 60000).toISOString(), read: false, link: "/billing", icon: TYPE_ICONS.payment, _demo: true },
+    { id: crypto.randomUUID(), type: "member_join", title: "New member: David Martinez", message: "Signed up for a free trial week", timestamp: new Date(now - 3 * 3600000).toISOString(), read: false, link: "/members", icon: TYPE_ICONS.member_join, _demo: true },
+    { id: crypto.randomUUID(), type: "waiver_signed", title: "Emily Rodriguez signed waiver", message: "Liability waiver completed and on file", timestamp: new Date(now - 26 * 3600000).toISOString(), read: false, link: "/waivers", icon: TYPE_ICONS.waiver_signed, _demo: true },
+    { id: crypto.randomUUID(), type: "class_booked", title: "Mike Chen booked 6AM Semi-Private", message: "Wednesday semi-private session", timestamp: new Date(now - 28 * 3600000).toISOString(), read: true, link: "/schedule", icon: TYPE_ICONS.class_booked, _demo: true },
+    { id: crypto.randomUUID(), type: "payment", title: "Payment received: $149", message: "Lisa Park \u2014 Monthly membership", timestamp: new Date(now - 48 * 3600000).toISOString(), read: true, link: "/billing", icon: TYPE_ICONS.payment, _demo: true },
+    { id: crypto.randomUUID(), type: "check_in", title: "Tom Baker checked in", message: "Morning session check-in", timestamp: new Date(now - 50 * 3600000).toISOString(), read: true, link: "/members", icon: TYPE_ICONS.check_in, _demo: true },
+    { id: crypto.randomUUID(), type: "alert", title: "Membership expiring soon", message: "James Williams \u2014 frozen membership expires in 5 days", timestamp: new Date(now - 72 * 3600000).toISOString(), read: true, link: "/members", icon: TYPE_ICONS.alert, _demo: true },
+    { id: crypto.randomUUID(), type: "message", title: "New message from Coach Mike", message: "Updated the programming for next week", timestamp: new Date(now - 96 * 3600000).toISOString(), read: true, link: "/messaging", icon: TYPE_ICONS.message, _demo: true },
+    { id: crypto.randomUUID(), type: "class_booked", title: "Emily Rodriguez booked Open Gym", message: "Saturday 9AM open gym slot", timestamp: new Date(now - 120 * 3600000).toISOString(), read: true, link: "/schedule", icon: TYPE_ICONS.class_booked, _demo: true },
   ];
 }
 

@@ -10,112 +10,143 @@ import {
 } from "recharts";
 
 /* ══════════════════════════════════════════════════════
-   MOCK DATA
+   DATA HELPERS — build chart data from real localStorage data
    ══════════════════════════════════════════════════════ */
-const MONTHS_12 = ["Apr 25","May 25","Jun 25","Jul 25","Aug 25","Sep 25","Oct 25","Nov 25","Dec 25","Jan 26","Feb 26","Mar 26"];
-const MONTHS_6 = MONTHS_12.slice(6);
-
-const revenueByMonth = [
-  { month: "Apr 25", revenue: 8420 }, { month: "May 25", revenue: 8980 },
-  { month: "Jun 25", revenue: 9640 }, { month: "Jul 25", revenue: 9210 },
-  { month: "Aug 25", revenue: 10350 }, { month: "Sep 25", revenue: 10980 },
-  { month: "Oct 25", revenue: 11420 }, { month: "Nov 25", revenue: 11890 },
-  { month: "Dec 25", revenue: 12640 }, { month: "Jan 26", revenue: 13180 },
-  { month: "Feb 26", revenue: 13720 }, { month: "Mar 26", revenue: 14350 },
-];
-
-const revenueLast6 = revenueByMonth.slice(6);
-
-const signUpsByMonth = [
-  { month: "Apr 25", signUps: 5 }, { month: "May 25", signUps: 7 },
-  { month: "Jun 25", signUps: 8 }, { month: "Jul 25", signUps: 4 },
-  { month: "Aug 25", signUps: 9 }, { month: "Sep 25", signUps: 6 },
-  { month: "Oct 25", signUps: 10 }, { month: "Nov 25", signUps: 8 },
-  { month: "Dec 25", signUps: 5 }, { month: "Jan 26", signUps: 11 },
-  { month: "Feb 26", signUps: 7 }, { month: "Mar 26", signUps: 9 },
-];
-
-const signUpsLast6 = signUpsByMonth.slice(6);
-
-const revenueByPlan = [
-  { name: "Unlimited", value: 7164, color: "#8fbf3b" },
-  { name: "3x/Week", value: 4470, color: "#063461" },
-  { name: "Drop-In", value: 1650, color: "#a855f7" },
-  { name: "Other", value: 1066, color: "#f59e0b" },
-];
-
-const memberGrowth = [
-  { month: "Apr 25", total: 38 }, { month: "May 25", total: 42 },
-  { month: "Jun 25", total: 44 }, { month: "Jul 25", total: 43 },
-  { month: "Aug 25", total: 48 }, { month: "Sep 25", total: 50 },
-  { month: "Oct 25", total: 53 }, { month: "Nov 25", total: 56 },
-  { month: "Dec 25", total: 55 }, { month: "Jan 26", total: 59 },
-  { month: "Feb 26", total: 62 }, { month: "Mar 26", total: 65 },
-];
-
-const signUpsCancellations = [
-  { month: "Apr 25", signUps: 5, cancellations: 2 }, { month: "May 25", signUps: 7, cancellations: 1 },
-  { month: "Jun 25", signUps: 8, cancellations: 3 }, { month: "Jul 25", signUps: 4, cancellations: 5 },
-  { month: "Aug 25", signUps: 9, cancellations: 2 }, { month: "Sep 25", signUps: 6, cancellations: 3 },
-  { month: "Oct 25", signUps: 10, cancellations: 4 }, { month: "Nov 25", signUps: 8, cancellations: 2 },
-  { month: "Dec 25", signUps: 5, cancellations: 6 }, { month: "Jan 26", signUps: 11, cancellations: 3 },
-  { month: "Feb 26", signUps: 7, cancellations: 2 }, { month: "Mar 26", signUps: 9, cancellations: 3 },
-];
-
-const memberStatusDist = [
-  { name: "Active", value: 48, color: "#8fbf3b" },
-  { name: "Trial", value: 6, color: "#063461" },
-  { name: "Frozen", value: 5, color: "#f59e0b" },
-  { name: "Inactive", value: 6, color: "#ef4444" },
-];
-
-const churnRate = [
-  { month: "Apr 25", rate: 5.3 }, { month: "May 25", rate: 2.4 },
-  { month: "Jun 25", rate: 6.8 }, { month: "Jul 25", rate: 11.6 },
-  { month: "Aug 25", rate: 4.2 }, { month: "Sep 25", rate: 6.0 },
-  { month: "Oct 25", rate: 7.5 }, { month: "Nov 25", rate: 3.6 },
-  { month: "Dec 25", rate: 10.9 }, { month: "Jan 26", rate: 5.1 },
-  { month: "Feb 26", rate: 3.2 }, { month: "Mar 26", rate: 4.6 },
-];
-
-const attendanceByDay = [
-  { day: "Mon", avg: 28 }, { day: "Tue", avg: 32 },
-  { day: "Wed", avg: 25 }, { day: "Thu", avg: 30 },
-  { day: "Fri", avg: 22 }, { day: "Sat", avg: 35 },
-  { day: "Sun", avg: 14 },
-];
-
-const checkInsPerMonth = [
-  { month: "Apr 25", checkIns: 620 }, { month: "May 25", checkIns: 680 },
-  { month: "Jun 25", checkIns: 740 }, { month: "Jul 25", checkIns: 690 },
-  { month: "Aug 25", checkIns: 810 }, { month: "Sep 25", checkIns: 860 },
-  { month: "Oct 25", checkIns: 920 }, { month: "Nov 25", checkIns: 880 },
-  { month: "Dec 25", checkIns: 760 }, { month: "Jan 26", checkIns: 950 },
-  { month: "Feb 26", checkIns: 980 }, { month: "Mar 26", checkIns: 1040 },
-];
-
-/* Heat map: rows = hours 6AM-8PM, cols = Mon-Sun */
 const HOURS = ["6 AM","7 AM","8 AM","9 AM","10 AM","11 AM","12 PM","1 PM","2 PM","3 PM","4 PM","5 PM","6 PM","7 PM","8 PM"];
 const DAYS_WEEK = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const heatData = [
-  [3,4,3,4,2,6,1],[8,10,7,9,6,12,3],[12,14,11,13,9,15,5],[7,8,6,7,5,10,4],
-  [4,5,4,4,3,6,3],[3,4,3,3,2,5,2],[6,7,5,6,4,8,3],[4,5,3,4,3,5,2],
-  [3,4,3,3,2,4,2],[5,6,5,5,4,6,2],[8,9,7,8,6,9,3],[14,15,12,14,10,11,4],
-  [10,11,9,10,7,6,2],[5,6,4,5,3,3,1],[3,3,2,3,2,2,1],
-];
+const PLAN_COLORS = ["#8fbf3b","#063461","#a855f7","#f59e0b","#ef4444","#06b6d4","#ec4899"];
 
-const topRevenueMembers = [
-  { name: "Emily Rodriguez", plan: "Unlimited", revenue: 2388, months: 12 },
-  { name: "Sarah Johnson", plan: "Unlimited", revenue: 1990, months: 10 },
-  { name: "Tom Baker", plan: "Unlimited", revenue: 1592, months: 8 },
-  { name: "Mike Chen", plan: "3x/Week", revenue: 1043, months: 7 },
-  { name: "Lisa Park", plan: "3x/Week", revenue: 894, months: 6 },
-  { name: "James Williams", plan: "Unlimited", revenue: 796, months: 4 },
-  { name: "Rachel Kim", plan: "3x/Week", revenue: 745, months: 5 },
-  { name: "David Martinez", plan: "Drop-In", value: 325, revenue: 325, months: 2 },
-  { name: "Alex Turner", plan: "3x/Week", revenue: 596, months: 4 },
-  { name: "Maria Gonzalez", plan: "Unlimited", revenue: 597, months: 3 },
-];
+function getLast12Months() {
+  const months = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const label = d.toLocaleString("default", { month: "short" }) + " " + String(d.getFullYear()).slice(2);
+    months.push({ date: d, label, key: d.toISOString().slice(0, 7) });
+  }
+  return months;
+}
+
+function buildRevenueByMonth(payments) {
+  const months = getLast12Months();
+  return months.map(m => {
+    const revenue = payments.filter(p => p.status === "paid" && p.date && p.date.startsWith(m.key)).reduce((s, p) => s + (p.amount || 0), 0);
+    return { month: m.label, revenue };
+  });
+}
+
+function buildRevenueByPlan(payments, plans) {
+  const planTotals = {};
+  payments.filter(p => p.status === "paid").forEach(p => {
+    const planName = p.plan || "Other";
+    planTotals[planName] = (planTotals[planName] || 0) + (p.amount || 0);
+  });
+  return Object.entries(planTotals).map(([name, value], i) => ({ name, value, color: PLAN_COLORS[i % PLAN_COLORS.length] }));
+}
+
+function buildSignUpsByMonth(events) {
+  const months = getLast12Months();
+  return months.map(m => {
+    const signUps = events.filter(e => (e.type === "sign_up" || e.type === "plan_change") && e.date && e.date.startsWith(m.key)).length;
+    return { month: m.label, signUps };
+  });
+}
+
+function buildSignUpsCancellations(events) {
+  const months = getLast12Months();
+  return months.map(m => {
+    const signUps = events.filter(e => (e.type === "sign_up" || e.type === "plan_change" || e.type === "upgrade") && e.date && e.date.startsWith(m.key)).length;
+    const cancellations = events.filter(e => (e.type === "cancellation" || e.type === "downgrade") && e.date && e.date.startsWith(m.key)).length;
+    return { month: m.label, signUps, cancellations };
+  });
+}
+
+function buildMemberGrowth(members) {
+  const months = getLast12Months();
+  return months.map(m => {
+    const endOfMonth = new Date(m.date.getFullYear(), m.date.getMonth() + 1, 0);
+    const total = members.filter(mb => {
+      if (!mb.startDate) return false;
+      return new Date(mb.startDate) <= endOfMonth && (mb.membershipStatus === "active" || mb.membershipStatus === "trial");
+    }).length;
+    return { month: m.label, total };
+  });
+}
+
+function buildMemberStatusDist(members) {
+  const counts = { active: 0, trial: 0, frozen: 0, inactive: 0 };
+  members.forEach(m => { if (counts[m.membershipStatus] !== undefined) counts[m.membershipStatus]++; else counts.inactive++; });
+  return [
+    { name: "Active", value: counts.active, color: "#8fbf3b" },
+    { name: "Trial", value: counts.trial, color: "#063461" },
+    { name: "Frozen", value: counts.frozen, color: "#f59e0b" },
+    { name: "Inactive", value: counts.inactive, color: "#ef4444" },
+  ].filter(d => d.value > 0);
+}
+
+function buildChurnRate(members, events) {
+  const months = getLast12Months();
+  return months.map(m => {
+    const activeAtStart = members.filter(mb => mb.startDate && new Date(mb.startDate) < m.date && (mb.membershipStatus === "active" || mb.membershipStatus === "trial")).length;
+    const cancels = events.filter(e => (e.type === "cancellation" || e.type === "downgrade") && e.date && e.date.startsWith(m.key)).length;
+    const rate = activeAtStart > 0 ? Math.round((cancels / activeAtStart) * 1000) / 10 : 0;
+    return { month: m.label, rate };
+  });
+}
+
+function buildAttendanceByDay(attendance) {
+  const dayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const dayCounts = [0,0,0,0,0,0,0];
+  const dayDays = new Set();
+  attendance.forEach(a => {
+    const d = new Date(a.checkInTime || a.date);
+    if (isNaN(d)) return;
+    dayCounts[d.getDay()]++;
+    dayDays.add(d.toISOString().slice(0, 10));
+  });
+  const totalDays = dayDays.size || 1;
+  const reordered = [1,2,3,4,5,6,0]; // Mon-Sun
+  return reordered.map(i => ({ day: dayNames[i], avg: Math.round(dayCounts[i] / Math.max(totalDays / 7, 1)) }));
+}
+
+function buildCheckInsPerMonth(attendance) {
+  const months = getLast12Months();
+  return months.map(m => {
+    const checkIns = attendance.filter(a => {
+      const d = (a.checkInTime || a.date || "").slice(0, 7);
+      return d === m.key;
+    }).length;
+    return { month: m.label, checkIns };
+  });
+}
+
+function buildHeatData(attendance) {
+  const grid = Array.from({ length: 15 }, () => [0,0,0,0,0,0,0]);
+  attendance.forEach(a => {
+    const d = new Date(a.checkInTime || a.date);
+    if (isNaN(d)) return;
+    const hour = d.getHours();
+    const dayIdx = d.getDay(); // 0=Sun
+    const reorderedDay = dayIdx === 0 ? 6 : dayIdx - 1; // Mon=0..Sun=6
+    const hourIdx = hour - 6;
+    if (hourIdx >= 0 && hourIdx < 15) grid[hourIdx][reorderedDay]++;
+  });
+  return grid;
+}
+
+function buildTopRevenueMembers(payments, members, plans) {
+  const memberTotals = {};
+  payments.filter(p => p.status === "paid").forEach(p => {
+    const key = p.member || "Unknown";
+    if (!memberTotals[key]) memberTotals[key] = { name: key, revenue: 0, plan: p.plan || "---", months: new Set() };
+    memberTotals[key].revenue += p.amount || 0;
+    if (p.date) memberTotals[key].months.add(p.date.slice(0, 7));
+  });
+  return Object.values(memberTotals)
+    .map(m => ({ ...m, months: m.months.size }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 10);
+}
 
 /* ── Shared Tooltip ────────────────────────────────── */
 function ChartTooltip({ B }) {
@@ -166,20 +197,38 @@ function Section({ title, children, B }) {
 /* ══════════════════════════════════════════════════════
    TAB: OVERVIEW
    ══════════════════════════════════════════════════════ */
-function OverviewTab({ B, members }) {
+function OverviewTab({ B, members, payments, attendance, membershipEvents, plans }) {
   const tt = ChartTooltip({ B });
   const activeCount = members.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial").length;
+  const revenueData = buildRevenueByMonth(payments);
+  const revenueLast6 = revenueData.slice(6);
+  const signUpsData = buildSignUpsByMonth(membershipEvents);
+  const signUpsLast6 = signUpsData.slice(6);
+  const now = new Date();
+  const thisMonthKey = now.toISOString().slice(0, 7);
+  const monthRevenue = payments.filter(p => p.status === "paid" && p.date && p.date.startsWith(thisMonthKey)).reduce((s, p) => s + (p.amount || 0), 0);
+  const last30 = new Date(now); last30.setDate(last30.getDate() - 30);
+  const last30Attendance = attendance.filter(a => new Date(a.checkInTime || a.date) >= last30);
+  const avgAttendance = last30Attendance.length > 0 ? (last30Attendance.length / 30).toFixed(1) : "0";
+  const churnData = buildChurnRate(members, membershipEvents);
+  const latestChurn = churnData.length > 0 ? churnData[churnData.length - 1].rate : 0;
+  const monthName = now.toLocaleString("default", { month: "long", year: "numeric" });
+  const hasRevData = revenueLast6.some(d => d.revenue > 0);
+  const hasSignUpData = signUpsLast6.some(d => d.signUps > 0);
   return (
     <>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28 }}>
-        <KPI label="Total Members" value={members.length} sub="All statuses" B={B} />
-        <KPI label="Monthly Revenue" value="$14,350" sub="March 2026" B={B} />
-        <KPI label="Avg Attendance/Day" value="26.6" sub="Last 30 days" B={B} />
-        <KPI label="Churn Rate" value="4.6%" sub="March 2026" B={B} />
+        <KPI label="Total Clients" value={members.length} sub="All statuses" B={B} />
+        <KPI label="Monthly Revenue" value={monthRevenue > 0 ? "$" + monthRevenue.toLocaleString() : "$0"} sub={monthName} B={B} />
+        <KPI label="Avg Attendance/Day" value={avgAttendance} sub="Last 30 days" B={B} />
+        <KPI label="Churn Rate" value={latestChurn + "%"} sub={monthName} B={B} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         <Section title="Revenue (Last 6 Months)" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
+            {!hasRevData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No revenue data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={revenueLast6}>
                 <CartesianGrid stroke={B.border} strokeDasharray="3 3" />
@@ -189,10 +238,14 @@ function OverviewTab({ B, members }) {
                 <Line type="monotone" dataKey="revenue" stroke={B.accent} strokeWidth={2.5} dot={{ fill: B.accent, r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
-        <Section title="Member Sign-Ups (Last 6 Months)" B={B}>
+        <Section title="Client Sign-Ups (Last 6 Months)" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
+            {!hasSignUpData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No sign-up data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={signUpsLast6}>
                 <CartesianGrid stroke={B.border} strokeDasharray="3 3" />
@@ -202,6 +255,7 @@ function OverviewTab({ B, members }) {
                 <Bar dataKey="signUps" fill={B.accent} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
       </div>
@@ -212,15 +266,23 @@ function OverviewTab({ B, members }) {
 /* ══════════════════════════════════════════════════════
    TAB: REVENUE
    ══════════════════════════════════════════════════════ */
-function RevenueTab({ B }) {
+function RevenueTab({ B, payments, members, plans }) {
   const tt = ChartTooltip({ B });
   const thStyle = { padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid " + B.border };
   const tdStyle = { padding: "10px 14px", fontSize: 13, color: B.text, borderBottom: "1px solid " + B.border };
+  const revenueByMonth = buildRevenueByMonth(payments);
+  const revenueByPlan = buildRevenueByPlan(payments, plans);
+  const topRevenueMembers = buildTopRevenueMembers(payments, members, plans);
+  const hasRevData = revenueByMonth.some(d => d.revenue > 0);
+  const hasPlanData = revenueByPlan.length > 0 && revenueByPlan.some(d => d.value > 0);
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, marginBottom: 24 }}>
         <Section title="Monthly Revenue (12 Months)" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
+            {!hasRevData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No revenue data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={revenueByMonth}>
                 <defs>
@@ -236,10 +298,14 @@ function RevenueTab({ B }) {
                 <Area type="monotone" dataKey="revenue" stroke={B.accent} strokeWidth={2.5} fill="url(#revGrad)" />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
         <Section title="Revenue by Plan" B={B}>
           <Card style={{ padding: "16px 8px 8px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+            {!hasPlanData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No revenue data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie data={revenueByPlan} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={55} paddingAngle={3} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={{ stroke: B.muted }} style={{ fontSize: 11 }}>
@@ -248,17 +314,21 @@ function RevenueTab({ B }) {
                 <Tooltip {...tt} formatter={v => ["$" + v.toLocaleString()]} />
               </PieChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
       </div>
-      <Section title="Top 10 Revenue-Generating Members" B={B}>
+      <Section title="Top 10 Revenue-Generating Clients" B={B}>
         <Card style={{ padding: 0, overflow: "hidden" }}>
+          {topRevenueMembers.length === 0 ? (
+            <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No payment data yet</div>
+          ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: B.darker }}>
                   <th style={thStyle}>#</th>
-                  <th style={thStyle}>Member</th>
+                  <th style={thStyle}>Client</th>
                   <th style={thStyle}>Plan</th>
                   <th style={thStyle}>Total Revenue</th>
                   <th style={thStyle}>Months Active</th>
@@ -277,6 +347,7 @@ function RevenueTab({ B }) {
               </tbody>
             </table>
           </div>
+          )}
         </Card>
       </Section>
     </>
@@ -286,26 +357,41 @@ function RevenueTab({ B }) {
 /* ══════════════════════════════════════════════════════
    TAB: MEMBERS
    ══════════════════════════════════════════════════════ */
-function MembersTab({ B }) {
+function MembersTab({ B, members, membershipEvents }) {
   const tt = ChartTooltip({ B });
+  const memberGrowth = buildMemberGrowth(members);
+  const signUpsCancellations = buildSignUpsCancellations(membershipEvents);
+  const memberStatusDist = buildMemberStatusDist(members);
+  const churnRate = buildChurnRate(members, membershipEvents);
+  const hasGrowthData = memberGrowth.some(d => d.total > 0);
+  const hasSUCData = signUpsCancellations.some(d => d.signUps > 0 || d.cancellations > 0);
+  const hasStatusData = memberStatusDist.some(d => d.value > 0);
+  const hasChurnData = churnRate.some(d => d.rate > 0);
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
-        <Section title="Active Members (12 Months)" B={B}>
+        <Section title="Active Clients (12 Months)" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
+            {!hasGrowthData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={memberGrowth}>
                 <CartesianGrid stroke={B.border} strokeDasharray="3 3" />
                 <XAxis dataKey="month" tick={{ fill: B.muted, fontSize: 10 }} />
-                <YAxis tick={{ fill: B.muted, fontSize: 11 }} domain={[30, 70]} />
+                <YAxis tick={{ fill: B.muted, fontSize: 11 }} />
                 <Tooltip {...tt} />
                 <Line type="monotone" dataKey="total" stroke={B.accent} strokeWidth={2.5} dot={{ fill: B.accent, r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
         <Section title="Sign-Ups vs Cancellations" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
+            {!hasSUCData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={signUpsCancellations}>
                 <CartesianGrid stroke={B.border} strokeDasharray="3 3" />
@@ -316,12 +402,16 @@ function MembersTab({ B }) {
                 <Bar dataKey="cancellations" fill={B.red} radius={[4, 4, 0, 0]} name="Cancellations" />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <Section title="Member Status Distribution" B={B}>
+        <Section title="Client Status Distribution" B={B}>
           <Card style={{ padding: "16px 8px 8px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+            {!hasStatusData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie data={memberStatusDist} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={55} paddingAngle={3} label={({ name, value }) => `${name} (${value})`} labelLine={{ stroke: B.muted }} style={{ fontSize: 11 }}>
@@ -330,10 +420,14 @@ function MembersTab({ B }) {
                 <Tooltip {...tt} />
               </PieChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
         <Section title="Churn Rate (%)" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
+            {!hasChurnData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={churnRate}>
                 <CartesianGrid stroke={B.border} strokeDasharray="3 3" />
@@ -343,6 +437,7 @@ function MembersTab({ B }) {
                 <Line type="monotone" dataKey="rate" stroke={B.red} strokeWidth={2.5} dot={{ fill: B.red, r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
       </div>
@@ -353,9 +448,12 @@ function MembersTab({ B }) {
 /* ══════════════════════════════════════════════════════
    TAB: ATTENDANCE
    ══════════════════════════════════════════════════════ */
-function AttendanceTab({ B }) {
+function AttendanceTab({ B, attendance }) {
   const tt = ChartTooltip({ B });
-  const maxVal = Math.max(...heatData.flat());
+  const attendanceByDay = buildAttendanceByDay(attendance);
+  const checkInsPerMonth = buildCheckInsPerMonth(attendance);
+  const heatData = buildHeatData(attendance);
+  const maxVal = Math.max(...heatData.flat(), 1);
   const cellColor = (val) => {
     const ratio = val / maxVal;
     if (ratio < 0.15) return B.darker;
@@ -364,11 +462,15 @@ function AttendanceTab({ B }) {
     if (ratio < 0.75) return B.accent + "99";
     return B.accent;
   };
+  const hasAttData = attendance.length > 0;
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
         <Section title="Average Daily Attendance" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
+            {!hasAttData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No attendance data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={attendanceByDay}>
                 <CartesianGrid stroke={B.border} strokeDasharray="3 3" />
@@ -378,10 +480,14 @@ function AttendanceTab({ B }) {
                 <Bar dataKey="avg" fill={B.accent} radius={[4, 4, 0, 0]} name="Avg Attendance" />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
         <Section title="Total Check-Ins per Month" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
+            {!hasAttData ? (
+              <div style={{ padding: 48, textAlign: "center", color: B.dim, fontSize: 14 }}>No attendance data yet</div>
+            ) : (
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={checkInsPerMonth}>
                 <CartesianGrid stroke={B.border} strokeDasharray="3 3" />
@@ -391,6 +497,7 @@ function AttendanceTab({ B }) {
                 <Line type="monotone" dataKey="checkIns" stroke={B.accent} strokeWidth={2.5} dot={{ fill: B.accent, r: 4 }} name="Check-Ins" />
               </LineChart>
             </ResponsiveContainer>
+            )}
           </Card>
         </Section>
       </div>
@@ -569,7 +676,7 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
 
       return {
         id: cls.id,
-        name: cls.name || "Class",
+        name: cls.name || "Session",
         time: cls.startTime ? `${cls.startTime}-${cls.endTime}` : "--",
         instructor: cls.instructor || "--",
         capacityPerSession: cls.capacity || 0,
@@ -694,7 +801,7 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
       {/* KPI Cards */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 24 }}>
         <KPI label="Total Capacity" value={data.totalCapacity.toLocaleString()} sub="Available spots in range" B={B} color={B.blue} />
-        <KPI label="Sessions Sold" value={data.sessionsSold.toLocaleString()} sub="Prorated member allotments" B={B} color={B.purple} />
+        <KPI label="Sessions Sold" value={data.sessionsSold.toLocaleString()} sub="Prorated client allotments" B={B} color={B.purple} />
         <KPI label="Sessions Utilized" value={data.sessionsUtilized.toLocaleString()} sub="Actual check-ins" B={B} color={B.accent} />
         <KPI label="Utilization Rate" value={`${data.utilizationRate}%`} sub="Utilized / Total Capacity" B={B} color={utilColor(data.utilizationRate)} />
       </div>
@@ -752,14 +859,14 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
         </Section>
       </div>
 
-      {/* Class-by-Class Breakdown Table */}
-      <Section title="Class-by-Class Breakdown" B={B}>
+      {/* Session-by-Session Breakdown Table */}
+      <Section title="Session-by-Session Breakdown" B={B}>
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: B.darker }}>
-                  <th style={thStyle}>Class</th>
+                  <th style={thStyle}>Session</th>
                   <th style={thStyle}>Time</th>
                   <th style={thStyle}>Instructor</th>
                   <th style={thStyle}>Cap / Session</th>
@@ -773,7 +880,7 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
                 {data.classBreakdown.length === 0 ? (
                   <tr>
                     <td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: B.dim, padding: 32 }}>
-                      No classes found in the schedule.
+                      No sessions found in the schedule.
                     </td>
                   </tr>
                 ) : (
@@ -873,7 +980,7 @@ function SessionRevenueTab({ B, members, schedule, plans }) {
 
       return {
         id: cls.id,
-        name: cls.name || "Class",
+        name: cls.name || "Session",
         dayTime,
         dayOfWeek: cls.dayOfWeek,
         startTime: cls.startTime || "",
@@ -976,7 +1083,7 @@ function SessionRevenueTab({ B, members, schedule, plans }) {
           <span style={{ fontSize: 12, fontWeight: 600, color: B.muted }}>Sort by:</span>
           <button style={sortBtnStyle("highestRevenue")} onClick={() => setSortBy("highestRevenue")}>Highest Revenue</button>
           <button style={sortBtnStyle("lowestRevenue")} onClick={() => setSortBy("lowestRevenue")}>Lowest Revenue</button>
-          <button style={sortBtnStyle("className")} onClick={() => setSortBy("className")}>Class Name</button>
+          <button style={sortBtnStyle("className")} onClick={() => setSortBy("className")}>Session Name</button>
           <button style={sortBtnStyle("utilization")} onClick={() => setSortBy("utilization")}>Utilization</button>
         </div>
         <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -984,11 +1091,11 @@ function SessionRevenueTab({ B, members, schedule, plans }) {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: B.darker }}>
-                  <th style={thStyle}>Class Name</th>
+                  <th style={thStyle}>Session Name</th>
                   <th style={thStyle}>Day & Time</th>
                   <th style={thStyle}>Instructor</th>
                   <th style={thStyle}>Capacity</th>
-                  <th style={thStyle}>Members Booked</th>
+                  <th style={thStyle}>Clients Booked</th>
                   <th style={thStyle}>Revenue / Session</th>
                   <th style={thStyle}>Revenue / Month</th>
                   <th style={thStyle}>Utilization</th>
@@ -998,7 +1105,7 @@ function SessionRevenueTab({ B, members, schedule, plans }) {
                 {sorted.length === 0 ? (
                   <tr>
                     <td colSpan={8} style={{ ...tdStyle, textAlign: "center", color: B.dim, padding: 32 }}>
-                      No classes found in the schedule.
+                      No sessions found in the schedule.
                     </td>
                   </tr>
                 ) : (
@@ -1123,11 +1230,13 @@ export default function AnalyticsView() {
   const [schedule] = useLocalStorage("hf_schedule", []);
   const [attendance] = useLocalStorage("hf_attendance", []);
   const [plans] = useLocalStorage("hf_plans", []);
+  const [payments] = useLocalStorage("hf_payments", []);
+  const [membershipEvents] = useLocalStorage("hf_membership_events", []);
 
   const TABS = [
     { key: "overview", label: "Overview" },
     { key: "revenue", label: "Revenue" },
-    { key: "members", label: "Members" },
+    { key: "members", label: "Clients" },
     { key: "attendance", label: "Attendance" },
     { key: "utilization", label: "Utilization" },
     { key: "sessionRevenue", label: "Session Revenue" },
@@ -1136,7 +1245,7 @@ export default function AnalyticsView() {
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto" }}>
       <h1 style={{ fontSize: 26, fontWeight: 800, color: B.text, marginBottom: 4 }}>Analytics</h1>
-      <p style={{ color: B.muted, marginBottom: 20, fontSize: 14 }}>Revenue, member growth, attendance trends, and churn charts.</p>
+      <p style={{ color: B.muted, marginBottom: 20, fontSize: 14 }}>Revenue, client growth, attendance trends, and churn charts.</p>
 
       {/* Tab Bar */}
       <div style={{ display: "flex", gap: 4, marginBottom: 24, background: B.darker, borderRadius: 10, padding: 4, width: "fit-content" }}>
@@ -1145,10 +1254,10 @@ export default function AnalyticsView() {
         ))}
       </div>
 
-      {tab === "overview" && <OverviewTab B={B} members={members} />}
-      {tab === "revenue" && <RevenueTab B={B} />}
-      {tab === "members" && <MembersTab B={B} />}
-      {tab === "attendance" && <AttendanceTab B={B} />}
+      {tab === "overview" && <OverviewTab B={B} members={members} payments={payments} attendance={attendance} membershipEvents={membershipEvents} plans={plans} />}
+      {tab === "revenue" && <RevenueTab B={B} payments={payments} members={members} plans={plans} />}
+      {tab === "members" && <MembersTab B={B} members={members} membershipEvents={membershipEvents} />}
+      {tab === "attendance" && <AttendanceTab B={B} attendance={attendance} />}
       {tab === "utilization" && <UtilizationTab B={B} members={members} schedule={schedule} attendance={attendance} plans={plans} />}
       {tab === "sessionRevenue" && <SessionRevenueTab B={B} members={members} schedule={schedule} plans={plans} />}
     </div>
