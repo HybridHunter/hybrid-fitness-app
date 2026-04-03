@@ -11,8 +11,6 @@ const PROTECTED_USERS = [
 
 const DEFAULT_USERS = [
   ...PROTECTED_USERS,
-  { id: "u1", username: "hunter", password: "hybrid123", role: "admin", memberId: null, displayName: "Hunter Grindle", gymId: "hybrid-fitness" },
-  { id: "u2", username: "coach", password: "coach123", role: "coach", memberId: null, displayName: "Coach", gymId: "hybrid-fitness" },
 ];
 
 // Only force-merge protected accounts (superadmin). Everything else is deletable.

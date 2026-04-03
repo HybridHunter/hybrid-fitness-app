@@ -21,11 +21,11 @@ export default function LoginPage() {
     try {
       const result = await login(username.trim(), password);
       if (result.success) {
+        const isSuperAdmin = result.user?.isSuperAdmin;
         if (result.requiresReload) {
-          // Switching gyms — need full reload to clear cached data
-          window.location.href = "/";
+          window.location.href = isSuperAdmin ? "/super-admin" : "/";
         } else {
-          navigate("/");
+          navigate(isSuperAdmin ? "/super-admin" : "/");
         }
       } else {
         setError(result.error);
@@ -207,9 +207,7 @@ export default function LoginPage() {
             Demo Accounts
           </p>
           {[
-            { role: "Super Admin", creds: "superadmin / gymkit2026", color: "#ef4444", note: "All locations" },
-            { role: "Gym Admin", creds: "hunter / hybrid123", color: "#f59e0b", note: "Hybrid Fitness" },
-            { role: "Coach", creds: "coach / coach123", color: "#3b82f6", note: "Hybrid Fitness" },
+            { role: "Super Admin", creds: "superadmin / gymkit2026", color: "#ef4444", note: "Super Admin Panel" },
             { role: "Client", creds: "sarah@example.com / 1234", color: ACCENT, note: "Client portal" },
           ].map((d) => (
             <div
