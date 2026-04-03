@@ -610,7 +610,7 @@ export default function ResourcesView() {
   const { isStaff, isAdmin, currentUser } = useAuth();
   const [resources, setResources] = useLocalStorage(
     "hf_resources",
-    generateDemoResources()
+    []
   );
   const [categories, setCategories] = useLocalStorage(
     "hf_resource_categories",

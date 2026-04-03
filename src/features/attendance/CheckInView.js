@@ -66,7 +66,7 @@ function buildDemoAttendance(members) {
 export default function CheckInView() {
   const B = useTheme();
   const { members, getMember, updateMember } = useMembers();
-  const [attendance, setAttendance] = useLocalStorage("hf_attendance", () => buildDemoAttendance(members));
+  const [attendance, setAttendance] = useLocalStorage("hf_attendance", []);
   const [schedule] = useLocalStorage("hf_schedule", []);
   const [pin, setPin] = useState("");
   const [status, setStatus] = useState("idle"); // idle | success | error

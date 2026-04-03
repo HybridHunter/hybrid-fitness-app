@@ -488,7 +488,7 @@ export default function CommandView() {
     setCustomSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   };
 
-  const activeMembers = members.filter((m) => m.membershipStatus !== "inactive");
+  const activeMembers = members.filter((m) => !!m.membershipPlanId);
 
   // Format class time for display
   const fmtTime = (t) => {

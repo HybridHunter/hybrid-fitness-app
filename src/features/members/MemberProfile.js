@@ -4,6 +4,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
+import { useMemberChangelog } from "../../hooks/useMemberChangelog";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import PaymentModal from "../../components/shared/PaymentModal";
 import { sendEmail } from "../../utils/messaging";
@@ -30,8 +31,11 @@ export default function MemberProfile() {
   const navigate = useNavigate();
   const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
   const { getMember, updateMember } = useMembers();
-  const { logEvent } = useMembershipEvents();
+  const { events, logEvent } = useMembershipEvents();
+  const { logChange, markUndone, getLogForMember } = useMemberChangelog();
   const [tab, setTab] = useState("Overview");
+  const [cancelModal, setCancelModal] = useState(null);
+  const [planChangePrompt, setPlanChangePrompt] = useState(null);
   const [plans] = useLocalStorage("hf_plans", []);
   const [payments, setPayments] = useLocalStorage("hf_payments", []);
   const [paymentMethods, setPaymentMethods] = useLocalStorage("hf_payment_methods", []);
@@ -46,6 +50,8 @@ export default function MemberProfile() {
   const [lastSynced, setLastSynced] = useState(null);
   const [sendingCreds, setSendingCreds] = useState(false);
   const [credToast, setCredToast] = useState(null);
+  const [editingField, setEditingField] = useState(null);
+  const [editValue, setEditValue] = useState("");
 
   const showCredToast = (msg, type = "success") => {
     setCredToast({ msg, type });
@@ -88,7 +94,9 @@ export default function MemberProfile() {
   }
 
   const sc = STATUS_COLORS(B);
-  const statusColor = sc[member.membershipStatus] || B.muted;
+  const memberPlanObj = plans.find(p => p.id === member.membershipPlanId);
+  const effectiveStatus = !member.membershipPlanId ? "inactive" : memberPlanObj?.isTrial ? "trial" : member.membershipStatus === "frozen" ? "frozen" : "active";
+  const statusColor = sc[effectiveStatus] || B.muted;
   const g = member.gamification || {};
   const ms = member.movementScores || {};
   const xpForNext = (g.level || 1) * 200;
@@ -152,31 +160,79 @@ export default function MemberProfile() {
     return parts.join(", ");
   };
 
+  const startEdit = (field, val) => { setEditingField(field); setEditValue(val || ""); };
+  const saveEdit = (field) => {
+    if (!member) return;
+    const updates = {};
+    if (field === "email") updates.email = editValue.trim();
+    else if (field === "phone") updates.phone = editValue.trim();
+    else if (field === "pin") updates.pin = editValue.trim();
+    else if (field === "startDate") updates.startDate = editValue;
+    else if (field === "notes") updates.notes = editValue.trim();
+    else if (field === "dob") updates.dob = editValue;
+    else if (field === "gender") updates.gender = editValue.trim();
+    else if (field === "source") updates.source = editValue.trim();
+    else if (field === "tags") updates.tags = editValue.split(",").map(t => t.trim()).filter(Boolean);
+    else if (field === "street") updates.address = { ...(member.address || {}), street: editValue.trim() };
+    else if (field === "city") updates.address = { ...(member.address || {}), city: editValue.trim() };
+    else if (field === "state") updates.address = { ...(member.address || {}), state: editValue.trim() };
+    else if (field === "zip") updates.address = { ...(member.address || {}), zip: editValue.trim() };
+    else if (field === "emergencyName") updates.emergencyContact = { ...(member.emergencyContact || {}), name: editValue.trim() };
+    else if (field === "emergencyPhone") updates.emergencyContact = { ...(member.emergencyContact || {}), phone: editValue.trim() };
+    else if (field === "emergencyRel") updates.emergencyContact = { ...(member.emergencyContact || {}), relationship: editValue.trim() };
+    updateMember(member.id, updates);
+    setEditingField(null);
+  };
+
+  const EditableRow = ({ label, field, value, type }) => {
+    const isEditing = editingField === field;
+    const inputStyle = { background: B.darker, border: "1px solid " + B.accent + "60", borderRadius: 6, color: B.text, padding: "5px 8px", fontSize: 13, outline: "none", flex: 1, maxWidth: 260 };
+    return (
+      <div style={s.infoRow}>
+        <span style={s.infoLabel}>{label}</span>
+        {isEditing ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {type === "textarea" ? (
+              <textarea value={editValue} onChange={e => setEditValue(e.target.value)} style={{ ...inputStyle, minHeight: 50, resize: "vertical", fontFamily: "inherit" }} autoFocus />
+            ) : (
+              <input type={type || "text"} value={editValue} onChange={e => setEditValue(e.target.value)} style={inputStyle} autoFocus onKeyDown={e => { if (e.key === "Enter") saveEdit(field); if (e.key === "Escape") setEditingField(null); }} />
+            )}
+            <button onClick={() => saveEdit(field)} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: B.accent, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Save</button>
+            <button onClick={() => setEditingField(null)} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 11, cursor: "pointer" }}>Cancel</button>
+          </div>
+        ) : (
+          <span style={{ ...s.infoValue, cursor: "pointer", borderBottom: "1px dashed " + B.border }} onClick={() => startEdit(field, value)}>
+            {value || "---"}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const renderOverview = () => (
     <>
       <div style={s.card}>
         <div style={s.cardTitle}>Client Info</div>
-        {[
-          ["Email", member.email],
-          ["Phone", member.phone],
-          ["PIN", member.pin || "---"],
-          ["Address", formatAddress(member.address)],
-          ["Start Date", formatDate(member.startDate)],
-          ["Notes", member.notes || "---"],
-        ].map(([label, value]) => (
-          <div key={label} style={s.infoRow}>
-            <span style={s.infoLabel}>{label}</span>
-            <span style={s.infoValue}>{value}</span>
-          </div>
-        ))}
-        <div style={{ ...s.infoRow, borderBottom: "none" }}>
-          <span style={s.infoLabel}>Tags</span>
-          <span style={s.infoValue}>
-            {(member.tags || []).length > 0
-              ? member.tags.map((t) => <span key={t} style={s.tagPill}>{t}</span>)
-              : "---"}
-          </span>
-        </div>
+        <EditableRow label="Email" field="email" value={member.email} type="email" />
+        <EditableRow label="Phone" field="phone" value={member.phone} type="tel" />
+        <EditableRow label="PIN" field="pin" value={member.pin} />
+        <EditableRow label="Date of Birth" field="dob" value={member.dob} type="date" />
+        <EditableRow label="Gender" field="gender" value={member.gender} />
+        <EditableRow label="Street" field="street" value={member.address?.street} />
+        <EditableRow label="City" field="city" value={member.address?.city} />
+        <EditableRow label="State" field="state" value={member.address?.state} />
+        <EditableRow label="Zip" field="zip" value={member.address?.zip} />
+        <EditableRow label="Start Date" field="startDate" value={member.startDate} type="date" />
+        <EditableRow label="Lead Source" field="source" value={member.source} />
+        <EditableRow label="Notes" field="notes" value={member.notes} type="textarea" />
+        <EditableRow label="Tags" field="tags" value={(member.tags || []).join(", ")} />
+
+        {/* Emergency Contact */}
+        <div style={{ ...s.cardTitle, marginTop: 16, fontSize: 14 }}>Emergency Contact</div>
+        <EditableRow label="Name" field="emergencyName" value={member.emergencyContact?.name} />
+        <EditableRow label="Phone" field="emergencyPhone" value={member.emergencyContact?.phone} type="tel" />
+        <EditableRow label="Relationship" field="emergencyRel" value={member.emergencyContact?.relationship} />
+
         <div style={{ paddingTop: 12 }}>
           <button
             onClick={handleSendCredentials}
@@ -518,19 +574,69 @@ export default function MemberProfile() {
   const handleSetDefault = (pmId) => {
     setPaymentMethods(prev => prev.map(pm => pm.memberId === member.id ? { ...pm, isDefault: pm.id === pmId } : pm));
   };
-  const handleAssignPlan = (planId) => {
+  const handlePlanDropdownChange = (planId) => {
     const oldPlan = plans.find(p => p.id === member.membershipPlanId);
     const newPlan = plans.find(p => p.id === planId);
-    const memberName = member.firstName + " " + member.lastName;
 
-    if (oldPlan && newPlan && oldPlan.id !== newPlan.id) {
-      const eventType = oldPlan.price < newPlan.price ? "upgrade" : oldPlan.price > newPlan.price ? "downgrade" : "plan_change";
-      logEvent(member.id, memberName, eventType, { oldPlan: oldPlan.name, newPlan: newPlan.name, oldPrice: oldPlan.price, newPrice: newPlan.price });
-    } else if (!oldPlan && newPlan) {
-      logEvent(member.id, memberName, "plan_change", { newPlan: newPlan.name, newPrice: newPlan.price });
+    // Removing plan → show cancel modal with options
+    if (oldPlan && !planId) {
+      setCancelModal({ oldPlan });
+      return;
     }
 
-    updateMember(member.id, { membershipPlanId: planId });
+    // Changing plan → prompt: is this an upgrade/downgrade or should they cancel instead?
+    if (oldPlan && newPlan && oldPlan.id !== newPlan.id) {
+      setPlanChangePrompt({ oldPlan, newPlan, planId });
+      return;
+    }
+
+    // Assigning first plan
+    if (!oldPlan && newPlan) {
+      executePlanAssign(planId, null, newPlan, "join");
+    }
+  };
+
+  const executePlanAssign = (planId, oldPlan, newPlan, eventType, changeDetails = {}) => {
+    const memberName = member.firstName + " " + member.lastName;
+    const details = { ...changeDetails };
+    if (oldPlan) { details.oldPlan = oldPlan.name; details.oldPrice = oldPlan.price; details.isTrial = !!oldPlan.isTrial; }
+    if (newPlan) { details.newPlan = newPlan.name; details.newPrice = newPlan.price; details.isTrial = !!newPlan.isTrial; }
+    logEvent(member.id, memberName, eventType, details);
+    logChange(member.id, memberName, eventType === "join" ? "plan_assigned" : eventType === "cancel" ? "plan_removed" : "plan_changed", "membershipPlanId", oldPlan?.id || null, planId || null);
+    updateMember(member.id, { membershipPlanId: planId || null, cancelScheduled: null });
+  };
+
+  const handleCancelConfirm = (cancelType, futureDate) => {
+    const memberName = member.firstName + " " + member.lastName;
+    const oldPlan = cancelModal.oldPlan;
+
+    if (cancelType === "instant") {
+      logEvent(member.id, memberName, "cancel", { oldPlan: oldPlan.name, oldPrice: oldPlan.price, cancelType: "instant" });
+      logChange(member.id, memberName, "cancel_instant", "membershipPlanId", oldPlan.id, null);
+      updateMember(member.id, { membershipPlanId: null, cancelScheduled: null });
+    } else if (cancelType === "end_of_cycle") {
+      const cancelDate = getNextBillingDate(oldPlan);
+      logEvent(member.id, memberName, "cancel", { oldPlan: oldPlan.name, oldPrice: oldPlan.price, cancelType: "end_of_cycle", effectiveDate: cancelDate });
+      logChange(member.id, memberName, "cancel_scheduled", "cancelScheduled", null, cancelDate);
+      updateMember(member.id, { cancelScheduled: cancelDate });
+      showCredToast(`Cancellation scheduled for ${new Date(cancelDate).toLocaleDateString()}`);
+    } else if (cancelType === "future" && futureDate) {
+      logEvent(member.id, memberName, "cancel", { oldPlan: oldPlan.name, oldPrice: oldPlan.price, cancelType: "future", effectiveDate: futureDate });
+      logChange(member.id, memberName, "cancel_scheduled", "cancelScheduled", null, futureDate);
+      updateMember(member.id, { cancelScheduled: futureDate });
+      showCredToast(`Cancellation scheduled for ${new Date(futureDate).toLocaleDateString()}`);
+    }
+    setCancelModal(null);
+  };
+
+  const getNextBillingDate = (plan) => {
+    const d = new Date();
+    if (plan.billingCycle === "monthly") d.setMonth(d.getMonth() + 1);
+    else if (plan.billingCycle === "every-4-weeks") d.setDate(d.getDate() + 28);
+    else if (plan.billingCycle === "weekly") d.setDate(d.getDate() + 7);
+    else if (plan.billingCycle === "yearly") d.setFullYear(d.getFullYear() + 1);
+    else d.setMonth(d.getMonth() + 1);
+    return d.toISOString().slice(0, 10);
   };
 
   const renderBilling = () => (
@@ -554,7 +660,7 @@ export default function MemberProfile() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
           <select
             value={member.membershipPlanId || ""}
-            onChange={e => handleAssignPlan(e.target.value)}
+            onChange={e => handlePlanDropdownChange(e.target.value)}
             style={{ background: B.darker, border: "1px solid " + B.border, borderRadius: 8, color: B.text, padding: "8px 12px", fontSize: 13, outline: "none", flex: 1 }}
           >
             <option value="">No Plan Assigned</option>
@@ -564,10 +670,27 @@ export default function MemberProfile() {
           </select>
         </div>
         {memberPlan ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div style={s.statBox}><div style={s.statValue}>${memberPlan.price}</div><div style={s.statLabel}>{memberPlan.billingCycle}</div></div>
-            <div style={s.statBox}><div style={s.statValue}>{memberPlan.sessionsIncluded || "\u221E"}</div><div style={s.statLabel}>Sessions / Cycle</div></div>
-          </div>
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={s.statBox}><div style={s.statValue}>${memberPlan.price}</div><div style={s.statLabel}>{memberPlan.billingCycle}</div></div>
+              <div style={s.statBox}><div style={s.statValue}>{memberPlan.sessionsIncluded || "\u221E"}</div><div style={s.statLabel}>Sessions / Cycle</div></div>
+            </div>
+            {member.cancelScheduled && (
+              <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: B.red + "12", border: "1px solid " + B.red + "30", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: B.red }}>Cancellation Scheduled</div>
+                  <div style={{ fontSize: 12, color: B.red + "cc" }}>Effective {new Date(member.cancelScheduled).toLocaleDateString()}</div>
+                </div>
+                <button onClick={() => {
+                  updateMember(member.id, { cancelScheduled: null });
+                  logChange(member.id, member.firstName + " " + member.lastName, "cancel_revoked", "cancelScheduled", member.cancelScheduled, null);
+                  showCredToast("Cancellation revoked");
+                }} style={{ padding: "5px 14px", borderRadius: 8, border: "none", background: B.red + "22", color: B.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  Revoke
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <div style={{ color: B.dim, fontSize: 13 }}>No plan assigned. Select one above.</div>
         )}
@@ -678,30 +801,121 @@ export default function MemberProfile() {
     </>
   );
 
+  const memberChangelog = member ? getLogForMember(member.id) : [];
+  const memberEvents = member ? events.filter(e => e.memberId === member.id).sort((a, b) => b.date.localeCompare(a.date)) : [];
+
+  const EVENT_ICONS = { join: "\u2795", cancel: "\u274C", freeze: "\u2744\uFE0F", unfreeze: "\u2600\uFE0F", upgrade: "\u2B06\uFE0F", downgrade: "\u2B07\uFE0F", plan_change: "\u21C4" };
+  const ACTION_LABELS = { plan_assigned: "Plan Assigned", plan_removed: "Plan Removed", plan_changed: "Plan Changed", cancel_scheduled: "Cancel Scheduled", cancel_instant: "Cancelled Instantly", cancel_revoked: "Cancel Revoked", status_changed: "Status Changed", field_updated: "Updated" };
+
+  const handleUndo = (entry) => {
+    if (!member) return;
+    const memberName = member.firstName + " " + member.lastName;
+    if (entry.field === "membershipPlanId") {
+      updateMember(member.id, { membershipPlanId: entry.oldValue, cancelScheduled: null });
+      logChange(member.id, memberName, "field_updated", "membershipPlanId", entry.newValue, entry.oldValue);
+      const plan = plans.find(p => p.id === entry.oldValue);
+      if (plan) {
+        logEvent(member.id, memberName, "join", { newPlan: plan.name, newPrice: plan.price, note: "Undo: restored previous plan" });
+      }
+    } else if (entry.field === "cancelScheduled") {
+      updateMember(member.id, { cancelScheduled: entry.oldValue || null });
+      logChange(member.id, memberName, "cancel_revoked", "cancelScheduled", entry.newValue, entry.oldValue);
+    } else if (entry.field === "membershipStatus") {
+      updateMember(member.id, { membershipStatus: entry.oldValue });
+    }
+    markUndone(entry.id);
+    showCredToast("Change undone");
+  };
+
   const renderHistory = () => (
-    <div style={s.card}>
-      <div style={s.cardTitle}>Attendance History</div>
-      {memberAttendance.length === 0 ? (
-        <div style={{ color: B.dim, fontSize: 13, padding: "12px 0" }}>No check-in records found.</div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {memberAttendance.slice(0, 50).map(a => {
-            const d = new Date(a.checkInTime);
-            const dateStr = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-            const timeStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-            const className = a.classId ? classById(a.classId) : "Open Gym";
-            return (
-              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: B.green, flexShrink: 0 }} />
-                <div style={{ flex: 1, fontSize: 13, color: B.text }}>{dateStr} at {timeStr}</div>
-                <span style={{ fontSize: 11, color: B.muted, padding: "2px 8px", borderRadius: 6, background: B.card }}>{className}</span>
-                <span style={{ fontSize: 11, color: B.dim }}>{a.method || "pin"}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    <>
+      {/* Member Change Log */}
+      <div style={s.card}>
+        <div style={s.cardTitle}>Change Log</div>
+        {memberChangelog.length === 0 && memberEvents.length === 0 ? (
+          <div style={{ color: B.dim, fontSize: 13, padding: "12px 0" }}>No changes recorded.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {/* Membership events */}
+            {memberEvents.slice(0, 30).map(e => {
+              const d = new Date(e.date);
+              const dateStr = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+              const timeStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+              const icon = EVENT_ICONS[e.type] || "\uD83D\uDD18";
+              let desc = e.type;
+              if (e.type === "join") desc = `Joined${e.details?.newPlan ? " — " + e.details.newPlan : ""}`;
+              else if (e.type === "cancel") desc = `Cancelled${e.details?.oldPlan ? " — " + e.details.oldPlan : ""}${e.details?.cancelType === "end_of_cycle" ? " (end of cycle)" : e.details?.cancelType === "future" ? ` (effective ${e.details.effectiveDate})` : ""}`;
+              else if (e.type === "upgrade") desc = `Upgraded: ${e.details?.oldPlan || "?"} → ${e.details?.newPlan || "?"}`;
+              else if (e.type === "downgrade") desc = `Downgraded: ${e.details?.oldPlan || "?"} → ${e.details?.newPlan || "?"}`;
+              else if (e.type === "freeze") desc = `Membership frozen${e.details?.reason ? " — " + e.details.reason : ""}`;
+              else if (e.type === "unfreeze") desc = "Membership unfrozen";
+              else if (e.type === "plan_change") desc = `Plan changed: ${e.details?.oldPlan || "?"} → ${e.details?.newPlan || "?"}`;
+              return (
+                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+                  <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, color: B.text }}>{desc}</div>
+                    <div style={{ fontSize: 11, color: B.dim }}>{dateStr} at {timeStr}{e.changedBy ? ` \u2022 by ${e.changedBy}` : ""}</div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Changelog entries with undo */}
+            {memberChangelog.filter(e => !e.undone).slice(0, 20).map(e => {
+              const d = new Date(e.date);
+              const dateStr = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+              const label = ACTION_LABELS[e.action] || e.action;
+              const oldPlan = e.field === "membershipPlanId" && e.oldValue ? plans.find(p => p.id === e.oldValue) : null;
+              const newPlan = e.field === "membershipPlanId" && e.newValue ? plans.find(p => p.id === e.newValue) : null;
+              let detail = "";
+              if (oldPlan && newPlan) detail = `${oldPlan.name} → ${newPlan.name}`;
+              else if (oldPlan && !newPlan) detail = `Removed: ${oldPlan.name}`;
+              else if (!oldPlan && newPlan) detail = `Assigned: ${newPlan.name}`;
+              else if (e.field === "cancelScheduled" && e.newValue) detail = `Effective: ${new Date(e.newValue).toLocaleDateString()}`;
+              return (
+                <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, background: B.card, border: "1px solid " + B.border + "44" }}>
+                  <span style={{ fontSize: 14, flexShrink: 0 }}>{"\uD83D\uDD04"}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, color: B.text, fontWeight: 600 }}>{label}</div>
+                    {detail && <div style={{ fontSize: 12, color: B.muted }}>{detail}</div>}
+                    <div style={{ fontSize: 11, color: B.dim }}>{dateStr}{e.changedBy ? ` \u2022 by ${e.changedBy}` : ""}</div>
+                  </div>
+                  <button onClick={() => handleUndo(e)} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + B.orange + "40", background: B.orange + "12", color: B.orange, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    Undo
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Attendance History */}
+      <div style={s.card}>
+        <div style={s.cardTitle}>Attendance History</div>
+        {memberAttendance.length === 0 ? (
+          <div style={{ color: B.dim, fontSize: 13, padding: "12px 0" }}>No check-in records found.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {memberAttendance.slice(0, 50).map(a => {
+              const d = new Date(a.checkInTime);
+              const dateStr = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+              const timeStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+              const className = a.classId ? classById(a.classId) : "Open Gym";
+              return (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: B.green, flexShrink: 0 }} />
+                  <div style={{ flex: 1, fontSize: 13, color: B.text }}>{dateStr} at {timeStr}</div>
+                  <span style={{ fontSize: 11, color: B.muted, padding: "2px 8px", borderRadius: 6, background: B.card }}>{className}</span>
+                  <span style={{ fontSize: 11, color: B.dim }}>{a.method || "pin"}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
   );
 
   return (
@@ -736,7 +950,8 @@ export default function MemberProfile() {
           <div style={s.metaRow}>
             <span style={s.metaText}>{member.email}</span>
             <span style={s.metaText}>{member.phone}</span>
-            <span style={s.badge(statusColor)}>{member.membershipStatus}</span>
+            <span style={s.badge(statusColor)}>{effectiveStatus}</span>
+            {member.dob && <span style={s.metaText}>Age {Math.floor((Date.now() - new Date(member.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))}</span>}
             <span style={s.metaText}>Client since {formatDate(member.startDate)}</span>
           </div>
         </div>
@@ -772,6 +987,120 @@ export default function MemberProfile() {
           boxShadow: "0 8px 24px rgba(0,0,0,0.3)", maxWidth: 360,
         }}>
           {credToast.msg}
+        </div>
+      )}
+
+      {/* Cancel Membership Modal */}
+      {cancelModal && (() => {
+        const CancelOption = ({ icon, title, desc, type }) => (
+          <button onClick={() => {
+            if (type === "future") setCancelModal(prev => ({ ...prev, showDatePicker: true, selectedType: type }));
+            else handleCancelConfirm(type);
+          }} style={{
+            width: "100%", padding: "14px 16px", borderRadius: 12, cursor: "pointer", textAlign: "left",
+            border: "1px solid " + B.border, background: B.dark, display: "flex", alignItems: "center", gap: 14,
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = B.accent; e.currentTarget.style.background = B.accent + "08"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = B.border; e.currentTarget.style.background = B.dark; }}>
+            <span style={{ fontSize: 24 }}>{icon}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: B.text }}>{title}</div>
+              <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>{desc}</div>
+            </div>
+          </button>
+        );
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={() => setCancelModal(null)}>
+            <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 480, width: "90%" }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: B.text }}>Cancel Membership</h3>
+              <p style={{ color: B.muted, fontSize: 13, margin: "0 0 6px" }}>
+                <strong>{member.firstName} {member.lastName}</strong> — {cancelModal.oldPlan.name} (${cancelModal.oldPlan.price}/{cancelModal.oldPlan.billingCycle})
+              </p>
+              <p style={{ color: B.muted, fontSize: 12, margin: "0 0 16px" }}>
+                Would they like to switch to a different plan instead? Cancelling affects your attrition metrics.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <CancelOption icon={"\uD83D\uDD04"} title="End of Billing Cycle" desc={`Keeps access until ${getNextBillingDate(cancelModal.oldPlan)}`} type="end_of_cycle" />
+                <CancelOption icon={"\u26A1"} title="Cancel Immediately" desc="Removes plan and access right now" type="instant" />
+                <CancelOption icon={"\uD83D\uDCC5"} title="Schedule Future Date" desc="Choose a specific date to cancel" type="future" />
+              </div>
+
+              {cancelModal.showDatePicker && (
+                <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center" }}>
+                  <input type="date" value={cancelModal.futureDate || ""} onChange={e => setCancelModal(prev => ({ ...prev, futureDate: e.target.value }))}
+                    style={{ flex: 1, background: B.darker, border: "1px solid " + B.border, borderRadius: 8, color: B.text, padding: "8px 12px", fontSize: 13, outline: "none" }} />
+                  <button onClick={() => cancelModal.futureDate && handleCancelConfirm("future", cancelModal.futureDate)}
+                    disabled={!cancelModal.futureDate}
+                    style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: cancelModal.futureDate ? B.red : B.dim, color: "#fff", fontSize: 13, fontWeight: 700, cursor: cancelModal.futureDate ? "pointer" : "not-allowed", opacity: cancelModal.futureDate ? 1 : 0.5 }}>
+                    Confirm
+                  </button>
+                </div>
+              )}
+
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid " + B.border + "44", display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={() => setCancelModal(null)} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
+                  Go Back
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Plan Change Prompt — suggests upgrade/downgrade classification */}
+      {planChangePrompt && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={() => setPlanChangePrompt(null)}>
+          <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 480, width: "90%" }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 16px", fontSize: 18, fontWeight: 700, color: B.text }}>Confirm Plan Change</h3>
+            <p style={{ color: B.text, fontSize: 14, margin: "0 0 8px" }}>
+              Change <strong>{member.firstName} {member.lastName}</strong>'s plan?
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", margin: "8px 0 16px" }}>
+              <div style={{ padding: "6px 12px", borderRadius: 8, background: B.red + "15", color: B.red, fontSize: 13, fontWeight: 600 }}>
+                {planChangePrompt.oldPlan.name} (${planChangePrompt.oldPlan.price})
+              </div>
+              <span style={{ color: B.muted, fontSize: 18 }}>{"\u2192"}</span>
+              <div style={{ padding: "6px 12px", borderRadius: 8, background: B.accent + "15", color: B.accent, fontSize: 13, fontWeight: 600 }}>
+                {planChangePrompt.newPlan.name} (${planChangePrompt.newPlan.price})
+              </div>
+            </div>
+            <p style={{ color: B.muted, fontSize: 12, margin: "0 0 12px", lineHeight: 1.5 }}>
+              Classify this change correctly — it affects your analytics. Don't cancel and re-add as a new membership, that will count as attrition.
+            </p>
+            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              {[
+                { type: "upgrade", label: "Upgrade", color: B.accent, icon: "\u2B06\uFE0F" },
+                { type: "downgrade", label: "Downgrade", color: B.orange, icon: "\u2B07\uFE0F" },
+                { type: "plan_change", label: "Lateral Change", color: B.blue || "#3b82f6", icon: "\u21C4" },
+              ].map(opt => (
+                <button key={opt.type} onClick={() => setPlanChangePrompt(prev => ({ ...prev, changeType: opt.type }))}
+                  style={{
+                    flex: 1, padding: "12px 8px", borderRadius: 10, cursor: "pointer", textAlign: "center",
+                    border: planChangePrompt.changeType === opt.type ? `2px solid ${opt.color}` : `1px solid ${B.border}`,
+                    background: planChangePrompt.changeType === opt.type ? opt.color + "15" : B.dark,
+                    color: planChangePrompt.changeType === opt.type ? opt.color : B.muted,
+                    transition: "all 0.15s",
+                  }}>
+                  <div style={{ fontSize: 20, marginBottom: 4 }}>{opt.icon}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>{opt.label}</div>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setPlanChangePrompt(null)} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+              <button onClick={() => {
+                const ct = planChangePrompt.changeType;
+                if (!ct) return;
+                executePlanAssign(planChangePrompt.planId, planChangePrompt.oldPlan, planChangePrompt.newPlan, ct);
+                setPlanChangePrompt(null);
+              }}
+                disabled={!planChangePrompt.changeType}
+                style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: planChangePrompt.changeType ? B.accent : B.dim, color: "#fff", cursor: planChangePrompt.changeType ? "pointer" : "not-allowed", fontSize: 13, fontWeight: 700, opacity: planChangePrompt.changeType ? 1 : 0.5 }}>
+                Confirm
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

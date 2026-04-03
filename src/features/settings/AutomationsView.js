@@ -106,7 +106,7 @@ const DEMO_LOG = [
 export default function AutomationsView() {
   const B = useTheme();
   const [automations, setAutomations] = useLocalStorage("hf_automations", DEFAULT_AUTOMATIONS);
-  const [log, setLog] = useLocalStorage("hf_automation_log", DEMO_LOG);
+  const [log, setLog] = useLocalStorage("hf_automation_log", []);
   const [expandedId, setExpandedId] = useState(null);
 
   // Custom automation builder state

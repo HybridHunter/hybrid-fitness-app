@@ -1,12 +1,25 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
+import { useMemberChangelog } from "../../hooks/useMemberChangelog";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { sendEmail } from "../../utils/messaging";
 
 const STATUS_COLORS = (B) => ({ active: B.green, trial: B.orange, frozen: B.blue, inactive: B.red });
 const STATUS_OPTIONS = ["All", "Active", "Trial", "Frozen", "Inactive"];
+
+// Derive effective status: no plan = inactive, trial plan = trial, otherwise use stored status
+const getEffectiveStatus = (m, plans) => {
+  if (!m.membershipPlanId) return "inactive";
+  if (plans) {
+    const plan = plans.find(p => p.id === m.membershipPlanId);
+    if (plan?.isTrial) return "trial";
+  }
+  if (m.membershipStatus === "frozen") return "frozen";
+  return "active";
+};
 const PATTERNS = ["Squat", "Hinge", "Lunge", "Push", "Pull", "Core", "Carry"];
 
 function getInitials(f, l) {
@@ -30,21 +43,136 @@ export default function MembersView() {
   const B = useTheme();
   const navigate = useNavigate();
   const { members, addMember, updateMember, deleteMember } = useMembers();
-  const { logEvent } = useMembershipEvents();
+  const { events, logEvent } = useMembershipEvents();
+  const { log: changelog, markUndone, logChange } = useMemberChangelog();
+  const [plans] = useLocalStorage("hf_plans", []);
   const sc = STATUS_COLORS(B);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
+  const [mergeSelection, setMergeSelection] = useState(null); // { a, b, picks }
+
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("Active");
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm());
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
   const [toast, setToast] = useState(null);
   const [sendingCredentials, setSendingCredentials] = useState(null);
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
+  };
+
+  // ── Duplicate detection ──
+  const duplicateGroups = useMemo(() => {
+    const groups = [];
+    const seen = new Set();
+    for (let i = 0; i < members.length; i++) {
+      if (seen.has(members[i].id)) continue;
+      const a = members[i];
+      for (let j = i + 1; j < members.length; j++) {
+        if (seen.has(members[j].id)) continue;
+        const b = members[j];
+        const reasons = [];
+        const nameA = `${a.firstName} ${a.lastName}`.toLowerCase().trim();
+        const nameB = `${b.firstName} ${b.lastName}`.toLowerCase().trim();
+        if (nameA && nameA === nameB) reasons.push("Same name");
+        if (a.email && b.email && a.email.toLowerCase() === b.email.toLowerCase()) reasons.push("Same email");
+        if (a.phone && b.phone && a.phone.replace(/\D/g, "") === b.phone.replace(/\D/g, "") && a.phone.replace(/\D/g, "").length >= 7) reasons.push("Same phone");
+        if (reasons.length > 0) {
+          groups.push({ a, b, reasons });
+          seen.add(a.id);
+          seen.add(b.id);
+        }
+      }
+    }
+    return groups;
+  }, [members]);
+
+  const MERGE_FIELDS = [
+    { key: "firstName", label: "First Name" },
+    { key: "lastName", label: "Last Name" },
+    { key: "email", label: "Email" },
+    { key: "phone", label: "Phone" },
+    { key: "pin", label: "PIN" },
+    { key: "startDate", label: "Start Date" },
+    { key: "notes", label: "Notes" },
+    { key: "membershipPlanId", label: "Plan" },
+    { key: "dob", label: "Date of Birth" },
+    { key: "gender", label: "Gender" },
+    { key: "source", label: "Lead Source" },
+  ];
+
+  const startMerge = (group) => {
+    const picks = {};
+    MERGE_FIELDS.forEach(f => {
+      const aVal = group.a[f.key];
+      const bVal = group.b[f.key];
+      // Default: pick whichever has data, prefer A
+      picks[f.key] = aVal ? "a" : bVal ? "b" : "a";
+    });
+    // For address, pick whichever has more data
+    const aAddr = group.a.address || {};
+    const bAddr = group.b.address || {};
+    picks._address = (aAddr.street || aAddr.city) ? "a" : (bAddr.street || bAddr.city) ? "b" : "a";
+    setMergeSelection({ a: group.a, b: group.b, picks, reasons: group.reasons });
+  };
+
+  const executeMerge = () => {
+    if (!mergeSelection) return;
+    const { a, b, picks } = mergeSelection;
+    const merged = {};
+    MERGE_FIELDS.forEach(f => {
+      merged[f.key] = picks[f.key] === "a" ? a[f.key] : b[f.key];
+    });
+    // Merge address
+    merged.address = picks._address === "a" ? (a.address || {}) : (b.address || {});
+    // Merge tags (combine unique)
+    const allTags = [...new Set([...(a.tags || []), ...(b.tags || [])])];
+    merged.tags = allTags;
+    // Merge notes (combine if both have content)
+    if (a.notes && b.notes && a.notes !== b.notes) {
+      merged.notes = `${a.notes}\n---\n${b.notes}`;
+    }
+    // Keep higher gamification stats
+    const gA = a.gamification || {};
+    const gB = b.gamification || {};
+    merged.gamification = {
+      level: Math.max(gA.level || 1, gB.level || 1),
+      xp: Math.max(gA.xp || 0, gB.xp || 0),
+      totalWorkouts: (gA.totalWorkouts || 0) + (gB.totalWorkouts || 0),
+      totalWeightLifted: (gA.totalWeightLifted || 0) + (gB.totalWeightLifted || 0),
+      badges: [...new Set([...(gA.badges || []), ...(gB.badges || [])])],
+      currentStreak: Math.max(gA.currentStreak || 0, gB.currentStreak || 0),
+      longestStreak: Math.max(gA.longestStreak || 0, gB.longestStreak || 0),
+    };
+    // Keep better movement scores
+    const msA = a.movementScores || {};
+    const msB = b.movementScores || {};
+    merged.movementScores = {};
+    ["Squat","Hinge","Lunge","Push","Pull","Core","Carry"].forEach(p => {
+      merged.movementScores[p] = Math.max(msA[p] || 0, msB[p] || 0);
+    });
+    // Keep inbody with more history
+    const ibA = a.inbody || { history: [] };
+    const ibB = b.inbody || { history: [] };
+    merged.inbody = (ibA.history || []).length >= (ibB.history || []).length ? ibA : ibB;
+    // Emergency contact — pick whichever exists
+    merged.emergencyContact = a.emergencyContact?.name ? a.emergencyContact : b.emergencyContact;
+    // Auto-charge — keep if either had it
+    merged.autoCharge = a.autoCharge || b.autoCharge;
+
+    // Keep record A, update with merged data, delete B
+    const keepId = a.id;
+    const deleteId = b.id;
+    updateMember(keepId, merged);
+    deleteMember(deleteId);
+    logChange(keepId, `${merged.firstName} ${merged.lastName}`, "field_updated", "merge", deleteId, keepId);
+    setMergeSelection(null);
+    showToast(`Merged into ${merged.firstName} ${merged.lastName}`);
   };
 
   const getBranding = () => {
@@ -82,7 +210,7 @@ export default function MembersView() {
     const matchesSearch = !q ||
       `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) ||
       (m.email || "").toLowerCase().includes(q);
-    const matchesStatus = statusFilter === "All" || m.membershipStatus === statusFilter.toLowerCase();
+    const matchesStatus = statusFilter === "All" || getEffectiveStatus(m, plans) === statusFilter.toLowerCase();
     return matchesSearch && matchesStatus;
   });
 
@@ -107,7 +235,6 @@ export default function MembersView() {
       phone: form.phone.trim(),
       pin: form.pin.trim(),
       startDate: form.startDate,
-      membershipStatus: form.membershipStatus,
       notes: form.notes.trim(),
       tags: form.tagsStr.split(",").map(t => t.trim()).filter(Boolean),
       address: { street: form.street.trim(), city: form.city.trim(), state: form.state.trim(), zip: form.zip.trim(), country: "US" },
@@ -115,13 +242,13 @@ export default function MembersView() {
     if (!data.firstName || !data.lastName) return;
     const fullName = data.firstName + " " + data.lastName;
     if (editId) {
+      // Only include status changes for edits (frozen/unfrozen)
+      if (form.membershipStatus) data.membershipStatus = form.membershipStatus;
       const existing = members.find(m => m.id === editId);
       const oldStatus = existing?.membershipStatus;
       const newStatus = data.membershipStatus;
       if (oldStatus && newStatus && oldStatus !== newStatus) {
-        if (newStatus === "inactive") {
-          logEvent(editId, fullName, "cancel", { oldStatus, newStatus });
-        } else if (newStatus === "frozen") {
+        if (newStatus === "frozen") {
           logEvent(editId, fullName, "freeze", { oldStatus, newStatus });
         } else if (oldStatus === "frozen" && newStatus === "active") {
           logEvent(editId, fullName, "unfreeze", { oldStatus, newStatus });
@@ -129,8 +256,8 @@ export default function MembersView() {
       }
       updateMember(editId, data);
     } else {
+      // New client — no join event yet, that happens when a plan is assigned
       const newMember = addMember(data);
-      logEvent(newMember.id, fullName, "join", { newStatus: data.membershipStatus });
       // Auto-send welcome email
       if (data.email) {
         const branding = getBranding();
@@ -153,7 +280,6 @@ export default function MembersView() {
     setModalOpen(false);
   };
 
-  const handleDelete = (id) => { deleteMember(id); setConfirmDeleteId(null); };
 
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
 
@@ -208,7 +334,19 @@ export default function MembersView() {
         <h1 style={s.title}>
           Clients<span style={s.count}>({members.length})</span>
         </h1>
-        <button style={s.addBtn} onClick={openAdd}>+ Add Client</button>
+        <div style={{ display: "flex", gap: 10 }}>
+          {duplicateGroups.length > 0 && (
+            <button onClick={() => setShowMerge(!showMerge)} style={{
+              background: showMerge ? B.orange + "18" : "transparent",
+              border: "1px solid " + (showMerge ? B.orange + "40" : B.border),
+              borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 700,
+              color: B.orange, cursor: "pointer",
+            }}>
+              Merge Duplicates ({duplicateGroups.length})
+            </button>
+          )}
+          <button style={s.addBtn} onClick={openAdd}>+ Add Client</button>
+        </div>
       </div>
 
       {/* Search + Filter */}
@@ -226,13 +364,239 @@ export default function MembersView() {
         </div>
       </div>
 
+      {/* Merge Duplicates Panel */}
+      {showMerge && duplicateGroups.length > 0 && (
+        <div style={{ background: B.card, border: "1px solid " + (B.orange || "#f59e0b") + "30", borderRadius: 14, padding: "16px 20px", marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: B.text, marginBottom: 12 }}>
+            {duplicateGroups.length} Potential Duplicate{duplicateGroups.length !== 1 ? "s" : ""} Found
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {duplicateGroups.map((g, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, background: B.darker, border: "1px solid " + B.border + "44" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: B.text }}>
+                    {g.a.firstName} {g.a.lastName} &amp; {g.b.firstName} {g.b.lastName}
+                  </div>
+                  <div style={{ fontSize: 11, color: B.muted, marginTop: 2 }}>
+                    {g.reasons.join(" \u2022 ")}
+                    {g.a.email && <span> \u2022 {g.a.email}</span>}
+                  </div>
+                </div>
+                <button onClick={() => startMerge(g)} style={{
+                  padding: "6px 16px", borderRadius: 8, border: "none",
+                  background: B.accent, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                }}>
+                  Merge
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Merge Modal */}
+      {mergeSelection && (() => {
+        const { a, b, picks, reasons } = mergeSelection;
+        const getVal = (member, key) => {
+          if (key === "membershipPlanId") {
+            const plan = plans.find(p => p.id === member[key]);
+            return plan ? plan.name : member[key] || "";
+          }
+          return member[key] || "";
+        };
+        const fieldBtn = (fieldKey, side) => {
+          const selected = picks[fieldKey] === side;
+          const member = side === "a" ? a : b;
+          const val = getVal(member, fieldKey);
+          return (
+            <button onClick={() => setMergeSelection(prev => ({ ...prev, picks: { ...prev.picks, [fieldKey]: side } }))}
+              style={{
+                flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", textAlign: "left",
+                border: selected ? `2px solid ${B.accent}` : `1px solid ${B.border}`,
+                background: selected ? B.accent + "12" : B.dark,
+                color: val ? B.text : B.dim, fontSize: 13, transition: "all 0.1s",
+                fontWeight: selected ? 600 : 400,
+              }}>
+              {val || "(empty)"}
+            </button>
+          );
+        };
+        const addrA = a.address || {};
+        const addrB = b.address || {};
+        const addrStrA = [addrA.street, addrA.city, addrA.state, addrA.zip].filter(Boolean).join(", ");
+        const addrStrB = [addrB.street, addrB.city, addrB.state, addrB.zip].filter(Boolean).join(", ");
+
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={() => setMergeSelection(null)}>
+            <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 620, width: "95%", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 700, color: B.text }}>Merge Duplicates</h3>
+              <p style={{ color: B.muted, fontSize: 12, margin: "0 0 16px" }}>
+                {reasons.join(" \u2022 ")} — click to pick which value to keep for each field.
+              </p>
+
+              {/* Column headers */}
+              <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+                <div style={{ width: 100, fontSize: 11, fontWeight: 700, color: B.dim, textTransform: "uppercase" }}>Field</div>
+                <div style={{ flex: 1, fontSize: 11, fontWeight: 700, color: B.accent, textTransform: "uppercase" }}>{a.firstName} {a.lastName}</div>
+                <div style={{ flex: 1, fontSize: 11, fontWeight: 700, color: B.orange, textTransform: "uppercase" }}>{b.firstName} {b.lastName}</div>
+              </div>
+
+              {/* Field rows */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                {MERGE_FIELDS.map(f => (
+                  <div key={f.key} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <div style={{ width: 100, fontSize: 12, color: B.muted, fontWeight: 600, flexShrink: 0 }}>{f.label}</div>
+                    {fieldBtn(f.key, "a")}
+                    {fieldBtn(f.key, "b")}
+                  </div>
+                ))}
+                {/* Address row */}
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <div style={{ width: 100, fontSize: 12, color: B.muted, fontWeight: 600, flexShrink: 0 }}>Address</div>
+                  <button onClick={() => setMergeSelection(prev => ({ ...prev, picks: { ...prev.picks, _address: "a" } }))}
+                    style={{ flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", textAlign: "left", border: picks._address === "a" ? `2px solid ${B.accent}` : `1px solid ${B.border}`, background: picks._address === "a" ? B.accent + "12" : B.dark, color: addrStrA ? B.text : B.dim, fontSize: 13, fontWeight: picks._address === "a" ? 600 : 400 }}>
+                    {addrStrA || "(empty)"}
+                  </button>
+                  <button onClick={() => setMergeSelection(prev => ({ ...prev, picks: { ...prev.picks, _address: "b" } }))}
+                    style={{ flex: 1, padding: "8px 10px", borderRadius: 8, cursor: "pointer", textAlign: "left", border: picks._address === "b" ? `2px solid ${B.accent}` : `1px solid ${B.border}`, background: picks._address === "b" ? B.accent + "12" : B.dark, color: addrStrB ? B.text : B.dim, fontSize: 13, fontWeight: picks._address === "b" ? 600 : 400 }}>
+                    {addrStrB || "(empty)"}
+                  </button>
+                </div>
+              </div>
+
+              <p style={{ fontSize: 11, color: B.dim, margin: "0 0 16px", lineHeight: 1.5 }}>
+                Tags, badges, and workout stats will be combined. Movement scores will keep the higher value. The second record will be deleted.
+              </p>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => setMergeSelection(null)} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+                <button onClick={executeMerge} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                  Merge Records
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Activity Log Toggle */}
+      <div style={{ marginBottom: 16 }}>
+        <button onClick={() => setShowHistory(!showHistory)} style={{
+          background: showHistory ? B.accent + "15" : "transparent",
+          border: "1px solid " + (showHistory ? B.accent + "40" : B.border),
+          borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 600,
+          color: showHistory ? B.accent : B.muted, cursor: "pointer", transition: "all 0.15s",
+        }}>
+          {showHistory ? "\u25BC" : "\u25B6"} Activity Log
+        </button>
+      </div>
+
+      {showHistory && (() => {
+        const EVENT_ICONS = { join: "\u2795", cancel: "\u274C", freeze: "\u2744\uFE0F", unfreeze: "\u2600\uFE0F", upgrade: "\u2B06\uFE0F", downgrade: "\u2B07\uFE0F", plan_change: "\u21C4" };
+        const ACTION_LABELS = { plan_assigned: "Plan Assigned", plan_removed: "Plan Removed", plan_changed: "Plan Changed", cancel_scheduled: "Cancel Scheduled", cancel_instant: "Cancelled", cancel_revoked: "Cancel Revoked", status_changed: "Status Changed", field_updated: "Updated" };
+
+        const allEvents = [...(Array.isArray(events) ? events : [])].sort((a, b) => b.date.localeCompare(a.date));
+        const activeChangelog = changelog.filter(e => !e.undone);
+
+        const handleUndo = (entry) => {
+          const m = members.find(x => x.id === entry.memberId);
+          if (!m) return;
+          const memberName = m.firstName + " " + m.lastName;
+          if (entry.field === "membershipPlanId") {
+            updateMember(m.id, { membershipPlanId: entry.oldValue, cancelScheduled: null });
+            logChange(m.id, memberName, "field_updated", "membershipPlanId", entry.newValue, entry.oldValue);
+            const plan = plans.find(p => p.id === entry.oldValue);
+            if (plan) logEvent(m.id, memberName, "join", { newPlan: plan.name, newPrice: plan.price, note: "Undo" });
+          } else if (entry.field === "cancelScheduled") {
+            updateMember(m.id, { cancelScheduled: entry.oldValue || null });
+            logChange(m.id, memberName, "cancel_revoked", "cancelScheduled", entry.newValue, entry.oldValue);
+          } else if (entry.field === "membershipStatus") {
+            updateMember(m.id, { membershipStatus: entry.oldValue });
+          }
+          markUndone(entry.id);
+          showToast("Change undone");
+        };
+
+        return (
+          <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 14, padding: "16px 20px", marginBottom: 20 }}>
+            {/* Changelog entries with undo */}
+            {activeChangelog.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Recent Changes (Undoable)</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {activeChangelog.slice(0, 15).map(e => {
+                    const d = new Date(e.date);
+                    const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    const timeStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                    const label = ACTION_LABELS[e.action] || e.action;
+                    const oldPlan = e.field === "membershipPlanId" && e.oldValue ? plans.find(p => p.id === e.oldValue) : null;
+                    const newPlan = e.field === "membershipPlanId" && e.newValue ? plans.find(p => p.id === e.newValue) : null;
+                    let detail = "";
+                    if (oldPlan && newPlan) detail = `${oldPlan.name} \u2192 ${newPlan.name}`;
+                    else if (oldPlan && !newPlan) detail = `Removed: ${oldPlan.name}`;
+                    else if (!oldPlan && newPlan) detail = `Assigned: ${newPlan.name}`;
+                    else if (e.field === "cancelScheduled" && e.newValue) detail = `Effective: ${new Date(e.newValue).toLocaleDateString()}`;
+                    return (
+                      <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, background: B.darker, border: "1px solid " + B.border + "33" }}>
+                        <span style={{ fontSize: 14 }}>{"\uD83D\uDD04"}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: B.text }}><strong>{e.memberName}</strong> — {label}</div>
+                          {detail && <div style={{ fontSize: 12, color: B.muted }}>{detail}</div>}
+                          <div style={{ fontSize: 11, color: B.dim }}>{dateStr} at {timeStr}{e.changedBy ? ` \u2022 by ${e.changedBy}` : ""}</div>
+                        </div>
+                        <button onClick={() => handleUndo(e)} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + (B.orange || "#f59e0b") + "40", background: (B.orange || "#f59e0b") + "12", color: B.orange || "#f59e0b", fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+                          Undo
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* All membership events */}
+            <div style={{ fontSize: 12, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Membership Events</div>
+            {allEvents.length === 0 ? (
+              <div style={{ color: B.dim, fontSize: 13, padding: "8px 0" }}>No events recorded yet.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 400, overflowY: "auto" }}>
+                {allEvents.slice(0, 50).map(e => {
+                  const d = new Date(e.date);
+                  const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                  const timeStr = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                  const icon = EVENT_ICONS[e.type] || "\uD83D\uDD18";
+                  let desc = e.type;
+                  if (e.type === "join") desc = `Joined${e.details?.newPlan ? " \u2014 " + e.details.newPlan + (e.details.newPrice ? " ($" + e.details.newPrice + ")" : "") : ""}`;
+                  else if (e.type === "cancel") desc = `Cancelled${e.details?.oldPlan ? " \u2014 " + e.details.oldPlan + (e.details.oldPrice ? " ($" + e.details.oldPrice + ")" : "") : ""}${e.details?.cancelType === "end_of_cycle" ? " (end of cycle)" : e.details?.cancelType === "future" ? " (scheduled)" : ""}`;
+                  else if (e.type === "upgrade") desc = `Upgraded: ${e.details?.oldPlan || "?"} \u2192 ${e.details?.newPlan || "?"}`;
+                  else if (e.type === "downgrade") desc = `Downgraded: ${e.details?.oldPlan || "?"} \u2192 ${e.details?.newPlan || "?"}`;
+                  else if (e.type === "freeze") desc = `Frozen${e.details?.reason ? " \u2014 " + e.details.reason : ""}`;
+                  else if (e.type === "unfreeze") desc = "Unfrozen";
+                  else if (e.type === "plan_change") desc = `Plan changed: ${e.details?.oldPlan || "?"} \u2192 ${e.details?.newPlan || "?"}`;
+                  return (
+                    <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+                      <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: B.text }}><strong>{e.memberName}</strong> — {desc}</div>
+                        <div style={{ fontSize: 11, color: B.dim }}>{dateStr} at {timeStr}{e.changedBy ? ` \u2022 by ${e.changedBy}` : ""}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Member Cards */}
       {filtered.length === 0 ? (
         <div style={s.empty}>No clients match your filters.</div>
       ) : (
         <div style={s.grid}>
           {filtered.map((m) => {
-            const color = sc[m.membershipStatus] || B.muted;
+            const effectiveStatus = getEffectiveStatus(m, plans);
+            const color = sc[effectiveStatus] || B.muted;
             return (
               <div key={m.id} style={s.card}>
                 <div style={s.cardTop}>
@@ -243,7 +607,7 @@ export default function MembersView() {
                     <div style={s.phone}>{m.phone}</div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                    <span style={s.badge(color)}>{m.membershipStatus}</span>
+                    <span style={s.badge(color)}>{effectiveStatus}</span>
                   </div>
                 </div>
 
@@ -293,7 +657,6 @@ export default function MembersView() {
                     }));
                     window.location.href = `/gym/${gymId}/`;
                   }}>View as Client</button>
-                  <button style={s.actionBtn(B.red + "18", B.red)} onClick={() => setConfirmDeleteId(m.id)}>Delete</button>
                 </div>
               </div>
             );
@@ -347,20 +710,20 @@ export default function MembersView() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: editId ? "1fr 1fr" : "1fr", gap: 14 }}>
               <div style={s.field}>
                 <label style={s.label}>Start Date</label>
                 <input style={s.input} type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />
               </div>
-              <div style={s.field}>
-                <label style={s.label}>Status</label>
-                <select style={s.select} value={form.membershipStatus} onChange={(e) => set("membershipStatus", e.target.value)}>
-                  <option value="active">Active</option>
-                  <option value="trial">Trial</option>
-                  <option value="frozen">Frozen</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
+              {editId && (
+                <div style={s.field}>
+                  <label style={s.label}>Status</label>
+                  <select style={s.select} value={form.membershipStatus} onChange={(e) => set("membershipStatus", e.target.value)}>
+                    <option value="active">Active</option>
+                    <option value="frozen">Frozen</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             <div style={s.field}>
@@ -414,21 +777,6 @@ export default function MembersView() {
         </div>
       )}
 
-      {/* Delete Confirm Dialog */}
-      {confirmDeleteId && (
-        <div style={s.confirmOverlay} onClick={() => setConfirmDeleteId(null)}>
-          <div style={s.confirmBox} onClick={(e) => e.stopPropagation()}>
-            <div style={s.confirmText}>
-              <strong>Delete this client?</strong><br />
-              This action cannot be undone.
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              <button style={s.cancelBtn} onClick={() => setConfirmDeleteId(null)}>Cancel</button>
-              <button style={s.deleteBtn} onClick={() => handleDelete(confirmDeleteId)}>Delete</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

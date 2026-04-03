@@ -197,11 +197,14 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
   const alerts = useMemo(() => {
     const now = new Date();
     const result = [];
-    const activeMembers = members.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial");
+    const activeMembers = members.filter(m => !!m.membershipPlanId);
 
     activeMembers.forEach(m => {
       const alertKey = `noshow_${m.id}`;
       if (dismissedAlerts.includes(alertKey)) return;
+      // Don't flag brand new clients — give them 7 days before alerting
+      const addedDate = m.createdAt ? new Date(m.createdAt) : (m.startDate ? new Date(m.startDate) : null);
+      if (addedDate && daysBetween(addedDate, now) < 7) return;
       const memberCheckins = attendance.filter(a => a.memberId === m.id);
       const plan = plans.find(p => p.id === m.membershipPlanId);
       if (memberCheckins.length === 0) {
@@ -805,7 +808,7 @@ export default function BusinessDashboard() {
     const cur = periodKey(d);
     d.setMonth(d.getMonth() - 1);
     const prev = periodKey(d);
-    return [{ period: cur, adSpend: 2333.69 }, { period: prev, adSpend: 1987.50 }];
+    return [];
   });
 
   /* ---- Customizable Sales Funnel state ---- */
@@ -834,19 +837,67 @@ export default function BusinessDashboard() {
   const now = new Date();
   const [selectedPeriod, setSelectedPeriod] = useState(periodKey(now));
   const [preset, setPreset] = useState("this_month");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [showCustomRange, setShowCustomRange] = useState(false);
 
-  const { start: rangeStart, end: rangeEnd } = periodRange(selectedPeriod);
-  const prior = priorPeriod(selectedPeriod);
-  const { start: priorStart, end: priorEnd } = periodRange(prior);
+  // Compute actual date range based on preset or custom dates
+  const { rangeStart, rangeEnd, priorStart, priorEnd } = useMemo(() => {
+    const d = new Date();
+    let rs, re, ps, pe;
+
+    if (preset === "this_quarter") {
+      const qMonth = Math.floor(d.getMonth() / 3) * 3;
+      rs = new Date(d.getFullYear(), qMonth, 1);
+      re = new Date(d.getFullYear(), qMonth + 3, 0, 23, 59, 59, 999);
+      ps = new Date(d.getFullYear(), qMonth - 3, 1);
+      pe = new Date(d.getFullYear(), qMonth, 0, 23, 59, 59, 999);
+    } else if (preset === "last_quarter") {
+      const qMonth = Math.floor(d.getMonth() / 3) * 3 - 3;
+      const y = qMonth < 0 ? d.getFullYear() - 1 : d.getFullYear();
+      const m = ((qMonth % 12) + 12) % 12;
+      rs = new Date(y, m, 1);
+      re = new Date(y, m + 3, 0, 23, 59, 59, 999);
+      ps = new Date(y, m - 3, 1);
+      pe = new Date(y, m, 0, 23, 59, 59, 999);
+    } else if (preset === "this_year") {
+      rs = new Date(d.getFullYear(), 0, 1);
+      re = new Date(d.getFullYear(), 11, 31, 23, 59, 59, 999);
+      ps = new Date(d.getFullYear() - 1, 0, 1);
+      pe = new Date(d.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+    } else if (preset === "last_year") {
+      rs = new Date(d.getFullYear() - 1, 0, 1);
+      re = new Date(d.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+      ps = new Date(d.getFullYear() - 2, 0, 1);
+      pe = new Date(d.getFullYear() - 2, 11, 31, 23, 59, 59, 999);
+    } else if (preset === "custom" && customStart && customEnd) {
+      rs = new Date(customStart + "T00:00:00");
+      re = new Date(customEnd + "T23:59:59.999");
+      const duration = re - rs;
+      ps = new Date(rs.getTime() - duration - 86400000);
+      pe = new Date(rs.getTime() - 1);
+    } else {
+      // Default: single month (this_month, last_month, or month picker)
+      const r = periodRange(selectedPeriod);
+      rs = r.start;
+      re = r.end;
+      const p = priorPeriod(selectedPeriod);
+      const pr = periodRange(p);
+      ps = pr.start;
+      pe = pr.end;
+    }
+    return { rangeStart: rs, rangeEnd: re, priorStart: ps, priorEnd: pe };
+  }, [preset, selectedPeriod, customStart, customEnd]);
 
   /* ---- Ad Spend (only manual metric) ---- */
   const currentDashMetrics = useMemo(() => {
     return dashMetrics.find(m => m.period === selectedPeriod) || { period: selectedPeriod, adSpend: 0 };
   }, [dashMetrics, selectedPeriod]);
 
+  const priorPeriodKey = priorPeriod(selectedPeriod);
   const priorDashMetrics = useMemo(() => {
-    return dashMetrics.find(m => m.period === prior) || { period: prior, adSpend: 0 };
-  }, [dashMetrics, prior]);
+    return dashMetrics.find(m => m.period === priorPeriodKey) || { period: priorPeriodKey, adSpend: 0 };
+  }, [dashMetrics, priorPeriodKey]);
 
   const adSpend = currentDashMetrics.adSpend || 0;
 
@@ -885,8 +936,8 @@ export default function BusinessDashboard() {
      ========================== */
 
   // Current Recurring = sum of plan prices for all active members with a plan
-  const activeMembersAll = members.filter(m => m.membershipStatus === "active");
-  const frozenMembers = members.filter(m => m.membershipStatus === "frozen");
+  const activeMembersAll = members.filter(m => !!m.membershipPlanId && m.membershipStatus !== "frozen");
+  const frozenMembers = members.filter(m => m.membershipPlanId && m.membershipStatus === "frozen");
 
   const recurringPlans = plans.filter(p => ["monthly", "annual", "weekly", "every-4-weeks"].includes(p.billingCycle));
   const recurringPlanIds = new Set(recurringPlans.map(p => p.id));
@@ -909,12 +960,16 @@ export default function BusinessDashboard() {
   const recurringCount = recurringMembers.length;
 
   // New Members & New Recurring = from membership events type="join" in period
+  // Trial plan joins don't count as new clients — they're prospects, not members
   const joinEventsInPeriod = eventsInPeriod.filter(e => e.type === "join");
   const joinEventsInPrior = eventsInPrior.filter(e => e.type === "join");
-  const newMemberCount = joinEventsInPeriod.length;
-  const priorNewMemberCount = joinEventsInPrior.length;
-  const newRecurringRevenue = joinEventsInPeriod.reduce((sum, e) => sum + (e.details?.newPrice || 0), 0);
-  const priorNewRecurringRevenue = joinEventsInPrior.reduce((sum, e) => sum + (e.details?.newPrice || 0), 0);
+  const nonTrialJoinsInPeriod = joinEventsInPeriod.filter(e => !e.details?.isTrial);
+  const nonTrialJoinsInPrior = joinEventsInPrior.filter(e => !e.details?.isTrial);
+  const trialJoinsInPeriod = joinEventsInPeriod.filter(e => e.details?.isTrial);
+  const newMemberCount = nonTrialJoinsInPeriod.length;
+  const priorNewMemberCount = nonTrialJoinsInPrior.length;
+  const newRecurringRevenue = nonTrialJoinsInPeriod.reduce((sum, e) => sum + (e.details?.newPrice || 0), 0);
+  const priorNewRecurringRevenue = nonTrialJoinsInPrior.reduce((sum, e) => sum + (e.details?.newPrice || 0), 0);
 
   // Lost Members & Lost Recurring = from membership events type="cancel" in period
   const cancelEventsInPeriod = eventsInPeriod.filter(e => e.type === "cancel");
@@ -1032,7 +1087,7 @@ export default function BusinessDashboard() {
   const cashCollected = paidPaymentsInPeriod
     .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
-  // FEO = payments from members in their first 30 days
+  // FEO = revenue from members on trial plans only
   const feoPayments = useMemo(() => {
     return paidPaymentsInPeriod
       .filter(p => {
@@ -1040,12 +1095,11 @@ export default function BusinessDashboard() {
           m.id === p.memberId ||
           `${m.firstName} ${m.lastName}` === p.member
         );
-        if (!member) return false;
-        const startDate = new Date(member.startDate || member.createdAt);
-        const payDate = new Date(p.date || p.timestamp || p.createdAt);
-        return daysBetween(startDate, payDate) <= 30;
+        if (!member || !member.membershipPlanId) return false;
+        const plan = plans.find(pl => pl.id === member.membershipPlanId);
+        return plan?.isTrial === true;
       });
-  }, [paidPaymentsInPeriod, members]);
+  }, [paidPaymentsInPeriod, members, plans]);
 
   const feoCollected = feoPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
@@ -1057,6 +1111,7 @@ export default function BusinessDashboard() {
   /* ---- Preset handlers ---- */
   const handlePreset = (p) => {
     setPreset(p);
+    setShowCustomRange(false);
     const d = new Date();
     switch (p) {
       case "this_month":
@@ -1066,13 +1121,14 @@ export default function BusinessDashboard() {
         d.setMonth(d.getMonth() - 1);
         setSelectedPeriod(periodKey(d));
         break;
-      case "this_quarter": {
-        const qMonth = Math.floor(d.getMonth() / 3) * 3;
-        setSelectedPeriod(periodKey(new Date(d.getFullYear(), qMonth, 1)));
-        break;
-      }
+      case "this_quarter":
+      case "last_quarter":
       case "this_year":
-        setSelectedPeriod(`${d.getFullYear()}-01`);
+      case "last_year":
+        // Range is computed in the useMemo above
+        break;
+      case "custom":
+        setShowCustomRange(true);
         break;
       default:
         break;
@@ -1241,8 +1297,8 @@ export default function BusinessDashboard() {
       }
 
       case "recurring_members": {
-        const activeCount = recurringMembers.filter(m => m.membershipStatus === "active").length;
-        const trialCount = members.filter(m => m.membershipStatus === "trial").length;
+        const activeCount = recurringMembers.filter(m => !!m.membershipPlanId && m.membershipStatus !== "frozen").length;
+        const trialCount = members.filter(m => !!m.membershipPlanId && m.membershipStatus === "trial").length;
         const rows = recurringMembers.map(m => {
           const plan = getMemberPlan(m);
           return {
@@ -1669,11 +1725,12 @@ export default function BusinessDashboard() {
           };
         });
         return wrapper(
-          "FEO Collected (First 30 Days)",
+          "FEO Collected (Trial Plans)",
           fmtDollar(feoCollected),
           [
             { label: "FEO Total", value: fmtDollar(feoCollected) },
-            { label: "FEO Payments", value: rows.length },
+            { label: "Trial Payments", value: rows.length },
+            { label: "Trial Joins This Period", value: trialJoinsInPeriod.length },
           ],
           <DrillTable B={B} columns={[
             { key: "name", label: "Member" },
@@ -1933,7 +1990,10 @@ export default function BusinessDashboard() {
             { key: "this_month", label: "This Month" },
             { key: "last_month", label: "Last Month" },
             { key: "this_quarter", label: "This Quarter" },
+            { key: "last_quarter", label: "Last Quarter" },
             { key: "this_year", label: "This Year" },
+            { key: "last_year", label: "Last Year" },
+            { key: "custom", label: "Custom" },
           ].map(p => (
             <button key={p.key} onClick={() => handlePreset(p.key)} style={{
               ...presetBtnBase,
@@ -1944,7 +2004,7 @@ export default function BusinessDashboard() {
           ))}
           <select
             value={selectedPeriod}
-            onChange={e => { setSelectedPeriod(e.target.value); setPreset(""); }}
+            onChange={e => { setSelectedPeriod(e.target.value); setPreset(""); setShowCustomRange(false); }}
             style={{
               padding: "5px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600,
               background: B.card, color: B.text, border: "1px solid " + B.border,
@@ -1955,6 +2015,19 @@ export default function BusinessDashboard() {
           </select>
         </div>
       </div>
+      {showCustomRange && (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: B.muted }}>From:</span>
+          <input type="date" value={customStart} onChange={e => { setCustomStart(e.target.value); setPreset("custom"); }}
+            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid " + B.border, background: B.card, color: B.text, fontSize: 13, outline: "none" }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: B.muted }}>To:</span>
+          <input type="date" value={customEnd} onChange={e => { setCustomEnd(e.target.value); setPreset("custom"); }}
+            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid " + B.border, background: B.card, color: B.text, fontSize: 13, outline: "none" }} />
+          <span style={{ fontSize: 11, color: B.dim }}>
+            {customStart && customEnd ? `${Math.ceil((new Date(customEnd) - new Date(customStart)) / 86400000) + 1} days` : "Select dates"}
+          </span>
+        </div>
+      )}
 
       {/* ============ SECTION 2: Revenue & Membership KPIs (green banner) ============ */}
       <div style={{
@@ -2211,7 +2284,7 @@ export default function BusinessDashboard() {
         <Card onClick={() => setDrillDown({ type: "feo_collected" })} style={{ padding: 16, textAlign: "center", ...clickableKpi }}>
           <div style={cardLabelStyle}>FEO Collected</div>
           <div style={cardValueStyle}>{fmtDollar(feoCollected)}</div>
-          <div style={autoTag}>auto -- first 30 day payments</div>
+          <div style={autoTag}>auto -- trial plan payments</div>
         </Card>
 
         <Card style={{ padding: 16, textAlign: "center" }}>

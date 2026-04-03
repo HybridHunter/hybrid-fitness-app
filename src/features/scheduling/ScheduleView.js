@@ -55,7 +55,7 @@ export default function ScheduleView() {
     const users = auth?.users || [];
     return users.filter(u => u.role === "admin" || u.role === "coach");
   }, [auth]);
-  const [classes, setClasses] = useLocalStorage("hf_schedule", INITIAL_CLASSES);
+  const [classes, setClasses] = useLocalStorage("hf_schedule", []);
   const [instructorCustom, setInstructorCustom] = useState(false);
   const [workouts] = useLocalStorage("hf_w", []);
   const [weekOffset, setWeekOffset] = useState(0);

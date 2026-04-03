@@ -359,7 +359,7 @@ function NewEventModal({ B, onClose, onSave }) {
 /* ==== MAIN VIEW ==== */
 export default function EventsView() {
   const B = useTheme();
-  const [events, setEvents] = useLocalStorage("hf_community_events", generateDemoEvents());
+  const [events, setEvents] = useLocalStorage("hf_community_events", []);
   const [tab, setTab] = useState("upcoming");
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showNew, setShowNew] = useState(false);

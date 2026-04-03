@@ -51,7 +51,7 @@ export default function StationSetup() {
 
   // Active members for dropdown
   const activeMembers = useMemo(
-    () => members.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial"),
+    () => members.filter(m => !!m.membershipPlanId),
     [members]
   );
 

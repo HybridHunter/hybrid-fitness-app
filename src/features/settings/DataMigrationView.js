@@ -4,17 +4,48 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembers } from "../../hooks/useMembers";
 import Card from "../../components/ui/Card";
 
-/* ── CSV Parser ─────────────────────────────────────────────── */
+/* ── CSV Parser (handles quoted fields with commas and newlines) ── */
 function parseCSV(text) {
-  const lines = text.trim().split('\n');
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-  const rows = lines.slice(1).filter(l => l.trim()).map(line => {
-    const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+  const rows = [];
+  let current = [];
+  let field = "";
+  let inQuotes = false;
+  const chars = text.trim();
+
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (chars[i + 1] === '"') { field += '"'; i++; } // escaped quote
+        else inQuotes = false;
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"') { inQuotes = true; }
+      else if (c === ',') { current.push(field.trim()); field = ""; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && chars[i + 1] === '\n') i++;
+        current.push(field.trim());
+        field = "";
+        if (current.length > 1 || current[0] !== "") rows.push(current);
+        current = [];
+      } else {
+        field += c;
+      }
+    }
+  }
+  current.push(field.trim());
+  if (current.length > 1 || current[0] !== "") rows.push(current);
+
+  if (rows.length === 0) return { headers: [], rows: [] };
+  const headers = rows[0];
+  const dataRows = rows.slice(1).map(vals => {
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = values[i] || ''; });
+    headers.forEach((h, i) => { obj[h] = vals[i] || ""; });
     return obj;
   });
-  return { headers, rows };
+  return { headers, rows: dataRows };
 }
 
 /* ── GymKit Fields ──────────────────────────────────────────── */
@@ -24,16 +55,39 @@ const GYMKIT_FIELDS = [
   { value: "lastName", label: "Last Name" },
   { value: "email", label: "Email" },
   { value: "phone", label: "Phone" },
+  { value: "dob", label: "Date of Birth" },
+  { value: "gender", label: "Gender" },
   { value: "street", label: "Street Address" },
   { value: "city", label: "City" },
   { value: "state", label: "State" },
   { value: "zip", label: "Zip Code" },
-  { value: "plan", label: "Plan" },
+  { value: "country", label: "Country" },
+  { value: "emergencyName", label: "Emergency Contact Name" },
+  { value: "emergencyPhone", label: "Emergency Contact Phone" },
   { value: "startDate", label: "Start Date" },
   { value: "pin", label: "PIN" },
   { value: "notes", label: "Notes" },
   { value: "tags", label: "Tags" },
-  { value: "status", label: "Status" },
+  { value: "source", label: "Lead Source" },
+  { value: "squat", label: "Movement: Squat (-3 to +3)" },
+  { value: "hinge", label: "Movement: Hinge (-3 to +3)" },
+  { value: "lunge", label: "Movement: Lunge (-3 to +3)" },
+  { value: "push", label: "Movement: Push (-3 to +3)" },
+  { value: "pull", label: "Movement: Pull (-3 to +3)" },
+  { value: "core", label: "Movement: Core (-3 to +3)" },
+  { value: "carry", label: "Movement: Carry (-3 to +3)" },
+  { value: "weight", label: "Body Weight (lbs)" },
+  { value: "bodyFatPercent", label: "Body Fat %" },
+  { value: "totalWorkouts", label: "Total Workouts" },
+  { value: "autoCharge", label: "Auto-Charge (yes/no)" },
+  { value: "age", label: "Age (calculates DOB if no DOB provided)" },
+  { value: "relationship", label: "Relationship / Type (e.g. Parent, Spouse — marks as emergency contact)" },
+  { value: "contacts", label: "Contacts (GymDesk format: Name (Relation) - Phone)" },
+  { value: "checkinCode", label: "Check-in Code / Member ID" },
+  { value: "secondPhone", label: "2nd Phone" },
+  { value: "secondEmail", label: "2nd Email" },
+  { value: "lastVisit", label: "Last Visit" },
+  { value: "membership", label: "Membership (info only)" },
 ];
 
 /* ── Auto-mapping dictionary ────────────────────────────────── */
@@ -42,15 +96,36 @@ const AUTO_MAP = {
   "last name": "lastName", "last_name": "lastName", "lastname": "lastName", "lname": "lastName",
   "email": "email", "email address": "email", "email_address": "email",
   "phone": "phone", "phone number": "phone", "phone_number": "phone", "mobile": "phone", "cell": "phone",
-  "street": "street", "address": "street", "street address": "street", "street_address": "street", "address1": "street",
+  "dob": "dob", "date of birth": "dob", "date_of_birth": "dob", "birthday": "dob", "birth date": "dob", "birthdate": "dob",
+  "gender": "gender", "sex": "gender",
+  "street": "street", "address": "street", "street address": "street", "street_address": "street", "address1": "street", "address line 1": "street",
   "city": "city", "state": "state", "province": "state",
-  "zip": "zip", "zipcode": "zip", "zip_code": "zip", "postal": "zip", "postal_code": "zip",
-  "plan": "plan", "membership": "plan", "membership_plan": "plan",
-  "start date": "startDate", "start_date": "startDate", "startdate": "startDate", "join date": "startDate", "join_date": "startDate",
-  "pin": "pin", "code": "pin",
+  "zip": "zip", "zipcode": "zip", "zip_code": "zip", "postal": "zip", "postal_code": "zip", "postal code": "zip",
+  "country": "country",
+  "emergency contact": "emergencyName", "emergency_contact": "emergencyName", "emergency name": "emergencyName", "emergency contact name": "emergencyName", "ice name": "emergencyName",
+  "emergency phone": "emergencyPhone", "emergency_phone": "emergencyPhone", "emergency contact phone": "emergencyPhone", "ice phone": "emergencyPhone",
+  "start date": "startDate", "start_date": "startDate", "startdate": "startDate", "join date": "startDate", "join_date": "startDate", "joined": "startDate",
+  "pin": "pin", "code": "pin", "password": "pin",
   "notes": "notes", "note": "notes", "comments": "notes",
   "tags": "tags", "tag": "tags", "labels": "tags",
-  "status": "status", "membership_status": "status",
+  "source": "source", "lead source": "source", "lead_source": "source", "referral": "source", "how did you hear": "source",
+  "squat": "squat", "hinge": "hinge", "lunge": "lunge", "push": "push", "pull": "pull", "core": "core", "carry": "carry",
+  "weight": "weight", "body weight": "weight", "bodyweight": "weight",
+  "body fat": "bodyFatPercent", "body fat %": "bodyFatPercent", "bodyfat": "bodyFatPercent", "bf%": "bodyFatPercent",
+  "total workouts": "totalWorkouts", "workouts": "totalWorkouts", "workout count": "totalWorkouts",
+  "auto charge": "autoCharge", "auto-charge": "autoCharge", "autocharge": "autoCharge",
+  "relationship": "relationship", "contact type": "relationship", "relation": "relationship",
+  "contacts": "contacts", "contact": "contacts", "emergency contacts": "contacts",
+  "check-in code": "checkinCode", "checkin code": "checkinCode", "check in code": "checkinCode", "member id": "checkinCode", "member_id": "checkinCode",
+  "2nd phone": "secondPhone", "second phone": "secondPhone", "alt phone": "secondPhone", "alternate phone": "secondPhone",
+  "2nd email": "secondEmail", "second email": "secondEmail", "alt email": "secondEmail",
+  "last visit": "lastVisit", "last_visit": "lastVisit", "last check-in": "lastVisit", "last checkin": "lastVisit",
+  "membership": "membership", "memberships": "membership",
+  "joined": "startDate", "join date": "startDate",
+  "date of birth": "dob",
+  "zip code": "zip",
+  "address": "street",
+  "type": "skip", "age": "age", "ranks": "skip", "last payment": "skip", "last login": "skip", "parent/guardian first name": "skip", "status": "skip",
 };
 
 function autoMapColumn(header) {
@@ -161,7 +236,7 @@ const MOCK_API_DATA = {
 };
 
 /* ── Template CSV ───────────────────────────────────────────── */
-const TEMPLATE_CSV = "First Name,Last Name,Email,Phone,Street,City,State,Zip,Plan,Start Date,PIN,Notes,Tags\n";
+const TEMPLATE_CSV = "First Name,Last Name,Email,Phone,Date of Birth,Gender,Street,City,State,Zip,Country,Emergency Contact,Emergency Phone,Start Date,PIN,Notes,Tags,Lead Source,Squat,Hinge,Lunge,Push,Pull,Core,Carry,Body Weight,Body Fat %,Total Workouts,Auto-Charge\n";
 
 function downloadTemplate() {
   const blob = new Blob([TEMPLATE_CSV], { type: "text/csv" });
@@ -213,10 +288,33 @@ export default function DataMigrationView() {
 
   const platform = PLATFORMS.find(p => p.id === selectedPlatform);
 
+  /* ── Helper: detect non-member rows (emergency contacts, family, junk) ── */
+  const EC_KEYWORDS_PREVIEW = ["parent", "mother", "father", "spouse", "significant other", "partner", "guardian", "emergency", "husband", "wife", "sibling", "brother", "sister", "friend", "relative", "family member", "family"];
+  const isNonMemberRow = (row) => {
+    const relCol = Object.entries(fieldMapping).find(([, v]) => v === "relationship");
+    if (relCol) {
+      const relVal = (row[relCol[0]] || "").toLowerCase();
+      if (relVal && EC_KEYWORDS_PREVIEW.some(kw => relVal.includes(kw))) return true;
+    }
+    const fnCol = Object.entries(fieldMapping).find(([, v]) => v === "firstName");
+    const lnCol = Object.entries(fieldMapping).find(([, v]) => v === "lastName");
+    const fn = fnCol ? (row[fnCol[0]] || "").trim() : "";
+    const ln = lnCol ? (row[lnCol[0]] || "").trim() : "";
+    const fullName = `${fn} ${ln}`;
+    const parenMatch = fullName.match(/\(([^)]+)\)/);
+    if (parenMatch && EC_KEYWORDS_PREVIEW.some(kw => parenMatch[1].toLowerCase().includes(kw))) return true;
+    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(fn)) return true;
+    if (/sessions?\s*\)/i.test(fn)) return true;
+    if (/-\s*[\d()\s\-]{7,}$/.test(fullName)) return true;
+    if (!fn && /\(.*\)/.test(ln)) return true;
+    return false;
+  };
+
   /* ── Computed: mapped preview data ──────────────────────── */
   const previewRows = useMemo(() => {
     if (!parsedData || !parsedData.rows.length) return [];
-    return parsedData.rows.slice(0, 5).map(row => {
+    const memberRows = parsedData.rows.filter(row => !isNonMemberRow(row));
+    return memberRows.slice(0, 5).map(row => {
       const mapped = {};
       Object.entries(fieldMapping).forEach(([srcCol, gymkitField]) => {
         if (gymkitField !== "skip") mapped[gymkitField] = row[srcCol] || "";
@@ -225,13 +323,20 @@ export default function DataMigrationView() {
     });
   }, [parsedData, fieldMapping]);
 
+  const totalMemberRows = useMemo(() => {
+    if (!parsedData || !parsedData.rows.length) return 0;
+    return parsedData.rows.filter(row => !isNonMemberRow(row)).length;
+  }, [parsedData, fieldMapping]);
+
+  const skippedRows = parsedData ? parsedData.rows.length - totalMemberRows : 0;
+
   /* ── Computed: import summary ───────────────────────────── */
   const importSummary = useMemo(() => {
     if (importMethod === "api" && apiConnected) {
       return { members: MOCK_API_DATA.members, plans: MOCK_API_DATA.plans, sessions: MOCK_API_DATA.classes };
     }
     if (parsedData) {
-      const memberCount = parsedData.rows.length;
+      const memberCount = totalMemberRows;
       const missingEmail = parsedData.rows.filter(r => {
         const emailCol = Object.entries(fieldMapping).find(([, v]) => v === "email");
         return emailCol ? !r[emailCol[0]]?.trim() : true;
@@ -348,10 +453,37 @@ export default function DataMigrationView() {
         // Actually create member records from CSV data
         let imported = 0;
         if (parsedData && parsedData.rows.length) {
+          // Emergency contact relationship keywords
+          const EC_KEYWORDS = ["parent", "mother", "father", "spouse", "significant other", "partner", "guardian", "emergency", "husband", "wife", "sibling", "brother", "sister", "friend", "relative", "family member", "family"];
+          const isJunkOrContactRow = (row, member) => {
+            const fn = (member.firstName || "").trim();
+            const ln = (member.lastName || "").trim();
+            const fullName = `${fn} ${ln}`;
+            // Check mapped relationship field
+            const relCol = Object.entries(fieldMapping).find(([, v]) => v === "relationship");
+            if (relCol) {
+              const relVal = (row[relCol[0]] || "").toLowerCase();
+              if (relVal && EC_KEYWORDS.some(kw => relVal.includes(kw))) return true;
+            }
+            // Name contains relationship hint in parentheses
+            const parenMatch = fullName.match(/\(([^)]+)\)/);
+            if (parenMatch && EC_KEYWORDS.some(kw => parenMatch[1].toLowerCase().includes(kw))) return true;
+            // First name starts with a date pattern (broken CSV row)
+            if (/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(fn)) return true;
+            // First name contains "sessions)" — broken membership field spillover
+            if (/sessions?\s*\)/i.test(fn)) return true;
+            // First name ends with phone number pattern "- 1234567890"
+            if (/-\s*[\d()\s\-]{7,}$/.test(fullName)) return true;
+            // First name is empty and last name looks like contact data
+            if (!fn && /\(.*\)/.test(ln)) return true;
+            return false;
+          };
+
+          let lastMemberId = null;
           parsedData.rows.forEach(row => {
             const member = {};
             Object.entries(fieldMapping).forEach(([srcCol, gkField]) => {
-              if (gkField === "skip") return;
+              if (gkField === "skip" || gkField === "relationship") return;
               const val = row[srcCol] || "";
               if (gkField === "firstName") member.firstName = val;
               else if (gkField === "lastName") member.lastName = val;
@@ -360,16 +492,78 @@ export default function DataMigrationView() {
               else if (gkField === "pin") member.pin = val;
               else if (gkField === "notes") member.notes = val;
               else if (gkField === "startDate") member.startDate = val;
-              else if (gkField === "plan") member.membershipPlanId = val;
-              else if (gkField === "status") member.membershipStatus = val || "active";
+              else if (gkField === "dob") member.dob = val;
+              else if (gkField === "gender") member.gender = val;
+              else if (gkField === "source") member.source = val;
               else if (gkField === "tags") member.tags = val ? val.split(";").map(t => t.trim()) : [];
               else if (gkField === "street") member.address = { ...(member.address || {}), street: val };
               else if (gkField === "city") member.address = { ...(member.address || {}), city: val };
               else if (gkField === "state") member.address = { ...(member.address || {}), state: val };
               else if (gkField === "zip") member.address = { ...(member.address || {}), zip: val };
+              else if (gkField === "country") member.address = { ...(member.address || {}), country: val };
+              else if (gkField === "emergencyName") member.emergencyContact = { ...(member.emergencyContact || {}), name: val };
+              else if (gkField === "emergencyPhone") member.emergencyContact = { ...(member.emergencyContact || {}), phone: val };
+              else if (gkField === "squat") { member.movementScores = member.movementScores || {}; member.movementScores.Squat = Number(val) || 0; }
+              else if (gkField === "hinge") { member.movementScores = member.movementScores || {}; member.movementScores.Hinge = Number(val) || 0; }
+              else if (gkField === "lunge") { member.movementScores = member.movementScores || {}; member.movementScores.Lunge = Number(val) || 0; }
+              else if (gkField === "push") { member.movementScores = member.movementScores || {}; member.movementScores.Push = Number(val) || 0; }
+              else if (gkField === "pull") { member.movementScores = member.movementScores || {}; member.movementScores.Pull = Number(val) || 0; }
+              else if (gkField === "core") { member.movementScores = member.movementScores || {}; member.movementScores.Core = Number(val) || 0; }
+              else if (gkField === "carry") { member.movementScores = member.movementScores || {}; member.movementScores.Carry = Number(val) || 0; }
+              else if (gkField === "weight") { member.inbody = { lastScan: member.startDate || new Date().toISOString().slice(0,10), history: [{ id: crypto.randomUUID(), date: member.startDate || new Date().toISOString().slice(0,10), weight: Number(val) || 0 }] }; }
+              else if (gkField === "bodyFatPercent") { if (!member.inbody) member.inbody = { history: [{ id: crypto.randomUUID(), date: member.startDate || new Date().toISOString().slice(0,10) }] }; member.inbody.history[0].bodyFatPercent = Number(val) || 0; }
+              else if (gkField === "totalWorkouts") { member.gamification = member.gamification || {}; member.gamification.totalWorkouts = Number(val) || 0; }
+              else if (gkField === "autoCharge") member.autoCharge = ["yes","true","1"].includes(val.toLowerCase());
+              else if (gkField === "age") {
+                const age = Number(val);
+                if (age > 0 && !member.dob) {
+                  const approx = new Date();
+                  approx.setFullYear(approx.getFullYear() - age);
+                  member.dob = approx.toISOString().slice(0, 10);
+                }
+              }
+              else if (gkField === "checkinCode") member.checkinCode = val;
+              else if (gkField === "secondPhone") member.secondPhone = val;
+              else if (gkField === "secondEmail") member.secondEmail = val;
+              else if (gkField === "lastVisit") member.lastVisit = val;
+              else if (gkField === "contacts") {
+                // Parse GymDesk "Contacts" format: "Name (Relationship) - Phone\nName2 (Rel) - Phone2"
+                const contactLines = val.split(/\n/).map(l => l.trim()).filter(Boolean);
+                if (contactLines.length > 0) {
+                  const parsed = contactLines.map(line => {
+                    const relMatch = line.match(/\(([^)]+)\)/);
+                    const phoneMatch = line.match(/-\s*([\d()\s\-+]+)$/);
+                    const name = line.replace(/\s*\([^)]*\)\s*/, "").replace(/-\s*[\d()\s\-+]+$/, "").trim();
+                    return { name, relationship: relMatch ? relMatch[1].trim() : "", phone: phoneMatch ? phoneMatch[1].trim() : "" };
+                  });
+                  member.emergencyContact = parsed[0];
+                  if (parsed.length > 1) member.additionalContacts = parsed.slice(1);
+                }
+              }
+              else if (gkField === "membership") member.membershipInfo = val;
             });
-            if (member.firstName || member.lastName || member.email) {
-              addMember(member);
+
+            // Check if this row is an emergency contact for the previous member
+            if (isJunkOrContactRow(row, member)) {
+              // If we have a previous member and this has contact-like data, attach as emergency contact
+              if (lastMemberId) {
+                const cleanName = `${member.firstName || ""} ${member.lastName || ""}`.replace(/\s*\([^)]*\)\s*/g, "").replace(/-\s*[\d()\s\-]+$/, "").replace(/^\d{1,2}\/\d{1,2}\/\d{2,4}\s*\([^)]*\)\s*/, "").trim();
+                const relCol = Object.entries(fieldMapping).find(([, v]) => v === "relationship");
+                const relationship = relCol ? (row[relCol[0]] || "").trim() : "";
+                const parenMatch = `${member.firstName || ""} ${member.lastName || ""}`.match(/\(([^)]+)\)/);
+                const relLabel = relationship || (parenMatch ? parenMatch[1].trim() : "Emergency Contact");
+                const phoneMatch = `${member.firstName || ""} ${member.lastName || ""}`.match(/-\s*([\d()\s\-+]{7,})$/);
+                const ecPhone = member.phone || (phoneMatch ? phoneMatch[1].trim() : "");
+                if (cleanName) {
+                  updateMember(lastMemberId, {
+                    emergencyContact: { name: cleanName, phone: ecPhone, relationship: relLabel },
+                  });
+                }
+              }
+              // Skip — don't create a member record for this row
+            } else if (member.firstName || member.lastName || member.email) {
+              const newMember = addMember(member);
+              lastMemberId = newMember.id;
               imported++;
             }
           });
@@ -929,7 +1123,7 @@ export default function DataMigrationView() {
                     Preview
                   </h3>
                   <p style={{ color: B.muted, fontSize: 13, margin: "0 0 14px" }}>
-                    Showing first {previewRows.length} of {parsedData.rows.length} records
+                    Showing first {previewRows.length} of {totalMemberRows} members{skippedRows > 0 ? ` (${skippedRows} emergency contact / non-member rows will be attached or skipped)` : ""}
                   </p>
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>

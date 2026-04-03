@@ -293,7 +293,7 @@ export default function RemoteWorkoutsView() {
           <select value={assignMemberId} onChange={e => setAssignMemberId(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
             <option value="">Select a client...</option>
             {members
-              .filter(m => ["active", "frozen", "trial"].includes(m.membershipStatus))
+              .filter(m => !!m.membershipPlanId)
               .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`))
               .map(m => (
                 <option key={m.id} value={m.id}>

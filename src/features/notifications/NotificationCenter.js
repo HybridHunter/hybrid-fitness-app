@@ -45,7 +45,7 @@ function timeAgo(iso) {
 
 /* ========== useNotifications hook ========== */
 export function useNotifications() {
-  const [notifications, setNotifications] = useLocalStorage("hf_notifications", buildDemoNotifications);
+  const [notifications, setNotifications] = useLocalStorage("hf_notifications", []);
 
   const addNotification = useCallback((type, title, message, link) => {
     const n = {

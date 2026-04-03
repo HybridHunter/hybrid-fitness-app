@@ -258,7 +258,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
   const alerts = useMemo(() => {
     const now = new Date();
     const result = [];
-    const activeMembers = members.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial");
+    const activeMembers = members.filter(m => !!m.membershipPlanId);
 
     activeMembers.forEach(m => {
       const alertKey = `noshow_${m.id}`;
@@ -415,7 +415,7 @@ export default function DashboardView() {
   const [plans] = useLocalStorage("hf_plans", []);
   const [schedule] = useLocalStorage("hf_schedule", []);
   const [payments] = useLocalStorage("hf_payments", []);
-  const [allMetrics, setAllMetrics] = useLocalStorage("hf_dashboard_metrics", DEMO_METRICS);
+  const [allMetrics, setAllMetrics] = useLocalStorage("hf_dashboard_metrics", []);
 
   /* ---- Date range state ---- */
   const now = new Date();
@@ -450,8 +450,8 @@ export default function DashboardView() {
   };
 
   /* ---- Member-derived KPIs ---- */
-  const activeMembersAll = members.filter(m => m.membershipStatus === "active");
-  const frozenMembers = members.filter(m => m.membershipStatus === "frozen");
+  const activeMembersAll = members.filter(m => !!m.membershipPlanId && m.membershipStatus !== "frozen");
+  const frozenMembers = members.filter(m => m.membershipPlanId && m.membershipStatus === "frozen");
 
   // Members with a recurring plan (not per-session / drop-in)
   const recurringPlans = plans.filter(p => p.billingCycle === "monthly");
@@ -459,8 +459,6 @@ export default function DashboardView() {
 
   const recurringMembers = activeMembersAll.filter(m => {
     if (m.membershipPlanId && recurringPlanIds.has(m.membershipPlanId)) return true;
-    // If no plan assigned but active, count them as recurring for demo purposes
-    if (!m.membershipPlanId && m.membershipStatus === "active") return true;
     return false;
   });
 
@@ -481,11 +479,11 @@ export default function DashboardView() {
   const priorNewMemberCount = newMembersInPrior.length;
 
   // New recurring revenue
-  const newRecurringRevenue = newMembersInPeriod.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial").reduce((sum, m) => sum + getMemberPlanPrice(m), 0);
-  const priorNewRecurringRevenue = newMembersInPrior.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial").reduce((sum, m) => sum + getMemberPlanPrice(m), 0);
+  const newRecurringRevenue = newMembersInPeriod.filter(m => !!m.membershipPlanId).reduce((sum, m) => sum + getMemberPlanPrice(m), 0);
+  const priorNewRecurringRevenue = newMembersInPrior.filter(m => !!m.membershipPlanId).reduce((sum, m) => sum + getMemberPlanPrice(m), 0);
 
   // Lost members (inactive in period)
-  const lostMembers = members.filter(m => m.membershipStatus === "inactive");
+  const lostMembers = members.filter(m => !m.membershipPlanId);
   const lostMemberCount = lostMembers.length;
   const lostRecurringRevenue = lostMembers.reduce((sum, m) => sum + getMemberPlanPrice(m), 0);
 

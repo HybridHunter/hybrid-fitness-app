@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 
 const DEMO_MEMBERS = [
@@ -11,10 +12,8 @@ const DEMO_MEMBERS = [
   {id:crypto.randomUUID(),firstName:"Tom",lastName:"Baker",email:"tom@example.com",phone:"555-0108",pin:"8901",membershipPlanId:"",membershipStatus:"active",photo:"",familyGroupId:null,startDate:"2025-10-12",notes:"Former college football player, trains 5x/week",tags:["morning","athlete"],address:{street:"1234 Elm Street",city:"Portland",state:"OR",zip:"97201",country:"US"},movementScores:{Squat:2,Hinge:2,Lunge:1,Push:2,Pull:1,Core:1,Carry:2},gamification:{level:18,xp:4200,totalWorkouts:128,totalWeightLifted:78600,badges:["First Workout","10 Workouts","50 Workouts","100 Workouts","Iron Club"],currentStreak:8,longestStreak:22},rank:{current:"Gold",promotionDate:"2026-02-01"},inbody:{lastScan:null,history:[]},createdAt:"2025-10-12T10:00:00Z",_demo:true},
 ];
 
-const demoCleared = () => { try { return localStorage.getItem("hf_demo_cleared") === "true"; } catch { return false; } };
-
 export function useMembers() {
-  const [members, setMembers] = useLocalStorage("hf_members", demoCleared() ? [] : DEMO_MEMBERS);
+  const [members, setMembers, membersLoaded] = useLocalStorage("hf_members", []);
 
   const addMember = (member) => {
     const newMember = {
@@ -45,5 +44,19 @@ export function useMembers() {
 
   const getMember = (id) => members.find(m => m.id === id) || null;
 
-  return { members, setMembers, addMember, updateMember, deleteMember, getMember };
+  // Auto-process scheduled cancellations
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const toCancel = members.filter(m => m.cancelScheduled && m.cancelScheduled <= today && m.membershipPlanId);
+    if (toCancel.length > 0) {
+      setMembers(prev => prev.map(m => {
+        if (m.cancelScheduled && m.cancelScheduled <= today && m.membershipPlanId) {
+          return { ...m, membershipPlanId: null, cancelScheduled: null };
+        }
+        return m;
+      }));
+    }
+  }, [members, setMembers]);
+
+  return { members, setMembers, addMember, updateMember, deleteMember, getMember, membersLoaded };
 }

@@ -43,11 +43,10 @@ export default function FeedbackForm() {
     setSubmitting(true);
     try {
       const gymId = localStorage.getItem("hf_gym_id") || "local";
-      let gymName = "Unknown Gym";
-      try {
-        const settings = JSON.parse(localStorage.getItem("hf_settings") || "{}");
-        if (settings.gymName) gymName = settings.gymName;
-      } catch { /* ignore */ }
+      let gymName = "";
+      try { const b = JSON.parse(localStorage.getItem("hf_branding") || "{}"); if (b.gymName) gymName = b.gymName; } catch {}
+      if (!gymName) { try { const s = JSON.parse(localStorage.getItem("hf_settings") || "{}"); if (s.gymName) gymName = s.gymName; } catch {} }
+      if (!gymName) gymName = gymId;
 
       const existing = (await supabaseGet("__super__", "hf_feedback")) || [];
       const entry = {

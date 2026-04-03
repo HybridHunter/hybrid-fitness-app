@@ -90,7 +90,7 @@ export default function MessagingView() {
   const { members } = useMembers();
   // Determine sender ID: staff uses "coach", clients use their memberId
   const myId = isClient ? currentUser?.memberId : "coach";
-  const [conversations, setConversations] = useLocalStorage("hf_messages", () => buildDemoConversations(members));
+  const [conversations, setConversations] = useLocalStorage("hf_messages", []);
   const [activeConvId, setActiveConvId] = useState(null);
   const [search, setSearch] = useState("");
   const [messageText, setMessageText] = useState("");
@@ -100,12 +100,7 @@ export default function MessagingView() {
   const [mobileShowConv, setMobileShowConv] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Initialize demo data if empty
-  useEffect(() => {
-    if (conversations.length === 0 && members.length >= 4) {
-      setConversations(buildDemoConversations(members));
-    }
-  }, [members]);
+  // Demo data initialization removed — demo data is now loaded only via Settings page
 
   const getMemberInfo = (memberId) => {
     const m = members.find(x => x.id === memberId);
@@ -392,7 +387,7 @@ export default function MessagingView() {
               <label style={s.label}>Client</label>
               <select style={s.select} value={newMsgMemberId} onChange={e => setNewMsgMemberId(e.target.value)}>
                 <option value="">Select a client...</option>
-                {members.filter(m => m.membershipStatus !== "inactive").map(m => (
+                {members.filter(m => !!m.membershipPlanId).map(m => (
                   <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
                 ))}
               </select>

@@ -115,7 +115,7 @@ export default function CoachingDashboard() {
   }, [attendance, now]);
 
   const atRiskMembers = useMemo(() => {
-    const activeMembers = members.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial");
+    const activeMembers = members.filter(m => !!m.membershipPlanId);
     return activeMembers
       .map(m => {
         const memberCheckins = attendance.filter(a => a.memberId === m.id);

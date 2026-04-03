@@ -159,6 +159,11 @@ function PlanModal({ plan, onSave, onClose, B, schedule }) {
             )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input type="checkbox" checked={!!form.isTrial} onChange={e => set("isTrial", e.target.checked)} style={{ width: 16, height: 16, accentColor: B.orange, cursor: "pointer" }} />
+            <label style={{ fontSize: 13, fontWeight: 600, color: B.text, cursor: "pointer" }}>Trial Plan</label>
+            <span style={{ fontSize: 11, color: B.muted }}> — members on this plan show as "trial" and don't count as new clients in analytics</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input type="checkbox" checked={form.active !== false} onChange={e => set("active", e.target.checked)} style={{ width: 16, height: 16, accentColor: B.accent, cursor: "pointer" }} />
             <label style={{ fontSize: 13, fontWeight: 600, color: B.text, cursor: "pointer" }}>Active</label>
           </div>
@@ -251,8 +256,8 @@ function MemberHistoryModal({ memberName, payments, onClose, B }) {
 export default function BillingView() {
   const B = useTheme();
   const { members, updateMember } = useMembers();
-  const [plans, setPlans] = useLocalStorage("hf_plans", DEFAULT_PLANS);
-  const [payments, setPayments] = useLocalStorage("hf_payments", buildDemoPayments());
+  const [plans, setPlans] = useLocalStorage("hf_plans", []);
+  const [payments, setPayments] = useLocalStorage("hf_payments", []);
   const [recurringEnabled, setRecurringEnabled] = useLocalStorage("hf_recurring_enabled", false);
   const [schedule] = useLocalStorage("hf_schedule", []);
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -263,6 +268,7 @@ export default function BillingView() {
   const [activeSection, setActiveSection] = useState("overview");
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [pendingPlanChange, setPendingPlanChange] = useState(null);
+  const [cancelModal, setCancelModal] = useState(null);
   const [discountRules, setDiscountRules] = useLocalStorage("hf_payment_discounts", [
     { id: "disc_1", method: "ACH", discountType: "Percentage", value: 5, active: true },
   ]);
@@ -275,12 +281,12 @@ export default function BillingView() {
     const monthPayments = payments.filter(p => p.date.startsWith(thisMonth) && p.status === "paid");
     const totalRevenue = monthPayments.reduce((s, p) => s + p.amount, 0);
     const allRevenue = payments.filter(p => p.status === "paid").reduce((s, p) => s + p.amount, 0);
-    const activeCount = members.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial").length;
+    const activeCount = members.filter(m => m.membershipPlanId).length;
     const overdueCount = payments.filter(p => p.status === "overdue").length;
     const mrr = members.reduce((sum, m) => {
-      if (m.membershipStatus !== "active" && m.membershipStatus !== "trial") return sum;
+      if (!m.membershipPlanId) return sum;
       const plan = plans.find(p => p.id === m.membershipPlanId);
-      if (!plan) return sum;
+      if (!plan || plan.isTrial) return sum;
       if (plan.billingCycle === "monthly") return sum + plan.price;
       if (plan.billingCycle === "every-4-weeks") return sum + Math.round(plan.price * 13 / 12);
       if (plan.billingCycle === "annual") return sum + Math.round(plan.price / 12);
@@ -363,12 +369,41 @@ export default function BillingView() {
 
     const eventType = changeType || (oldPlan && newPlan ? "plan_change" : "plan_change");
     if (oldPlan && newPlan && oldPlan.id !== newPlan.id) {
-      logEvent(memberId, memberName, eventType, { oldPlan: oldPlan.name, newPlan: newPlan.name, oldPrice: oldPlan.price, newPrice: newPlan.price });
+      logEvent(memberId, memberName, eventType, { oldPlan: oldPlan.name, newPlan: newPlan.name, oldPrice: oldPlan.price, newPrice: newPlan.price, isTrial: !!newPlan.isTrial });
     } else if (!oldPlan && newPlan) {
-      logEvent(memberId, memberName, "plan_change", { newPlan: newPlan.name, newPrice: newPlan.price });
+      logEvent(memberId, memberName, "join", { newPlan: newPlan.name, newPrice: newPlan.price, isTrial: !!newPlan.isTrial });
+    } else if (oldPlan && !planId) {
+      logEvent(memberId, memberName, "cancel", { oldPlan: oldPlan.name, oldPrice: oldPlan.price, isTrial: !!oldPlan.isTrial });
     }
 
-    updateMember(memberId, { membershipPlanId: planId || null });
+    updateMember(memberId, { membershipPlanId: planId || null, cancelScheduled: null });
+  };
+
+  const getNextBillingDate = (plan) => {
+    const d = new Date();
+    if (plan.billingCycle === "monthly") d.setMonth(d.getMonth() + 1);
+    else if (plan.billingCycle === "every-4-weeks") d.setDate(d.getDate() + 28);
+    else if (plan.billingCycle === "weekly") d.setDate(d.getDate() + 7);
+    else if (plan.billingCycle === "yearly" || plan.billingCycle === "annual") d.setFullYear(d.getFullYear() + 1);
+    else d.setMonth(d.getMonth() + 1);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const handleCancelConfirm = (cancelType, futureDate) => {
+    if (!cancelModal) return;
+    const { memberId, memberName, oldPlan } = cancelModal;
+    if (cancelType === "instant") {
+      logEvent(memberId, memberName, "cancel", { oldPlan: oldPlan.name, oldPrice: oldPlan.price, cancelType: "instant" });
+      updateMember(memberId, { membershipPlanId: null, cancelScheduled: null });
+    } else if (cancelType === "end_of_cycle") {
+      const cancelDate = getNextBillingDate(oldPlan);
+      logEvent(memberId, memberName, "cancel", { oldPlan: oldPlan.name, oldPrice: oldPlan.price, cancelType: "end_of_cycle", effectiveDate: cancelDate });
+      updateMember(memberId, { cancelScheduled: cancelDate });
+    } else if (cancelType === "future" && futureDate) {
+      logEvent(memberId, memberName, "cancel", { oldPlan: oldPlan.name, oldPrice: oldPlan.price, cancelType: "future", effectiveDate: futureDate });
+      updateMember(memberId, { cancelScheduled: futureDate });
+    }
+    setCancelModal(null);
   };
 
   /* ── Derived data ── */
@@ -527,6 +562,60 @@ export default function BillingView() {
         </div>
       )}
 
+      {/* Cancel Membership Modal */}
+      {cancelModal && (() => {
+        const CancelOpt = ({ icon, title, desc, type }) => (
+          <button onClick={() => {
+            if (type === "future") setCancelModal(prev => ({ ...prev, showDatePicker: true }));
+            else handleCancelConfirm(type);
+          }} style={{
+            width: "100%", padding: "14px 16px", borderRadius: 12, cursor: "pointer", textAlign: "left",
+            border: "1px solid " + B.border, background: B.dark, display: "flex", alignItems: "center", gap: 14,
+            transition: "all 0.15s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = B.accent; e.currentTarget.style.background = B.accent + "08"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = B.border; e.currentTarget.style.background = B.dark; }}>
+            <span style={{ fontSize: 24 }}>{icon}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: B.text }}>{title}</div>
+              <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>{desc}</div>
+            </div>
+          </button>
+        );
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={() => setCancelModal(null)}>
+            <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 480, width: "90%" }} onClick={e => e.stopPropagation()}>
+              <h3 style={{ margin: "0 0 6px", fontSize: 18, fontWeight: 700, color: B.text }}>Cancel Membership</h3>
+              <p style={{ color: B.muted, fontSize: 13, margin: "0 0 6px" }}>
+                <strong>{cancelModal.memberName}</strong> — {cancelModal.oldPlan.name} (${cancelModal.oldPlan.price}/{cancelModal.oldPlan.billingCycle})
+              </p>
+              <p style={{ color: B.muted, fontSize: 12, margin: "0 0 16px" }}>
+                Would they like to switch to a different plan instead? Cancelling affects your attrition metrics.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <CancelOpt icon={"\uD83D\uDD04"} title="End of Billing Cycle" desc={`Keeps access until ${getNextBillingDate(cancelModal.oldPlan)}`} type="end_of_cycle" />
+                <CancelOpt icon={"\u26A1"} title="Cancel Immediately" desc="Removes plan and access right now" type="instant" />
+                <CancelOpt icon={"\uD83D\uDCC5"} title="Schedule Future Date" desc="Choose a specific date to cancel" type="future" />
+              </div>
+              {cancelModal.showDatePicker && (
+                <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center" }}>
+                  <input type="date" value={cancelModal.futureDate || ""} onChange={e => setCancelModal(prev => ({ ...prev, futureDate: e.target.value }))}
+                    style={{ flex: 1, background: B.darker, border: "1px solid " + B.border, borderRadius: 8, color: B.text, padding: "8px 12px", fontSize: 13, outline: "none" }} />
+                  <button onClick={() => cancelModal.futureDate && handleCancelConfirm("future", cancelModal.futureDate)}
+                    disabled={!cancelModal.futureDate}
+                    style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: cancelModal.futureDate ? B.red : B.dim, color: "#fff", fontSize: 13, fontWeight: 700, cursor: cancelModal.futureDate ? "pointer" : "not-allowed", opacity: cancelModal.futureDate ? 1 : 0.5 }}>
+                    Confirm
+                  </button>
+                </div>
+              )}
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid " + B.border + "44", display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={() => setCancelModal(null)} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Go Back</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Payment Modal */}
       {paymentTarget && (
         <PaymentModal
@@ -631,9 +720,15 @@ export default function BillingView() {
                               const newPlanId = e.target.value;
                               const oldPlan = plans.find(p => p.id === m.membershipPlanId);
                               const newPlan = plans.find(p => p.id === newPlanId);
+                              const memberName = m.firstName + " " + m.lastName;
+                              // Removing plan → cancel flow
+                              if (oldPlan && !newPlanId) {
+                                setCancelModal({ memberId: m.id, memberName, oldPlan });
+                                return;
+                              }
                               const oldName = oldPlan ? oldPlan.name + " ($" + oldPlan.price + ")" : "No plan";
                               const newName = newPlan ? newPlan.name + " ($" + newPlan.price + ")" : "No plan";
-                              setPendingPlanChange({ memberId: m.id, memberName: m.firstName + " " + m.lastName, planId: newPlanId, oldName, newName });
+                              setPendingPlanChange({ memberId: m.id, memberName, planId: newPlanId, oldName, newName });
                             }}
                             style={{
                               padding: "4px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer",

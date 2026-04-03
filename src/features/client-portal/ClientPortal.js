@@ -131,7 +131,7 @@ const formatRWTimer = (seconds) => {
 export default function ClientPortal() {
   const B = useTheme();
   const { currentUser, logout } = useAuth();
-  const { getMember, members } = useMembers();
+  const { getMember, members, membersLoaded } = useMembers();
   const [activeTab, setActiveTab] = useState("home");
   const [prevTab, setPrevTab] = useState("home");
   const [transitioning, setTransitioning] = useState(false);
@@ -189,7 +189,7 @@ export default function ClientPortal() {
   const member = useMemo(() => {
     if (!currentUser?.memberId) return null;
     return getMember(currentUser.memberId);
-  }, [currentUser, getMember]);
+  }, [currentUser, getMember, members]);
 
   const firstName = member?.firstName || currentUser?.displayName?.split(" ")[0] || "Member";
   const myId = currentUser?.memberId || member?.id;
@@ -323,7 +323,10 @@ export default function ClientPortal() {
 
   // NOTE: Don't early-return here — hooks below need to run on every render.
   // Instead we check !member in the final return.
-  const memberMissing = !member;
+  // Wait for Supabase data to load before deciding the member is truly missing.
+  const memberMissing = !member && membersLoaded;
+  const memberLoading = !member && !membersLoaded;
+  const isFrozen = member?.membershipStatus === "frozen";
 
   /* ─────────── HOME TAB ─────────── */
   const renderHome = () => {
@@ -2974,7 +2977,7 @@ export default function ClientPortal() {
      RENDER
      ═══════════════════════════════════════════════════════════ */
 
-  const TABS = [
+  const ALL_TABS = [
     { key: "home", label: "Home", icon: "\uD83C\uDFE0" },
     { key: "workouts", label: "Workouts", icon: "\uD83C\uDFCB\uFE0F" },
     { key: "community", label: "Community", icon: "\uD83D\uDC65" },
@@ -2983,26 +2986,71 @@ export default function ClientPortal() {
     { key: "profile", label: "Profile", icon: "\uD83D\uDC64" },
   ];
 
+  // Frozen members get limited access: community, messaging (via community), remote workouts (via workouts), and profile
+  const FROZEN_TABS = new Set(["community", "workouts", "progress", "profile"]);
+  const TABS = isFrozen ? ALL_TABS.filter(t => FROZEN_TABS.has(t.key)) : ALL_TABS;
+
+  const frozenNotice = (
+    <div style={{ textAlign: "center", padding: 40 }}>
+      <div style={{ fontSize: 40, marginBottom: 12 }}>{"\u2744\uFE0F"}</div>
+      <h3 style={{ color: B.text, fontSize: 18, fontWeight: 700, margin: "0 0 8px" }}>Membership On Hold</h3>
+      <p style={{ color: B.muted, fontSize: 14, lineHeight: 1.6 }}>This feature is paused while your membership is on hold. Contact your gym to reactivate.</p>
+    </div>
+  );
+
   const renderContent = () => {
     switch (activeTab) {
-      case "home": return renderHome();
+      case "home": return isFrozen ? frozenNotice : renderHome();
       case "workouts": return renderWorkouts();
       case "community": return renderCommunity();
-      case "book": return renderBook();
+      case "book": return isFrozen ? frozenNotice : renderBook();
       case "progress": return renderProgress();
       case "profile": return renderProfile();
       default: return renderHome();
     }
   };
 
-  if (memberMissing) {
+  if (memberLoading) {
     return (
       <div style={{ ...shell, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <div style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>{"\uD83C\uDFCB\uFE0F"}</div>
           <h2 style={{ color: B.text, fontSize: 20, margin: "0 0 8px" }}>Loading your profile...</h2>
-          <p style={{ color: B.muted, fontSize: 14 }}>If this persists, please sign out and back in.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (memberMissing) {
+    return (
+      <div style={{ ...shell, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>{"\uD83C\uDFCB\uFE0F"}</div>
+          <h2 style={{ color: B.text, fontSize: 20, margin: "0 0 8px" }}>Profile not found</h2>
+          <p style={{ color: B.muted, fontSize: 14 }}>Your member profile couldn't be loaded. Please sign out and back in.</p>
           <button onClick={logout} style={touchBtn(B.accent, B.darker, { marginTop: 20 })}>Sign Out</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (member && !member.membershipPlanId) {
+    return (
+      <div style={{ ...shell, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div style={{ textAlign: "center", padding: 40, maxWidth: 400 }}>
+          <div style={{ width: 80, height: 80, borderRadius: 20, margin: "0 auto 20px", background: B.accent + "15", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 40 }}>
+            {"\uD83D\uDD12"}
+          </div>
+          <h2 style={{ color: B.text, fontSize: 22, fontWeight: 800, margin: "0 0 10px" }}>
+            Welcome, {member.firstName}!
+          </h2>
+          <p style={{ color: B.muted, fontSize: 15, lineHeight: 1.6, margin: "0 0 24px" }}>
+            You don't have an active membership yet. Sign up for a plan to get full access to your workouts, booking, progress tracking, and more.
+          </p>
+          <p style={{ color: B.muted, fontSize: 13, margin: "0 0 24px" }}>
+            Contact your gym to get started with a membership plan.
+          </p>
+          <button onClick={logout} style={touchBtn(B.accent, B.darker, { width: "100%" })}>Sign Out</button>
         </div>
       </div>
     );

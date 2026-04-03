@@ -1645,9 +1645,9 @@ export default function CommunityFeed() {
   const B = useTheme();
   const { members } = useMembers();
   const { isStaff } = useAuth();
-  const [posts, setPosts] = useLocalStorage("hf_community_posts", DEMO_POSTS);
+  const [posts, setPosts] = useLocalStorage("hf_community_posts", []);
   const [categories] = useLocalStorage("hf_community_categories", DEFAULT_CATEGORIES);
-  const [challengesRaw, setChallenges] = useLocalStorage("hf_challenges", buildDemoChallenges());
+  const [challengesRaw, setChallenges] = useLocalStorage("hf_challenges", []);
   const challenges = Array.isArray(challengesRaw) ? challengesRaw : [];
 
   const [activeCategory, setActiveCategory] = useState("All");

@@ -77,18 +77,14 @@ function generateDemoEvents() {
 }
 
 export function useMembershipEvents() {
-  const [events, setEvents] = useLocalStorage("hf_membership_events", () => generateDemoEvents());
-  const [demoVersion, setDemoVersion] = useLocalStorage("hf_membership_events_version", DEMO_DATA_VERSION);
-
-  // If the stored demo version is outdated, regenerate demo data
-  if (demoVersion !== DEMO_DATA_VERSION) {
-    const fresh = generateDemoEvents();
-    // Use setTimeout to avoid calling setState during render
-    setTimeout(() => {
-      setEvents(fresh);
-      setDemoVersion(DEMO_DATA_VERSION);
-    }, 0);
-  }
+  const [events, setEvents] = useLocalStorage("hf_membership_events", []);
+  const getChangedBy = () => {
+    try {
+      const session = JSON.parse(localStorage.getItem("hf_session") || "null");
+      if (!session) return "System";
+      return session.displayName || session.username || session.role || "Unknown";
+    } catch { return "System"; }
+  };
 
   const logEvent = (memberId, memberName, type, details = {}) => {
     setEvents(prev => [...prev, {
@@ -98,6 +94,7 @@ export function useMembershipEvents() {
       type,
       date: new Date().toISOString(),
       details,
+      changedBy: getChangedBy(),
     }]);
   };
 

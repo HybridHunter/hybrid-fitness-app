@@ -85,7 +85,7 @@ export default function GamificationView() {
     );
   }
 
-  const activeMembers = members.filter((m) => m.membershipStatus === "active");
+  const activeMembers = members.filter((m) => !!m.membershipPlanId);
   const safeActiveTab = LEADERBOARD_TABS.find((t) => t.key === activeTab) ? activeTab : LEADERBOARD_TABS[0]?.key || "xp";
   const tab = LEADERBOARD_TABS.find((t) => t.key === safeActiveTab) || ALL_LEADERBOARD_TABS[0];
 

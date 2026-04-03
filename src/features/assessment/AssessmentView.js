@@ -63,7 +63,7 @@ export default function AssessmentView() {
   const [expandedAssessment, setExpandedAssessment] = useState(null);
   const [successMsg, setSuccessMsg] = useState(false);
 
-  const activeMembers = members.filter((m) => m.membershipStatus !== "inactive");
+  const activeMembers = members.filter((m) => !!m.membershipPlanId);
   const selectedMember = selectedMemberId ? getMember(selectedMemberId) : null;
   const currentPattern = PATTERNS[currentPatternIdx];
 

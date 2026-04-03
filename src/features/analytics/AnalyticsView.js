@@ -67,7 +67,7 @@ function buildMemberGrowth(members) {
     const endOfMonth = new Date(m.date.getFullYear(), m.date.getMonth() + 1, 0);
     const total = members.filter(mb => {
       if (!mb.startDate) return false;
-      return new Date(mb.startDate) <= endOfMonth && (mb.membershipStatus === "active" || mb.membershipStatus === "trial");
+      return new Date(mb.startDate) <= endOfMonth && !!mb.membershipPlanId;
     }).length;
     return { month: m.label, total };
   });
@@ -87,7 +87,7 @@ function buildMemberStatusDist(members) {
 function buildChurnRate(members, events) {
   const months = getLast12Months();
   return months.map(m => {
-    const activeAtStart = members.filter(mb => mb.startDate && new Date(mb.startDate) < m.date && (mb.membershipStatus === "active" || mb.membershipStatus === "trial")).length;
+    const activeAtStart = members.filter(mb => mb.startDate && new Date(mb.startDate) < m.date && !!mb.membershipPlanId).length;
     const cancels = events.filter(e => (e.type === "cancellation" || e.type === "downgrade") && e.date && e.date.startsWith(m.key)).length;
     const rate = activeAtStart > 0 ? Math.round((cancels / activeAtStart) * 1000) / 10 : 0;
     return { month: m.label, rate };
@@ -199,7 +199,7 @@ function Section({ title, children, B }) {
    ══════════════════════════════════════════════════════ */
 function OverviewTab({ B, members, payments, attendance, membershipEvents, plans }) {
   const tt = ChartTooltip({ B });
-  const activeCount = members.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial").length;
+  const activeCount = members.filter(m => !!m.membershipPlanId).length;
   const revenueData = buildRevenueByMonth(payments);
   const revenueLast6 = revenueData.slice(6);
   const signUpsData = buildSignUpsByMonth(membershipEvents);
@@ -218,7 +218,7 @@ function OverviewTab({ B, members, payments, attendance, membershipEvents, plans
   return (
     <>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28 }}>
-        <KPI label="Total Clients" value={members.length} sub="All statuses" B={B} />
+        <KPI label="Active Clients" value={activeCount} sub="With active plan" B={B} />
         <KPI label="Monthly Revenue" value={monthRevenue > 0 ? "$" + monthRevenue.toLocaleString() : "$0"} sub={monthName} B={B} />
         <KPI label="Avg Attendance/Day" value={avgAttendance} sub="Last 30 days" B={B} />
         <KPI label="Churn Rate" value={latestChurn + "%"} sub={monthName} B={B} />
@@ -691,7 +691,7 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
     // -- Sessions Sold (prorated) --
     const rangeDays = Math.max(1, Math.round((rangeEnd - rangeStart) / (1000 * 60 * 60 * 24)) + 1);
     let sessionsSold = 0;
-    const activeMembers = members.filter(m => m.membershipStatus === "active" || m.membershipStatus === "trial");
+    const activeMembers = members.filter(m => !!m.membershipPlanId);
     activeMembers.forEach(m => {
       const plan = plans.find(p => p.id === m.membershipPlanId);
       if (!plan) return;

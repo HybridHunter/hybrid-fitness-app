@@ -76,7 +76,7 @@ export default function ClassroomView() {
   const { members } = useMembers();
 
   /* ── state ── */
-  const [courses, setCourses] = useLocalStorage("hf_courses", DEMO_COURSES);
+  const [courses, setCourses] = useLocalStorage("hf_courses", []);
   const [progress, setProgress] = useLocalStorage("hf_course_progress", []);
   const [selectedCourseIdx, setSelectedCourseIdx] = useState(0);
   const [selectedLessonPath, setSelectedLessonPath] = useState(null); // { moduleIdx, lessonIdx }
