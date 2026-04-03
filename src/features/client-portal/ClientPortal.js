@@ -330,6 +330,15 @@ export default function ClientPortal() {
     const gam = member.gamification || {};
     const recentPosts = [...(communityPosts || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3);
     const today = todayISO();
+    const xpForNext = (gam.level || 1) * 200;
+    const xpPct = Math.min(100, ((gam.xp || 0) / xpForNext) * 100);
+
+    // Count unread messages
+    const myConvs = (Array.isArray(messages) ? messages : []).filter(c => c.participants?.includes(myId));
+    const unreadMsgCount = myConvs.reduce((sum, c) => sum + (c.messages || []).filter(m => !m.read && m.senderId !== myId).length, 0);
+
+    // Next upcoming session
+    const nextSession = todayClasses.length > 0 ? todayClasses[0] : null;
 
     return (
       <div style={{ padding: "0 16px" }}>
@@ -338,60 +347,102 @@ export default function ClientPortal() {
           <div style={{ width: 36, height: 4, borderRadius: 2, background: B.muted, margin: "0 auto" }} />
         </div>
 
-        {/* Greeting */}
-        <div style={{ padding: "20px 0 4px" }}>
-          <h1 style={{ fontSize: 28, fontWeight: 800, color: B.text, margin: 0, lineHeight: 1.2 }}>
-            Hey {firstName}! &#x1F44B;
+        {/* Hero Greeting Card */}
+        <div style={{
+          background: `linear-gradient(135deg, ${B.accent}22 0%, ${B.card} 100%)`,
+          borderRadius: 20, padding: "24px 20px", margin: "12px 0 16px",
+          border: `1px solid ${B.accent}30`,
+        }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: B.text, margin: 0, lineHeight: 1.2 }}>
+            Hey {firstName}! {"\uD83D\uDC4B"}
           </h1>
-          <p style={{ ...mutedText, marginTop: 4 }}>{dateStr}</p>
+          <p style={{ ...mutedText, marginTop: 4, marginBottom: 16 }}>{dateStr}</p>
+
+          {/* XP Progress Bar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: B.accent + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: B.accent }}>
+              {gam.level || 1}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Level {gam.level || 1}</span>
+                <span style={{ fontSize: 11, color: B.muted }}>{gam.xp || 0} / {xpForNext} XP</span>
+              </div>
+              <div style={{ height: 8, background: B.border, borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ height: "100%", background: B.accent, borderRadius: 4, width: xpPct + "%", transition: "width 0.5s" }} />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Quick Stats Row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, margin: "16px 0" }}>
-          <div style={{ ...cardStyle, textAlign: "center", padding: "14px 8px" }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: B.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>Level</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: B.accent }}>{gam.level || 1}</div>
-            </div>
-          <div style={{ ...cardStyle, textAlign: "center", padding: "14px 8px" }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: B.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>Streak</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: "#f59e0b" }}>
-              {gam.currentStreak || 0}
-            </div>
-            <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>&#x1F525; days</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "0 0 16px" }}>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b" }}>{gam.currentStreak || 0}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83D\uDD25"} Streak</div>
           </div>
-          <div style={{ ...cardStyle, textAlign: "center", padding: "14px 8px" }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: B.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>Workouts</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: B.text }}>{gam.totalWorkouts || 0}</div>
-            <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>total</div>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: B.text }}>{gam.totalWorkouts || 0}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83C\uDFCB\uFE0F"} Workouts</div>
+          </div>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: B.accent }}>{gam.longestStreak || 0}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\u2B50"} Best</div>
+          </div>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px", cursor: unreadMsgCount > 0 ? "pointer" : "default" }} onClick={() => { if (unreadMsgCount > 0) setClientChatOpen(myConvs[0]?.id); }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: unreadMsgCount > 0 ? B.red || "#ef4444" : B.dim }}>{unreadMsgCount}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83D\uDCE9"} Messages</div>
           </div>
         </div>
 
-        {/* Today's Workout */}
-        {todayClasses.length > 0 && (
+        {/* Next Session Card */}
+        {nextSession && (
+          <div style={{
+            ...cardStyle, padding: 0, overflow: "hidden", marginBottom: 16,
+          }}>
+            <div style={{ background: B.accent, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{"\uD83D\uDCC5"} Next Session</span>
+              <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 12 }}>Today</span>
+            </div>
+            <div style={{ padding: 16 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: B.text }}>{nextSession.name}</div>
+              <div style={{ ...mutedText, marginTop: 2 }}>
+                {fmtTime(nextSession.startTime)} - {fmtTime(nextSession.endTime)} &middot; {nextSession.instructor}
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                <button onClick={() => switchTab("workouts")} style={touchBtn(B.accent, B.darker, { flex: 1, fontSize: 14 })}>
+                  {"\uD83C\uDFCB\uFE0F"} View Workout
+                </button>
+                <button onClick={() => handleQuickCheckIn(nextSession)} style={touchBtn(B.text + "15", B.text, { flex: 1, fontSize: 14, border: `1px solid ${B.border}` })}>
+                  {"\u2705"} Check In
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* No Session Today */}
+        {!nextSession && (
+          <div style={{ ...cardStyle, textAlign: "center", padding: "20px 16px", marginBottom: 16 }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>{"\uD83C\uDFCA"}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: B.text }}>No sessions booked today</div>
+            <button onClick={() => switchTab("book")} style={{ ...touchBtn(B.accent, B.darker, { marginTop: 12, fontSize: 14 }), display: "inline-flex" }}>
+              Book a Session
+            </button>
+          </div>
+        )}
+
+        {/* Additional booked sessions today (if more than one) */}
+        {todayClasses.length > 1 && (
           <>
-            <h3 style={sectionTitle}>&#x1F4AA; Today's Workout</h3>
-            {todayClasses.map(cls => (
-              <div key={cls.id} style={{
-                ...cardStyle, background: `linear-gradient(135deg, ${B.accent}15 0%, ${B.card} 100%)`,
-                border: `1px solid ${B.accent}40`,
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: B.text }}>{cls.name}</div>
-                    <div style={{ ...mutedText, marginTop: 2 }}>
-                      {fmtTime(cls.startTime)} - {fmtTime(cls.endTime)} &middot; {cls.instructor}
-                    </div>
-                  </div>
-                  <span style={pillBadge(B.accent + "22", B.accent)}>Booked</span>
+            <h3 style={sectionTitle}>{"\uD83D\uDCC5"} Other Sessions Today</h3>
+            {todayClasses.slice(1).map(cls => (
+              <div key={cls.id} style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{cls.name}</div>
+                  <div style={{ fontSize: 12, color: B.muted }}>{fmtTime(cls.startTime)} - {fmtTime(cls.endTime)}</div>
                 </div>
-                <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                  <button onClick={() => switchTab("workouts")} style={touchBtn(B.accent, B.darker, { flex: 1, fontSize: 14 })}>
-                    &#x1F3CB;&#xFE0F; View Workout
-                  </button>
-                  <button onClick={() => handleQuickCheckIn(cls)} style={touchBtn(B.text + "15", B.text, { flex: 1, fontSize: 14, border: `1px solid ${B.border}` })}>
-                    &#x2705; Check In
-                  </button>
-                </div>
+                <span style={pillBadge(B.accent + "22", B.accent)}>Booked</span>
               </div>
             ))}
           </>

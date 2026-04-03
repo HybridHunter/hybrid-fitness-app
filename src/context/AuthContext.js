@@ -82,16 +82,45 @@ export function AuthProvider({ children }) {
       }
     } catch (e) { console.log("Supabase user lookup failed:", e); }
 
-    // Check member accounts (email as username, PIN as password)
+    // Check member accounts (email + PIN) — search local first, then Supabase
     try {
-      const members = JSON.parse(localStorage.getItem("hf_members") || "[]");
-      const member = members.find(m => m.email?.toLowerCase() === input && m.pin === password);
-      if (member) {
-        const clientUser = { id: "client_" + member.id, username: member.email, role: "client", memberId: member.id, displayName: member.firstName + " " + member.lastName };
+      const localMembers = JSON.parse(localStorage.getItem("hf_members") || "[]");
+      const localMember = localMembers.find(m => m.email?.toLowerCase() === input && m.pin === password);
+      if (localMember) {
+        const gymId = localStorage.getItem("hf_gym_id") || "default";
+        const clientUser = { id: "client_" + localMember.id, username: localMember.email, role: "client", memberId: localMember.id, displayName: localMember.firstName + " " + localMember.lastName, gymId };
         setCurrentUser(clientUser);
         return { success: true, user: clientUser };
       }
     } catch {}
+
+    // Search Supabase member lists across all gyms
+    try {
+      const SUPABASE_URL = 'https://qzvxnklyeadbroesccxt.supabase.co';
+      const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM';
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/data_store?key=eq.hf_members&select=gym_id,value`, {
+        headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+      });
+      if (res.ok) {
+        const rows = await res.json();
+        for (const row of rows) {
+          const gymMembers = Array.isArray(row.value) ? row.value : [];
+          const found = gymMembers.find(m => m.email?.toLowerCase() === input && m.pin === password);
+          if (found) {
+            localStorage.setItem("hf_gym_id", row.gym_id);
+            // Pre-cache members so client portal loads instantly
+            localStorage.setItem("hf_members", JSON.stringify(gymMembers));
+            // Clear other gym data
+            const keysToKeep = ["hf_theme", "hf_session", "hf_users", "hf_gym_id", "hf_onboarding_complete", "hf_members"];
+            Object.keys(localStorage).filter(k => k.startsWith("hf_") && !keysToKeep.includes(k)).forEach(k => localStorage.removeItem(k));
+            const clientUser = { id: "client_" + found.id, username: found.email, role: "client", memberId: found.id, displayName: found.firstName + " " + found.lastName, gymId: row.gym_id };
+            setCurrentUser(clientUser);
+            return { success: true, user: clientUser, requiresReload: true };
+          }
+        }
+      }
+    } catch (e) { console.log("Supabase member lookup failed:", e); }
 
     return { success: false, error: "Invalid credentials" };
   };
