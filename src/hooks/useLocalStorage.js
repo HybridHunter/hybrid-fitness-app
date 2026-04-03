@@ -71,9 +71,14 @@ export function useLocalStorage(key, defaultValue) {
   }, [key]);
 
   // Save to localStorage + Supabase (debounced)
+  // Don't sync gym data to __super__ — only super admin keys belong there
+  const SUPER_KEYS = new Set(["hf_gyms_registry", "hf_master_exercises", "hf_users", "hf_feedback", "hf_session"]);
   useEffect(() => {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
     const gymId = getGymId();
+
+    // Skip Supabase sync if super admin context and this isn't a super admin key
+    if (gymId === "__super__" && !SUPER_KEYS.has(key)) return;
 
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(async () => {
