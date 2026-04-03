@@ -82,17 +82,7 @@ export function AuthProvider({ children }) {
       }
     } catch (e) { console.log("Supabase user lookup failed:", e); }
 
-    // Check member accounts (email + PIN) — search local first, then Supabase
-    try {
-      const localMembers = JSON.parse(localStorage.getItem("hf_members") || "[]");
-      const localMember = localMembers.find(m => m.email?.toLowerCase() === input && m.pin === password);
-      if (localMember) {
-        const gymId = localStorage.getItem("hf_gym_id") || "default";
-        const clientUser = { id: "client_" + localMember.id, username: localMember.email, role: "client", memberId: localMember.id, displayName: localMember.firstName + " " + localMember.lastName, gymId };
-        setCurrentUser(clientUser);
-        return { success: true, user: clientUser };
-      }
-    } catch {}
+    // Skip local member check — always search Supabase for members to ensure correct gym_id
 
     // Search Supabase member lists across all gyms
     try {
