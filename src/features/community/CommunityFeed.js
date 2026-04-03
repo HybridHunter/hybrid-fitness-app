@@ -4,6 +4,7 @@ import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
+import { ImageUploadZone } from "../../components/shared/ImageUpload";
 
 /* ──────────────────────────────────────────────
    Helpers
@@ -2036,13 +2037,9 @@ export default function CommunityFeed() {
                   }}/>
               )}
               {composeMediaType === "image" && (
-                <input value={composeMediaUrl} onChange={(e) => setComposeMediaUrl(e.target.value)}
-                  placeholder="Paste image URL..."
-                  style={{
-                    width: "100%", background: B.dark, border: `1px solid ${B.border}`, borderRadius: 8,
-                    padding: "8px 12px", color: B.text, fontSize: 13, marginBottom: 8, outline: "none",
-                    boxSizing: "border-box"
-                  }}/>
+                <div style={{ marginBottom: 8 }}>
+                  <ImageUploadZone value={composeMediaUrl} onChange={(url) => setComposeMediaUrl(url)} label="Upload Image" />
+                </div>
               )}
               {composeMediaType === "poll" && (
                 <div style={{ marginBottom: 8 }}>

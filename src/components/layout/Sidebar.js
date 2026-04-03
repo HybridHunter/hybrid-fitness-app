@@ -39,6 +39,7 @@ const NAV_GROUPS = [
     adminOnly: false,
     items: [
       { label: "Clients", path: "members", icon: "\uD83D\uDC65" },
+      { label: "Accountability", path: "accountability", icon: "\uD83D\uDCCB" },
       { label: "Assessments", path: "assessments", icon: "\uD83D\uDCCB" },
       { label: "Gamification", path: "gamification", icon: "\uD83C\uDFC6" },
     ],
@@ -369,15 +370,19 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
             onMouseEnter={e => { e.currentTarget.style.background = `${B.border}44`; }}
             onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
           >
-            <div style={{
-              width: 34, height: 34, borderRadius: 10,
-              background: `${roleColor}22`, color: roleColor,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 12, fontWeight: 700, flexShrink: 0,
-              border: `1.5px solid ${roleColor}44`,
-            }}>
-              {initials}
-            </div>
+            {currentUser.photo ? (
+              <img src={currentUser.photo} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "cover", flexShrink: 0, border: `1.5px solid ${roleColor}44` }} />
+            ) : (
+              <div style={{
+                width: 34, height: 34, borderRadius: 10,
+                background: `${roleColor}22`, color: roleColor,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 12, fontWeight: 700, flexShrink: 0,
+                border: `1.5px solid ${roleColor}44`,
+              }}>
+                {initials}
+              </div>
+            )}
             {showFull && (
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{

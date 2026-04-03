@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
+import { resizeImage } from "../../components/shared/ImageUpload";
 
 function getInitials(f, l) {
   return ((f?.[0] || "") + (l?.[0] || "")).toUpperCase();
@@ -98,7 +99,11 @@ export default function MessagingView() {
   const [newMsgMemberId, setNewMsgMemberId] = useState("");
   const [newMsgText, setNewMsgText] = useState("");
   const [mobileShowConv, setMobileShowConv] = useState(false);
+  const [inboxFilter, setInboxFilter] = useState("all"); // "all", "unread", "read"
+  const [manualUnread, setManualUnread] = useState(new Set()); // conv IDs manually marked unread
+  const [contextMenu, setContextMenu] = useState(null); // { convId, x, y }
   const messagesEndRef = useRef(null);
+  const imgInputRef = useRef(null);
 
   // Demo data initialization removed — demo data is now loaded only via Settings page
 
@@ -121,6 +126,10 @@ export default function MessagingView() {
             : c
         ));
       }
+      // Clear manual unread when opening
+      if (manualUnread.has(activeConvId)) {
+        setManualUnread(prev => { const n = new Set(prev); n.delete(activeConvId); return n; });
+      }
     }
   }, [activeConvId]);
 
@@ -130,9 +139,15 @@ export default function MessagingView() {
 
   const totalUnread = conversations.reduce((sum, c) => sum + c.messages.filter(m => !m.read && m.senderId !== myId).length, 0);
 
+  const isUnread = (c) => manualUnread.has(c.id) || c.messages.some(m => !m.read && m.senderId !== myId);
+
   const sortedConversations = [...conversations].sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
 
   const filteredConversations = sortedConversations.filter(c => {
+    // Inbox filter
+    if (inboxFilter === "unread" && !isUnread(c)) return false;
+    if (inboxFilter === "read" && isUnread(c)) return false;
+    // Search filter
     if (!search) return true;
     const q = search.toLowerCase();
     const info = getMemberInfo(c.participants[0]);
@@ -240,32 +255,52 @@ export default function MessagingView() {
           <button style={s.newBtn} onClick={() => setNewMsgModal(true)}>+ New Message</button>
         </div>
         <input style={s.searchInput} placeholder="Search conversations..." value={search} onChange={e => setSearch(e.target.value)} />
+        {/* Inbox filter tabs */}
+        <div style={{ display: "flex", gap: 4, marginTop: 10 }}>
+          {[
+            { key: "all", label: "All" },
+            { key: "unread", label: `Unread (${conversations.filter(c => isUnread(c)).length})` },
+            { key: "read", label: "Read" },
+          ].map(f => (
+            <button key={f.key} onClick={() => setInboxFilter(f.key)} style={{
+              flex: 1, padding: "5px 0", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+              border: "1px solid " + (inboxFilter === f.key ? B.accent : B.border),
+              background: inboxFilter === f.key ? B.accent + "15" : "transparent",
+              color: inboxFilter === f.key ? B.accent : B.muted,
+            }}>{f.label}</button>
+          ))}
+        </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
         {filteredConversations.length === 0 ? (
-          <div style={{ padding: 24, textAlign: "center", color: B.dim, fontSize: 13 }}>No conversations yet.</div>
+          <div style={{ padding: 24, textAlign: "center", color: B.dim, fontSize: 13 }}>
+            {inboxFilter === "unread" ? "No unread conversations." : inboxFilter === "read" ? "No read conversations." : "No conversations yet."}
+          </div>
         ) : (
           filteredConversations.map(c => {
             const info = getMemberInfo(c.participants[0]);
             const lastMsg = c.messages[c.messages.length - 1];
-            const unread = c.messages.filter(m => !m.read && m.senderId !== myId).length;
+            const unreadCount = c.messages.filter(m => !m.read && m.senderId !== myId).length;
+            const isMarkedUnread = manualUnread.has(c.id);
+            const hasUnread = unreadCount > 0 || isMarkedUnread;
             const color = statusColors[info.status] || B.muted;
             return (
               <div key={c.id} style={s.convItem(activeConvId === c.id)} onClick={() => handleSelectConv(c.id)}
+                onContextMenu={e => { e.preventDefault(); setContextMenu({ convId: c.id, x: e.clientX, y: e.clientY }); }}
                 onMouseEnter={e => { if (activeConvId !== c.id) e.currentTarget.style.background = B.border + "44"; }}
                 onMouseLeave={e => { if (activeConvId !== c.id) e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={s.avatar(color)}>{info.initials}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={s.convName}>{info.name}</span>
+                    <span style={{ ...s.convName, fontWeight: hasUnread ? 800 : 600 }}>{info.name}</span>
                     <span style={s.convTime}>{timeAgo(c.lastActivity)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
-                    <span style={s.convPreview}>
+                    <span style={{ ...s.convPreview, fontWeight: hasUnread ? 600 : 400, color: hasUnread ? B.text : B.dim }}>
                       {lastMsg?.senderId === myId ? "You: " : ""}{lastMsg?.senderId === "system" ? lastMsg.text : (lastMsg?.text || "")}
                     </span>
-                    {unread > 0 && <span style={s.unreadBadge}>{unread}</span>}
+                    {hasUnread && <span style={s.unreadBadge}>{unreadCount || "\u2022"}</span>}
                   </div>
                 </div>
               </div>
@@ -330,16 +365,20 @@ export default function MessagingView() {
         {/* Input bar — modern chat style */}
         <div style={s.inputBar}>
           <div style={s.inputActions}>
-            <button style={s.inputActionBtn} title="Voice note" onClick={() => showToast && showToast("Voice notes coming soon")}>
+            <button style={s.inputActionBtn} title="Voice note" onClick={() => alert("Voice notes coming soon")}>
               {"\uD83C\uDF99\uFE0F"}
             </button>
-            <button style={s.inputActionBtn} title="Send image" onClick={() => {
-              const url = prompt("Image URL:");
-              if (url) { setMessageText(prev => prev + ` [img:${url}]`); }
-            }}>
+            <button style={s.inputActionBtn} title="Send image" onClick={() => imgInputRef.current?.click()}>
               {"\uD83D\uDDBC\uFE0F"}
             </button>
-            <button style={s.inputActionBtn} title="Send GIF" onClick={() => showToast && showToast("GIF picker coming soon")}>
+            <input ref={imgInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const dataUrl = await resizeImage(file);
+              setMessageText(prev => prev + ` [img:${dataUrl}]`);
+              e.target.value = "";
+            }} />
+            <button style={s.inputActionBtn} title="Send GIF" onClick={() => alert("GIF picker coming soon")}>
               GIF
             </button>
           </div>
@@ -377,6 +416,41 @@ export default function MessagingView() {
     <div style={s.page}>
       {renderConversationList()}
       {renderActiveConversation()}
+
+      {/* Context Menu (right-click on conversation) */}
+      {contextMenu && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999 }} onClick={() => setContextMenu(null)}>
+          <div style={{
+            position: "absolute", left: contextMenu.x, top: contextMenu.y,
+            background: B.card, border: "1px solid " + B.border, borderRadius: 10,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.3)", padding: 4, minWidth: 160,
+          }} onClick={e => e.stopPropagation()}>
+            {manualUnread.has(contextMenu.convId) || conversations.find(c => c.id === contextMenu.convId)?.messages.some(m => !m.read && m.senderId !== myId) ? (
+              <button onClick={() => {
+                // Mark as read
+                setConversations(prev => prev.map(c =>
+                  c.id === contextMenu.convId ? { ...c, messages: c.messages.map(m => ({ ...m, read: true })) } : c
+                ));
+                setManualUnread(prev => { const n = new Set(prev); n.delete(contextMenu.convId); return n; });
+                setContextMenu(null);
+              }} style={{ display: "block", width: "100%", padding: "8px 14px", borderRadius: 6, border: "none", background: "transparent", color: B.text, fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "left" }}
+                onMouseEnter={e => e.currentTarget.style.background = B.border + "44"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                Mark as Read
+              </button>
+            ) : (
+              <button onClick={() => {
+                setManualUnread(prev => new Set(prev).add(contextMenu.convId));
+                setContextMenu(null);
+              }} style={{ display: "block", width: "100%", padding: "8px 14px", borderRadius: 6, border: "none", background: "transparent", color: B.text, fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "left" }}
+                onMouseEnter={e => e.currentTarget.style.background = B.border + "44"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                Mark as Unread
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* New Message Modal */}
       {newMsgModal && (

@@ -9,6 +9,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 import PaymentModal from "../../components/shared/PaymentModal";
 import { sendEmail } from "../../utils/messaging";
 import ProgressPhotos from "./ProgressPhotos";
+import ProfileAvatar from "../../components/shared/ProfileAvatar";
 
 const PATTERNS = ["Squat", "Hinge", "Lunge", "Push", "Pull", "Core", "Carry"];
 const SCORE_RANGE = [-3, -2, -1, 0, 1, 2, 3];
@@ -31,7 +32,7 @@ export default function MemberProfile() {
   const navigate = useNavigate();
   const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
   const { getMember, updateMember } = useMembers();
-  const { events, logEvent } = useMembershipEvents();
+  const { events, logEvent, removeLatestEvent } = useMembershipEvents();
   const { logChange, markUndone, getLogForMember } = useMemberChangelog();
   const [tab, setTab] = useState("Overview");
   const [cancelModal, setCancelModal] = useState(null);
@@ -565,7 +566,7 @@ export default function MemberProfile() {
   const memberPlan = plans.find(p => p.id === member.membershipPlanId);
   const memberMethods = paymentMethods.filter(pm => pm.memberId === member.id);
   const memberPayments = payments.filter(p => p.memberId === member.id || p.member === (member.firstName + " " + member.lastName)).sort((a, b) => b.date.localeCompare(a.date));
-  const memberAttendance = attendance.filter(a => a.memberId === member.id).sort((a, b) => b.checkInTime.localeCompare(a.checkInTime));
+  const memberAttendance = attendance.filter(a => a.memberId === member.id && !a.noShow).sort((a, b) => b.checkInTime.localeCompare(a.checkInTime));
   const classById = (cid) => { const c = (schedule || []).find(x => x.id === cid); return c ? c.name : "Open Gym"; };
 
   const handleDeleteMethod = (pmId) => {
@@ -603,7 +604,13 @@ export default function MemberProfile() {
     if (newPlan) { details.newPlan = newPlan.name; details.newPrice = newPlan.price; details.isTrial = !!newPlan.isTrial; }
     logEvent(member.id, memberName, eventType, details);
     logChange(member.id, memberName, eventType === "join" ? "plan_assigned" : eventType === "cancel" ? "plan_removed" : "plan_changed", "membershipPlanId", oldPlan?.id || null, planId || null);
-    updateMember(member.id, { membershipPlanId: planId || null, cancelScheduled: null });
+    let planEndDate = null;
+    if (newPlan?.durationType === "fixed" && newPlan?.durationWeeks) {
+      const end = new Date();
+      end.setDate(end.getDate() + newPlan.durationWeeks * 7);
+      planEndDate = end.toISOString().slice(0, 10);
+    }
+    updateMember(member.id, { membershipPlanId: planId || null, cancelScheduled: null, planEndDate });
   };
 
   const handleCancelConfirm = (cancelType, futureDate) => {
@@ -671,9 +678,15 @@ export default function MemberProfile() {
         </div>
         {memberPlan ? (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: member.planEndDate ? "1fr 1fr 1fr" : "1fr 1fr", gap: 12 }}>
               <div style={s.statBox}><div style={s.statValue}>${memberPlan.price}</div><div style={s.statLabel}>{memberPlan.billingCycle}</div></div>
               <div style={s.statBox}><div style={s.statValue}>{memberPlan.sessionsIncluded || "\u221E"}</div><div style={s.statLabel}>Sessions / Cycle</div></div>
+              {member.planEndDate && (
+                <div style={s.statBox}>
+                  <div style={s.statValue}>{new Date(member.planEndDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+                  <div style={s.statLabel}>{memberPlan.endBehavior === "rollover" ? "Rolls Over" : "Ends"}</div>
+                </div>
+              )}
             </div>
             {member.cancelScheduled && (
               <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: B.red + "12", border: "1px solid " + B.red + "30", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -809,17 +822,17 @@ export default function MemberProfile() {
 
   const handleUndo = (entry) => {
     if (!member) return;
-    const memberName = member.firstName + " " + member.lastName;
     if (entry.field === "membershipPlanId") {
       updateMember(member.id, { membershipPlanId: entry.oldValue, cancelScheduled: null });
-      logChange(member.id, memberName, "field_updated", "membershipPlanId", entry.newValue, entry.oldValue);
-      const plan = plans.find(p => p.id === entry.oldValue);
-      if (plan) {
-        logEvent(member.id, memberName, "join", { newPlan: plan.name, newPrice: plan.price, note: "Undo: restored previous plan" });
+      // Remove the corresponding event instead of creating a new one
+      if (entry.action === "plan_assigned" || entry.action === "plan_changed") {
+        removeLatestEvent(member.id, "join");
+      } else if (entry.action === "plan_removed" || entry.action === "cancel_instant") {
+        removeLatestEvent(member.id, "cancel");
       }
     } else if (entry.field === "cancelScheduled") {
       updateMember(member.id, { cancelScheduled: entry.oldValue || null });
-      logChange(member.id, memberName, "cancel_revoked", "cancelScheduled", entry.newValue, entry.oldValue);
+      removeLatestEvent(member.id, "cancel");
     } else if (entry.field === "membershipStatus") {
       updateMember(member.id, { membershipStatus: entry.oldValue });
     }
@@ -944,7 +957,14 @@ export default function MemberProfile() {
 
       {/* Header */}
       <div style={s.header}>
-        <div style={s.avatarLg}>{getInitials(member.firstName, member.lastName)}</div>
+        <ProfileAvatar
+          photo={member.photo}
+          name={`${member.firstName} ${member.lastName}`}
+          size={72}
+          editable
+          onPhotoChange={(url) => updateMember(member.id, { photo: url })}
+          style={{ background: statusColor + "22", color: statusColor }}
+        />
         <div style={s.headerInfo}>
           <div style={s.name}>{member.firstName} {member.lastName}</div>
           <div style={s.metaRow}>

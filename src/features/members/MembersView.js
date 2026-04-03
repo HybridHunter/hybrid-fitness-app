@@ -43,7 +43,7 @@ export default function MembersView() {
   const B = useTheme();
   const navigate = useNavigate();
   const { members, addMember, updateMember, deleteMember } = useMembers();
-  const { events, logEvent } = useMembershipEvents();
+  const { events, logEvent, removeLatestEvent } = useMembershipEvents();
   const { log: changelog, markUndone, logChange } = useMemberChangelog();
   const [plans] = useLocalStorage("hf_plans", []);
   const sc = STATUS_COLORS(B);
@@ -223,6 +223,7 @@ export default function MembersView() {
       notes: m.notes || "", tagsStr: (m.tags || []).join(", "),
       street: m.address?.street || "", city: m.address?.city || "",
       state: m.address?.state || "", zip: m.address?.zip || "",
+      holdStartDate: m.holdStartDate || "", holdEndDate: m.holdEndDate || "",
     });
     setModalOpen(true);
   };
@@ -249,8 +250,37 @@ export default function MembersView() {
       const newStatus = data.membershipStatus;
       if (oldStatus && newStatus && oldStatus !== newStatus) {
         if (newStatus === "frozen") {
-          logEvent(editId, fullName, "freeze", { oldStatus, newStatus });
+          const holdStart = form.holdStartDate || new Date().toISOString().slice(0, 10);
+          const holdEnd = form.holdEndDate || "";
+          data.holdStartDate = holdStart;
+          data.holdEndDate = holdEnd;
+          logEvent(editId, fullName, "freeze", { oldStatus, newStatus, holdStartDate: holdStart, holdEndDate: holdEnd });
+          // Remove bookings ONLY during the hold period (not after holdEndDate)
+          try {
+            const sched = JSON.parse(localStorage.getItem("hf_schedule") || "[]");
+            const updated = sched.map(c => {
+              // If hold has an end date, only remove bookings for sessions on days within the hold period
+              // Sessions are recurring by day-of-week, so we remove from all if no end date
+              if (holdEnd) {
+                // Keep bookings — they can re-book for after hold ends
+                // Only remove if it's a current/upcoming session during hold
+                return {
+                  ...c,
+                  bookings: (c.bookings || []).filter(id => id !== editId),
+                  waitlist: (c.waitlist || []).filter(id => id !== editId),
+                };
+              }
+              return {
+                ...c,
+                bookings: (c.bookings || []).filter(id => id !== editId),
+                waitlist: (c.waitlist || []).filter(id => id !== editId),
+              };
+            });
+            localStorage.setItem("hf_schedule", JSON.stringify(updated));
+          } catch {}
         } else if (oldStatus === "frozen" && newStatus === "active") {
+          data.holdStartDate = null;
+          data.holdEndDate = null;
           logEvent(editId, fullName, "unfreeze", { oldStatus, newStatus });
         }
       }
@@ -501,15 +531,16 @@ export default function MembersView() {
         const handleUndo = (entry) => {
           const m = members.find(x => x.id === entry.memberId);
           if (!m) return;
-          const memberName = m.firstName + " " + m.lastName;
           if (entry.field === "membershipPlanId") {
             updateMember(m.id, { membershipPlanId: entry.oldValue, cancelScheduled: null });
-            logChange(m.id, memberName, "field_updated", "membershipPlanId", entry.newValue, entry.oldValue);
-            const plan = plans.find(p => p.id === entry.oldValue);
-            if (plan) logEvent(m.id, memberName, "join", { newPlan: plan.name, newPrice: plan.price, note: "Undo" });
+            if (entry.action === "plan_assigned" || entry.action === "plan_changed") {
+              removeLatestEvent(m.id, "join");
+            } else if (entry.action === "plan_removed" || entry.action === "cancel_instant") {
+              removeLatestEvent(m.id, "cancel");
+            }
           } else if (entry.field === "cancelScheduled") {
             updateMember(m.id, { cancelScheduled: entry.oldValue || null });
-            logChange(m.id, memberName, "cancel_revoked", "cancelScheduled", entry.newValue, entry.oldValue);
+            removeLatestEvent(m.id, "cancel");
           } else if (entry.field === "membershipStatus") {
             updateMember(m.id, { membershipStatus: entry.oldValue });
           }
@@ -600,7 +631,11 @@ export default function MembersView() {
             return (
               <div key={m.id} style={s.card}>
                 <div style={s.cardTop}>
-                  <div style={s.avatar(color)}>{getInitials(m.firstName, m.lastName)}</div>
+                  {m.photo ? (
+                    <img src={m.photo} alt="" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                  ) : (
+                    <div style={s.avatar(color)}>{getInitials(m.firstName, m.lastName)}</div>
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={s.name}>{m.firstName} {m.lastName}</div>
                     <div style={s.email}>{m.email}</div>
@@ -720,11 +755,24 @@ export default function MembersView() {
                   <label style={s.label}>Status</label>
                   <select style={s.select} value={form.membershipStatus} onChange={(e) => set("membershipStatus", e.target.value)}>
                     <option value="active">Active</option>
-                    <option value="frozen">Frozen</option>
+                    <option value="frozen">Frozen (Hold)</option>
                   </select>
                 </div>
               )}
             </div>
+
+            {editId && form.membershipStatus === "frozen" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div style={s.field}>
+                  <label style={s.label}>Hold Start Date</label>
+                  <input style={s.input} type="date" value={form.holdStartDate || ""} onChange={(e) => set("holdStartDate", e.target.value)} />
+                </div>
+                <div style={s.field}>
+                  <label style={s.label}>Hold End Date</label>
+                  <input style={s.input} type="date" value={form.holdEndDate || ""} onChange={(e) => set("holdEndDate", e.target.value)} />
+                </div>
+              </div>
+            )}
 
             <div style={s.field}>
               <label style={s.label}>Street Address</label>

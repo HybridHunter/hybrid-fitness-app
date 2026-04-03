@@ -51,6 +51,7 @@ import OnboardingWizard from "./features/onboarding/OnboardingWizard";
 import DataMigrationView from "./features/settings/DataMigrationView";
 import SuperAdminPanel from "./features/super-admin/SuperAdminPanel";
 import FeedbackForm from "./features/settings/FeedbackForm";
+import AccountabilityView from "./features/accountability/AccountabilityView";
 import HelpCenter from "./features/help/HelpCenter";
 import { FloatingHelpButton } from "./features/help/HelpCenter";
 import OnboardingTour from "./features/onboarding/OnboardingTour";
@@ -159,6 +160,7 @@ function GymRoutes() {
           <Route path="billing" element={<BillingView />} />
           <Route path="analytics" element={<AnalyticsView />} />
           <Route path="gamification" element={<GamificationView />} />
+          <Route path="accountability" element={<AccountabilityView />} />
           <Route path="content" element={<ContentLibraryView />} />
           <Route path="shop" element={<ShopView />} />
           <Route path="messages" element={<MessagingView />} />

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useMembers } from "../../hooks/useMembers";
+import ProfileAvatar from "../../components/shared/ProfileAvatar";
 
 export default function EditProfileModal({ isOpen, onClose }) {
   const B = useTheme();
@@ -30,6 +31,8 @@ export default function EditProfileModal({ isOpen, onClose }) {
   useEffect(() => {
     if (!isOpen) return;
     setDisplayName(currentUser?.displayName || "");
+    setEmail(currentUser?.email || "");
+    setPhone(currentUser?.phone || "");
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
@@ -87,9 +90,11 @@ export default function EditProfileModal({ isOpen, onClose }) {
       return;
     }
 
-    // Update staff user record (password + displayName)
+    // Update staff user record
     const userUpdates = {};
     if (displayName && displayName !== currentUser.displayName) userUpdates.displayName = displayName;
+    if (!isClient && email !== (currentUser.email || "")) userUpdates.email = email;
+    if (!isClient && phone !== (currentUser.phone || "")) userUpdates.phone = phone;
     if (newPassword) userUpdates.password = newPassword;
     if (Object.keys(userUpdates).length > 0) {
       updateUser(currentUser.id, userUpdates);
@@ -169,6 +174,27 @@ export default function EditProfileModal({ isOpen, onClose }) {
           </button>
         </div>
 
+        {/* Profile Photo */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
+          <ProfileAvatar
+            photo={isClient && member ? member.photo : currentUser.photo}
+            name={displayName || currentUser.displayName}
+            size={64}
+            editable
+            onPhotoChange={(url) => {
+              if (isClient && member) {
+                updateMember(member.id, { photo: url });
+              } else {
+                updateUser(currentUser.id, { photo: url });
+              }
+            }}
+          />
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: B.text }}>Profile Photo</div>
+            <div style={{ fontSize: 12, color: B.dim }}>Click the avatar to change</div>
+          </div>
+        </div>
+
         {/* Username + Role (read-only for admin/coach) */}
         {!isClient && (
           <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
@@ -186,13 +212,22 @@ export default function EditProfileModal({ isOpen, onClose }) {
         {/* Display Name */}
         <div style={fieldWrap}>
           <label style={labelStyle}>Display Name</label>
-          <input
-            style={inputStyle}
-            value={displayName}
-            onChange={e => setDisplayName(e.target.value)}
-            placeholder="Your name"
-          />
+          <input style={inputStyle} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Your name" />
         </div>
+
+        {/* Staff email + phone */}
+        {!isClient && (
+          <>
+            <div style={fieldWrap}>
+              <label style={labelStyle}>Email</label>
+              <input style={inputStyle} value={email} onChange={e => setEmail(e.target.value)} placeholder="email@example.com" />
+            </div>
+            <div style={fieldWrap}>
+              <label style={labelStyle}>Phone</label>
+              <input style={inputStyle} value={phone} onChange={e => setPhone(e.target.value)} placeholder="555-0100" />
+            </div>
+          </>
+        )}
 
         {/* Client-specific fields */}
         {isClient && member && (

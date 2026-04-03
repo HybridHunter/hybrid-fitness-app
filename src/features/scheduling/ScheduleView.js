@@ -63,6 +63,11 @@ export default function ScheduleView() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [form, setForm] = useState({...EMPTY_FORM});
   const [bookingMemberId, setBookingMemberId] = useState("");
+  const [attendance, setAttendance] = useLocalStorage("hf_attendance", []);
+  const [payments, setPayments] = useLocalStorage("hf_payments", []);
+  const [noShowSettings, setNoShowSettings] = useLocalStorage("hf_noshow_settings", { feeEnabled: false, feeAmount: 25, cancelWindowHours: 12, penaltyEnabled: true, lateCancelFeeEnabled: false, lateCancelFeeThreshold: 3 });
+  const [noShowConfirm, setNoShowConfirm] = useState(null);
+  const [showNoShowSettings, setShowNoShowSettings] = useState(false);
 
   const monday = useMemo(() => {
     const m = getMonday(new Date());
@@ -161,6 +166,42 @@ export default function ScheduleView() {
       return { ...c, bookings: newBookings, waitlist: newWaitlist };
     }));
   }, [setClasses]);
+
+  const handleNoShow = (classId, memberId, chargeFee) => {
+    const m = getMember(memberId);
+    const cls = classes.find(c => c.id === classId);
+    const memberName = m ? `${m.firstName} ${m.lastName}` : "Unknown";
+
+    // Record as no-show in attendance (counts against allotment, NOT as attended)
+    setAttendance(prev => [...prev, {
+      id: crypto.randomUUID(),
+      memberId,
+      checkInTime: new Date().toISOString(),
+      method: "no-show",
+      classId,
+      noShow: true,
+    }]);
+
+    // Remove from booking
+    handleRemoveMember(classId, memberId);
+
+    // Charge no-show fee if enabled
+    if (chargeFee && noShowSettings.feeAmount > 0) {
+      setPayments(prev => [...prev, {
+        id: "pay_" + Date.now(),
+        member: memberName,
+        memberId,
+        amount: noShowSettings.feeAmount,
+        date: new Date().toISOString().slice(0, 10),
+        status: "paid",
+        method: "No-Show Fee",
+        description: `No-show fee — ${cls?.name || "Session"}`,
+        isFEO: false,
+      }]);
+    }
+
+    setNoShowConfirm(null);
+  };
 
   // Keep selectedClass in sync with classes state
   const activeClass = selectedClass ? classes.find(c => c.id === selectedClass.id) || null : null;
@@ -365,7 +406,57 @@ export default function ScheduleView() {
 
             {/* Booked Members */}
             <div style={{marginBottom:20}}>
-              <h3 style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:8}}>Booked Members ({activeClass.bookings.length})</h3>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                <h3 style={{fontSize:14,fontWeight:700,color:B.text,margin:0}}>Booked Members ({activeClass.bookings.length})</h3>
+                <button onClick={()=>setShowNoShowSettings(!showNoShowSettings)} style={btn({background:"transparent",color:B.muted,padding:"2px 8px",fontSize:11,border:"1px solid "+B.border})}>
+                  {"\u2699\uFE0F"} No-Show Settings
+                </button>
+              </div>
+
+              {showNoShowSettings && (
+                <div style={{padding:"12px 14px",borderRadius:10,background:B.card,border:"1px solid "+B.border,marginBottom:10,display:"flex",flexDirection:"column",gap:10}}>
+                  <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                    <input type="checkbox" checked={noShowSettings.feeEnabled} onChange={e=>setNoShowSettings(prev=>({...prev,feeEnabled:e.target.checked}))} style={{width:16,height:16,accentColor:B.accent}} />
+                    <span style={{fontSize:13,fontWeight:600,color:B.text}}>Charge no-show fee</span>
+                  </label>
+                  {noShowSettings.feeEnabled && (
+                    <div style={{display:"flex",alignItems:"center",gap:8,paddingLeft:24}}>
+                      <span style={{fontSize:13,color:B.muted}}>Fee amount: $</span>
+                      <input type="number" min="0" step="1" value={noShowSettings.feeAmount} onChange={e=>setNoShowSettings(prev=>({...prev,feeAmount:Number(e.target.value)||0}))}
+                        style={{width:70,padding:"4px 8px",borderRadius:6,border:"1px solid "+B.border,background:B.dark,color:B.text,fontSize:13,outline:"none"}} />
+                    </div>
+                  )}
+                  <div style={{borderTop:"1px solid "+B.border+"44",paddingTop:10}}>
+                    <div style={{fontSize:12,fontWeight:700,color:B.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Booking Cancellation Policy</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                      <span style={{fontSize:13,color:B.muted}}>Free cancel window:</span>
+                      <input type="number" min="0" value={noShowSettings.cancelWindowHours} onChange={e=>setNoShowSettings(prev=>({...prev,cancelWindowHours:Number(e.target.value)||0}))}
+                        style={{width:60,padding:"4px 8px",borderRadius:6,border:"1px solid "+B.border,background:B.dark,color:B.text,fontSize:13,outline:"none"}} />
+                      <span style={{fontSize:13,color:B.muted}}>hours before session</span>
+                    </div>
+                    <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                      <input type="checkbox" checked={noShowSettings.penaltyEnabled !== false} onChange={e=>setNoShowSettings(prev=>({...prev,penaltyEnabled:e.target.checked}))} style={{width:16,height:16,accentColor:B.accent}} />
+                      <span style={{fontSize:13,color:B.text}}>Late cancel still counts against session allotment</span>
+                    </label>
+                    <div style={{fontSize:11,color:B.dim,marginTop:4}}>
+                      Clients cancelling within {noShowSettings.cancelWindowHours}h of their session will be warned that their session will be deducted.
+                    </div>
+                    <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginTop:8}}>
+                      <input type="checkbox" checked={!!noShowSettings.lateCancelFeeEnabled} onChange={e=>setNoShowSettings(prev=>({...prev,lateCancelFeeEnabled:e.target.checked}))} style={{width:16,height:16,accentColor:B.accent}} />
+                      <span style={{fontSize:13,color:B.text}}>Charge no-show fee for repeat late cancels</span>
+                    </label>
+                    {noShowSettings.lateCancelFeeEnabled && (
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4,paddingLeft:24}}>
+                        <span style={{fontSize:12,color:B.muted}}>After</span>
+                        <input type="number" min="1" value={noShowSettings.lateCancelFeeThreshold || 3} onChange={e=>setNoShowSettings(prev=>({...prev,lateCancelFeeThreshold:Number(e.target.value)||3}))}
+                          style={{width:50,padding:"4px 8px",borderRadius:6,border:"1px solid "+B.border,background:B.dark,color:B.text,fontSize:13,outline:"none"}} />
+                        <span style={{fontSize:12,color:B.muted}}>late cancels this month, charge ${noShowSettings.feeAmount} fee</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {activeClass.bookings.length === 0 && (
                 <p style={{color:B.dim,fontSize:13,fontStyle:"italic"}}>No members booked yet.</p>
               )}
@@ -374,9 +465,14 @@ export default function ScheduleView() {
                 return (
                   <div key={mid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderRadius:8,background:B.darker,marginBottom:4}}>
                     <span style={{fontSize:13,color:B.text,fontWeight:500}}>{m ? `${m.firstName} ${m.lastName}` : "Unknown Member"}</span>
-                    <button onClick={()=>handleRemoveMember(activeClass.id,mid)} style={btn({background:B.red+"22",color:B.red,padding:"2px 10px",fontSize:11})}>
-                      Remove
-                    </button>
+                    <div style={{display:"flex",gap:4}}>
+                      <button onClick={()=>setNoShowConfirm({classId:activeClass.id,memberId:mid,memberName:m?`${m.firstName} ${m.lastName}`:"Unknown"})} style={btn({background:(B.orange||"#f59e0b")+"22",color:B.orange||"#f59e0b",padding:"2px 10px",fontSize:11})}>
+                        No Show
+                      </button>
+                      <button onClick={()=>handleRemoveMember(activeClass.id,mid)} style={btn({background:B.red+"22",color:B.red,padding:"2px 10px",fontSize:11})}>
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -469,6 +565,44 @@ export default function ScheduleView() {
                 padding:"8px 20px",borderRadius:8,border:`1px solid ${B.border}`,
                 background:"transparent",color:B.muted,fontSize:13,fontWeight:600,cursor:"pointer",
                 alignSelf:"flex-end",marginTop:4
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* No-Show Confirmation */}
+      {noShowConfirm && (
+        <div style={overlay} onClick={()=>setNoShowConfirm(null)}>
+          <div style={{...modal, maxWidth: 420}} onClick={e=>e.stopPropagation()}>
+            <h3 style={{fontSize:18,fontWeight:700,color:B.text,margin:"0 0 12px"}}>Mark as No-Show</h3>
+            <p style={{color:B.muted,fontSize:14,margin:"0 0 8px"}}>
+              <strong>{noShowConfirm.memberName}</strong> did not attend this session.
+            </p>
+            <p style={{color:B.dim,fontSize:12,margin:"0 0 16px",lineHeight:1.5}}>
+              This will count against their session allotment but will NOT count as attendance.
+              {noShowSettings.feeEnabled && ` A $${noShowSettings.feeAmount} no-show fee will be charged.`}
+            </p>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {noShowSettings.feeEnabled && (
+                <button onClick={()=>handleNoShow(noShowConfirm.classId,noShowConfirm.memberId,true)} style={{
+                  padding:"12px 16px",borderRadius:10,border:"1px solid "+B.border,background:B.red+"12",color:B.red,
+                  fontSize:14,fontWeight:600,cursor:"pointer",textAlign:"left"
+                }}>
+                  <div style={{fontWeight:700}}>No-Show + Charge ${noShowSettings.feeAmount} Fee</div>
+                  <div style={{fontSize:12,color:B.red+"99",marginTop:2}}>Mark as no-show and charge the no-show fee</div>
+                </button>
+              )}
+              <button onClick={()=>handleNoShow(noShowConfirm.classId,noShowConfirm.memberId,false)} style={{
+                padding:"12px 16px",borderRadius:10,border:"1px solid "+B.border,background:(B.orange||"#f59e0b")+"12",color:B.orange||"#f59e0b",
+                fontSize:14,fontWeight:600,cursor:"pointer",textAlign:"left"
+              }}>
+                <div style={{fontWeight:700}}>No-Show (No Fee)</div>
+                <div style={{fontSize:12,color:(B.orange||"#f59e0b")+"99",marginTop:2}}>Mark as no-show without charging</div>
+              </button>
+              <button onClick={()=>setNoShowConfirm(null)} style={{
+                padding:"8px 20px",borderRadius:8,border:"1px solid "+B.border,background:"transparent",
+                color:B.muted,fontSize:13,fontWeight:600,cursor:"pointer",alignSelf:"flex-end",marginTop:4
               }}>Cancel</button>
             </div>
           </div>

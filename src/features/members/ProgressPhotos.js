@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { ImageUploadZone } from "../../components/shared/ImageUpload";
 
 const PHOTO_TYPES = ["front", "side", "back"];
 const TYPE_LABELS = { front: "Front", side: "Side", back: "Back" };
@@ -239,16 +240,9 @@ export default function ProgressPhotos({ memberId, readOnly = false, compact = f
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div>
-                <label style={labelStyle}>Photo URL</label>
-                <input style={inputStyle} value={form.photoUrl} onChange={e => setForm(f => ({ ...f, photoUrl: e.target.value }))} placeholder="https://example.com/photo.jpg" />
-                <div style={{ fontSize: 11, color: B.dim, marginTop: 4 }}>Paste a direct image URL (file upload coming with Supabase Storage)</div>
+                <label style={labelStyle}>Progress Photo</label>
+                <ImageUploadZone value={form.photoUrl} onChange={url => setForm(f => ({ ...f, photoUrl: url }))} label="Upload Progress Photo" />
               </div>
-
-              {form.photoUrl && (
-                <div style={{ background: B.darker, borderRadius: 8, padding: 8, border: `1px solid ${B.border}`, textAlign: "center" }}>
-                  <img src={form.photoUrl} alt="Preview" style={{ maxHeight: 160, maxWidth: "100%", borderRadius: 6 }} onError={e => { e.target.style.display = "none"; }} />
-                </div>
-              )}
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>

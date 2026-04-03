@@ -258,7 +258,7 @@ export default function ClientPortal() {
   // My attendance dates for streak calendar
   const myAttendance = useMemo(() => {
     if (!member) return [];
-    return attendance.filter(a => a.memberId === member.id);
+    return attendance.filter(a => a.memberId === member.id && !a.noShow);
   }, [attendance, member]);
 
   // Joined challenges
@@ -976,6 +976,44 @@ export default function ClientPortal() {
 
     const handleCancel = (classId) => {
       if (!member) return;
+      const cls = classes.find(c => c.id === classId);
+      const nsSettings = JSON.parse(localStorage.getItem("hf_noshow_settings") || "{}");
+      const cancelWindowHours = nsSettings.cancelWindowHours ?? 12;
+      const penaltyEnabled = nsSettings.penaltyEnabled !== false;
+
+      // Check if within penalty window
+      if (cls && cancelWindowHours > 0) {
+        const now = new Date();
+        const todayDow = now.getDay() === 0 ? 6 : now.getDay() - 1;
+        if (cls.dayOfWeek === todayDow && cls.startTime) {
+          const [h, m] = cls.startTime.split(":").map(Number);
+          const sessionTime = new Date(now);
+          sessionTime.setHours(h, m, 0, 0);
+          const hoursUntil = (sessionTime - now) / (1000 * 60 * 60);
+          if (hoursUntil > 0 && hoursUntil <= cancelWindowHours && penaltyEnabled) {
+            if (!window.confirm(`You are cancelling within ${cancelWindowHours} hours of your session. This will still count against your session allotment. Continue?`)) {
+              return;
+            }
+            // Log as late cancel (counts against allotment)
+            const att = JSON.parse(localStorage.getItem("hf_attendance") || "[]");
+            att.push({ id: crypto.randomUUID(), memberId: member.id, checkInTime: new Date().toISOString(), method: "late-cancel", classId, noShow: true });
+            localStorage.setItem("hf_attendance", JSON.stringify(att));
+
+            // Check if late cancel fee should be charged (repeat offender)
+            if (nsSettings.lateCancelFeeEnabled && nsSettings.feeAmount) {
+              const thisMonth = new Date().toISOString().slice(0, 7);
+              const monthLateCancels = att.filter(a => a.memberId === member.id && a.method === "late-cancel" && a.checkInTime?.slice(0, 7) === thisMonth).length;
+              if (monthLateCancels >= (nsSettings.lateCancelFeeThreshold || 3)) {
+                const pays = JSON.parse(localStorage.getItem("hf_payments") || "[]");
+                pays.push({ id: "pay_" + Date.now(), member: `${member.firstName} ${member.lastName}`, memberId: member.id, amount: nsSettings.feeAmount, date: new Date().toISOString().slice(0, 10), status: "paid", method: "Late Cancel Fee", description: `Late cancel fee (${monthLateCancels} this month)` });
+                localStorage.setItem("hf_payments", JSON.stringify(pays));
+                alert(`Late cancellation fee of $${nsSettings.feeAmount} has been charged (${monthLateCancels} late cancels this month).`);
+              }
+            }
+          }
+        }
+      }
+
       const stored = JSON.parse(localStorage.getItem("hf_schedule") || "[]");
       const updated = stored.map(c => {
         if (c.id !== classId) return c;
@@ -2986,8 +3024,8 @@ export default function ClientPortal() {
     { key: "profile", label: "Profile", icon: "\uD83D\uDC64" },
   ];
 
-  // Frozen members get limited access: community, messaging (via community), remote workouts (via workouts), and profile
-  const FROZEN_TABS = new Set(["community", "workouts", "progress", "profile"]);
+  // Frozen members get limited access, but can book if they have a hold end date
+  const FROZEN_TABS = new Set(["community", "workouts", "progress", "profile", ...(member?.holdEndDate ? ["book"] : [])]);
   const TABS = isFrozen ? ALL_TABS.filter(t => FROZEN_TABS.has(t.key)) : ALL_TABS;
 
   const frozenNotice = (
@@ -3003,7 +3041,7 @@ export default function ClientPortal() {
       case "home": return isFrozen ? frozenNotice : renderHome();
       case "workouts": return renderWorkouts();
       case "community": return renderCommunity();
-      case "book": return isFrozen ? frozenNotice : renderBook();
+      case "book": return isFrozen && !member?.holdEndDate ? frozenNotice : renderBook();
       case "progress": return renderProgress();
       case "profile": return renderProfile();
       default: return renderHome();

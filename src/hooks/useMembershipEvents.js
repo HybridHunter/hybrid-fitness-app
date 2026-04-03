@@ -98,5 +98,14 @@ export function useMembershipEvents() {
     }]);
   };
 
-  return { events, logEvent, setEvents };
+  const removeLatestEvent = (memberId, type) => {
+    setEvents(prev => {
+      const idx = [...prev].reverse().findIndex(e => e.memberId === memberId && e.type === type);
+      if (idx === -1) return prev;
+      const actualIdx = prev.length - 1 - idx;
+      return [...prev.slice(0, actualIdx), ...prev.slice(actualIdx + 1)];
+    });
+  };
+
+  return { events, logEvent, setEvents, removeLatestEvent };
 }

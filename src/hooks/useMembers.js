@@ -44,19 +44,46 @@ export function useMembers() {
 
   const getMember = (id) => members.find(m => m.id === id) || null;
 
-  // Auto-process scheduled cancellations
+  // Auto-process scheduled cancellations and plan expirations
+  const [plans] = useLocalStorage("hf_plans", []);
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
-    const toCancel = members.filter(m => m.cancelScheduled && m.cancelScheduled <= today && m.membershipPlanId);
-    if (toCancel.length > 0) {
-      setMembers(prev => prev.map(m => {
-        if (m.cancelScheduled && m.cancelScheduled <= today && m.membershipPlanId) {
-          return { ...m, membershipPlanId: null, cancelScheduled: null };
+    let changed = false;
+    const updated = members.map(m => {
+      // Scheduled cancellations
+      if (m.cancelScheduled && m.cancelScheduled <= today && m.membershipPlanId) {
+        changed = true;
+        return { ...m, membershipPlanId: null, cancelScheduled: null, planEndDate: null };
+      }
+      // Fixed-duration plan expirations
+      if (m.planEndDate && m.planEndDate <= today && m.membershipPlanId) {
+        const currentPlan = plans.find(p => p.id === m.membershipPlanId);
+        if (currentPlan?.endBehavior === "rollover" && currentPlan?.rolloverPlanId) {
+          // Roll into the next plan
+          const nextPlan = plans.find(p => p.id === currentPlan.rolloverPlanId);
+          let newEndDate = null;
+          if (nextPlan?.durationType === "fixed" && nextPlan?.durationWeeks) {
+            const end = new Date();
+            end.setDate(end.getDate() + nextPlan.durationWeeks * 7);
+            newEndDate = end.toISOString().slice(0, 10);
+          }
+          changed = true;
+          return { ...m, membershipPlanId: currentPlan.rolloverPlanId, planEndDate: newEndDate };
+        } else {
+          // Auto-cancel
+          changed = true;
+          return { ...m, membershipPlanId: null, planEndDate: null };
         }
-        return m;
-      }));
-    }
-  }, [members, setMembers]);
+      }
+      // Auto-unfreeze when hold end date passes
+      if (m.membershipStatus === "frozen" && m.holdEndDate && m.holdEndDate <= today) {
+        changed = true;
+        return { ...m, membershipStatus: "active", holdStartDate: null, holdEndDate: null };
+      }
+      return m;
+    });
+    if (changed) setMembers(updated);
+  }, [members, setMembers, plans]);
 
   return { members, setMembers, addMember, updateMember, deleteMember, getMember, membersLoaded };
 }

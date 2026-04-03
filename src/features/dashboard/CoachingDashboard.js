@@ -4,6 +4,8 @@ import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
+import { useAuth } from "../../context/AuthContext";
+import { PostShiftCheckinModal } from "../coaching/PostShiftCheckin";
 
 /* ========== constants ========== */
 const PATTERNS = ["Squat","Hinge","Lunge","Push","Pull","Core","Carry"];
@@ -14,6 +16,10 @@ const PATTERN_COLORS = {
 const DAYS_OF_WEEK = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
 /* ========== helpers ========== */
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function getTodayDayOfWeek() {
   const jsDay = new Date().getDay(); // 0=Sun
   return jsDay === 0 ? 6 : jsDay - 1; // 0=Mon...6=Sun to match schedule format
@@ -82,9 +88,12 @@ export default function CoachingDashboard() {
   const B = useTheme();
   const navigate = useNavigate();
   const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
+  const { currentUser } = useAuth();
   const { members, getMember, updateMember } = useMembers();
   const [schedule] = useLocalStorage("hf_schedule", []);
   const [attendance, setAttendance] = useLocalStorage("hf_attendance", []);
+  const [shiftLogs, setShiftLogs] = useLocalStorage("hf_shift_logs", []);
+  const [showShiftCheckin, setShowShiftCheckin] = useState(null); // date string or null
   const [assessments] = useLocalStorage("hf_assessments", []);
 
   // Live clock
@@ -118,7 +127,7 @@ export default function CoachingDashboard() {
     const activeMembers = members.filter(m => !!m.membershipPlanId);
     return activeMembers
       .map(m => {
-        const memberCheckins = attendance.filter(a => a.memberId === m.id);
+        const memberCheckins = attendance.filter(a => a.memberId === m.id && !a.noShow);
         const lastCheckin = memberCheckins.length > 0
           ? memberCheckins.reduce((latest, a) => new Date(a.checkInTime) > new Date(latest.checkInTime) ? a : latest)
           : null;
@@ -166,6 +175,47 @@ export default function CoachingDashboard() {
     });
   };
 
+  // Pending shift check-ins — today + any missed days
+  const pendingCheckins = useMemo(() => {
+    const coachName = currentUser?.displayName || currentUser?.username || "Coach";
+    const today = todayISO();
+    const pending = [];
+
+    // Check last 7 days for missed check-ins
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const dow = d.getDay() === 0 ? 6 : d.getDay() - 1;
+
+      // Did this coach have sessions on this day?
+      const hadSessions = schedule.some(s => s.dayOfWeek === dow);
+      if (!hadSessions) continue;
+
+      // Already submitted for this date?
+      const alreadySubmitted = shiftLogs.some(l => l.date === dateStr && l.coachName === coachName);
+      if (alreadySubmitted) continue;
+
+      // For today, only prompt if all sessions are done
+      if (dateStr === today) {
+        const todaySess = schedule.filter(s => s.dayOfWeek === dow);
+        const allDone = todaySess.every(s => {
+          const endMin = timeToMinutes(s.endTime);
+          return currentMinutes > endMin;
+        });
+        if (!allDone) continue;
+      }
+
+      pending.push(dateStr);
+    }
+    return pending;
+  }, [schedule, shiftLogs, currentUser, currentMinutes]);
+
+  const handleShiftSubmit = (data) => {
+    setShiftLogs(prev => [...prev, { id: crypto.randomUUID(), ...data }]);
+    setShowShiftCheckin(null);
+  };
+
   // Styles
   const sectionTitle = { fontSize: 20, fontWeight: 700, color: B.text, margin: "0 0 12px 0" };
   const label = { fontSize: 13, color: B.muted, fontWeight: 500 };
@@ -176,6 +226,45 @@ export default function CoachingDashboard() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>
+
+      {/* ===== POST-SHIFT CHECK-IN BANNER ===== */}
+      {pendingCheckins.length > 0 && (
+        <div style={{
+          background: "linear-gradient(135deg, " + B.accent + "22, " + B.accent + "08)",
+          border: "1px solid " + B.accent + "40", borderRadius: 12, padding: "14px 20px",
+          marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
+        }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: B.text }}>
+              {pendingCheckins.length === 1 && pendingCheckins[0] === todayISO()
+                ? "Your sessions are done — submit your shift check-in!"
+                : `You have ${pendingCheckins.length} pending shift check-in${pendingCheckins.length > 1 ? "s" : ""}`
+              }
+            </div>
+            <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>Log your hours, breaks, and client wins.</div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {pendingCheckins.map(dateStr => (
+              <button key={dateStr} onClick={() => setShowShiftCheckin(dateStr)} style={{
+                padding: "8px 16px", borderRadius: 8, border: "none", background: B.accent, color: "#fff",
+                fontSize: 13, fontWeight: 700, cursor: "pointer",
+              }}>
+                {dateStr === todayISO() ? "Check In Now" : new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Post-Shift Modal */}
+      {showShiftCheckin && (
+        <PostShiftCheckinModal
+          date={showShiftCheckin}
+          coachName={currentUser?.displayName || currentUser?.username || "Coach"}
+          onClose={() => setShowShiftCheckin(null)}
+          onSubmit={handleShiftSubmit}
+        />
+      )}
 
       {/* ===== HEADER ===== */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 28 }}>

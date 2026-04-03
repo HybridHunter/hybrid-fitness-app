@@ -88,7 +88,7 @@ function KPI({ label, value, sub, B, color }) {
 }
 
 /* ── Plan Form Modal ── */
-function PlanModal({ plan, onSave, onClose, B, schedule }) {
+function PlanModal({ plan, onSave, onClose, B, schedule, allPlans }) {
   const [form, setForm] = useState(plan || { name: "", price: "", billingCycle: "monthly", sessionsIncluded: "", description: "", features: "", active: true, allowedSessionIds: [], allSessions: true });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const labelStyle = { display: "block", fontSize: 12, fontWeight: 600, color: B.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 };
@@ -158,6 +158,38 @@ function PlanModal({ plan, onSave, onClose, B, schedule }) {
               </div>
             )}
           </div>
+          {/* Duration */}
+          <div>
+            <label style={labelStyle}>Plan Duration</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <select style={{ ...inputStyle, flex: 1, cursor: "pointer" }} value={form.durationType || "ongoing"} onChange={e => { set("durationType", e.target.value); if (e.target.value === "ongoing") { set("durationWeeks", ""); set("rolloverPlanId", ""); } }}>
+                <option value="ongoing">Ongoing (no end date)</option>
+                <option value="fixed">Fixed Duration</option>
+              </select>
+              {form.durationType === "fixed" && (
+                <input style={{ ...inputStyle, width: 80 }} type="number" min="1" value={form.durationWeeks || ""} onChange={e => set("durationWeeks", e.target.value ? Number(e.target.value) : "")} placeholder="Weeks" />
+              )}
+              {form.durationType === "fixed" && <span style={{ fontSize: 13, color: B.muted, alignSelf: "center", whiteSpace: "nowrap" }}>weeks</span>}
+            </div>
+          </div>
+          {/* Rollover / End Behavior */}
+          {form.durationType === "fixed" && (
+            <div>
+              <label style={labelStyle}>When Plan Ends</label>
+              <select style={{ ...inputStyle, cursor: "pointer" }} value={form.endBehavior || "cancel"} onChange={e => { set("endBehavior", e.target.value); if (e.target.value !== "rollover") set("rolloverPlanId", ""); }}>
+                <option value="cancel">Auto-cancel (remove plan)</option>
+                <option value="rollover">Roll into another plan</option>
+              </select>
+              {form.endBehavior === "rollover" && (
+                <select style={{ ...inputStyle, marginTop: 8, cursor: "pointer" }} value={form.rolloverPlanId || ""} onChange={e => set("rolloverPlanId", e.target.value)}>
+                  <option value="">-- Select plan to roll into --</option>
+                  {(allPlans || []).filter(p => p.active && p.id !== form.id).map(p => (
+                    <option key={p.id} value={p.id}>{p.name} — ${p.price}/{p.billingCycle}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input type="checkbox" checked={!!form.isTrial} onChange={e => set("isTrial", e.target.checked)} style={{ width: 16, height: 16, accentColor: B.orange, cursor: "pointer" }} />
             <label style={{ fontSize: 13, fontWeight: 600, color: B.text, cursor: "pointer" }}>Trial Plan</label>
@@ -376,7 +408,14 @@ export default function BillingView() {
       logEvent(memberId, memberName, "cancel", { oldPlan: oldPlan.name, oldPrice: oldPlan.price, isTrial: !!oldPlan.isTrial });
     }
 
-    updateMember(memberId, { membershipPlanId: planId || null, cancelScheduled: null });
+    // Calculate plan end date for fixed-duration plans
+    let planEndDate = null;
+    if (newPlan?.durationType === "fixed" && newPlan?.durationWeeks) {
+      const end = new Date();
+      end.setDate(end.getDate() + newPlan.durationWeeks * 7);
+      planEndDate = end.toISOString().slice(0, 10);
+    }
+    updateMember(memberId, { membershipPlanId: planId || null, cancelScheduled: null, planEndDate });
   };
 
   const getNextBillingDate = (plan) => {
@@ -632,7 +671,7 @@ export default function BillingView() {
       )}
 
       {/* Plan Modal */}
-      {showPlanModal && <PlanModal plan={editPlan} onSave={savePlan} onClose={() => { setShowPlanModal(false); setEditPlan(null); }} B={B} schedule={schedule} />}
+      {showPlanModal && <PlanModal plan={editPlan} onSave={savePlan} onClose={() => { setShowPlanModal(false); setEditPlan(null); }} B={B} schedule={schedule} allPlans={plans} />}
 
       {/* Settings Modal */}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} B={B} recurringEnabled={recurringEnabled} setRecurringEnabled={setRecurringEnabled} />}

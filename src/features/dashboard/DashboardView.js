@@ -263,7 +263,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
     activeMembers.forEach(m => {
       const alertKey = `noshow_${m.id}`;
       if (dismissedAlerts.includes(alertKey)) return;
-      const memberCheckins = attendance.filter(a => a.memberId === m.id);
+      const memberCheckins = attendance.filter(a => a.memberId === m.id && !a.noShow);
       const plan = plans.find(p => p.id === m.membershipPlanId);
       if (memberCheckins.length === 0) {
         result.push({ type: "noshow", member: m, reason: "Never checked in", planName: plan ? plan.name : "No plan assigned", severity: "red", sortWeight: 999, alertKey });
@@ -287,7 +287,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
       if (dismissedAlerts.includes(alertKey)) return;
       const expectedIn14Days = Math.round((plan.sessionsIncluded / 4) * 2);
       const actualIn14Days = attendance.filter(a =>
-        a.memberId === m.id && new Date(a.checkInTime) >= fourteenDaysAgo
+        a.memberId === m.id && !a.noShow && new Date(a.checkInTime) >= fourteenDaysAgo
       ).length;
       if (actualIn14Days < expectedIn14Days) {
         const shortfall = expectedIn14Days - actualIn14Days;

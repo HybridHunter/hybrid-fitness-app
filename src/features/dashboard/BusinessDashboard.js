@@ -5,6 +5,7 @@ import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
 import Card from "../../components/ui/Card";
+import { CoachShiftSubmissions } from "../coaching/PostShiftCheckin";
 
 /* ========== helpers ========== */
 const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -205,7 +206,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
       // Don't flag brand new clients — give them 7 days before alerting
       const addedDate = m.createdAt ? new Date(m.createdAt) : (m.startDate ? new Date(m.startDate) : null);
       if (addedDate && daysBetween(addedDate, now) < 7) return;
-      const memberCheckins = attendance.filter(a => a.memberId === m.id);
+      const memberCheckins = attendance.filter(a => a.memberId === m.id && !a.noShow);
       const plan = plans.find(p => p.id === m.membershipPlanId);
       if (memberCheckins.length === 0) {
         result.push({ type: "noshow", member: m, reason: "Never checked in", planName: plan ? plan.name : "No plan assigned", severity: "red", sortWeight: 999, alertKey });
@@ -229,7 +230,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
       if (dismissedAlerts.includes(alertKey)) return;
       const expectedIn14Days = Math.round((plan.sessionsIncluded / 4) * 2);
       const actualIn14Days = attendance.filter(a =>
-        a.memberId === m.id && new Date(a.checkInTime) >= fourteenDaysAgo
+        a.memberId === m.id && !a.noShow && new Date(a.checkInTime) >= fourteenDaysAgo
       ).length;
       if (actualIn14Days < expectedIn14Days) {
         const shortfall = expectedIn14Days - actualIn14Days;
@@ -803,6 +804,29 @@ export default function BusinessDashboard() {
   const [schedule] = useLocalStorage("hf_schedule", []);
   const [payments] = useLocalStorage("hf_payments", []);
   const [leads] = useLocalStorage("hf_leads", []);
+  const [shiftLogs] = useLocalStorage("hf_shift_logs", []);
+  const [communityPosts, setCommunityPosts] = useLocalStorage("hf_community_posts", []);
+
+  const handleCreateWinsPost = (wins) => {
+    if (!wins || wins.length === 0) return;
+    const lines = wins.map(w => w.memberName ? `${w.memberName}: ${w.text}` : w.text);
+    const content = `Today's Client Wins!\n\n${lines.join("\n")}\n\nKeep crushing it!`;
+    const newPost = {
+      id: crypto.randomUUID(),
+      authorId: "coach",
+      authorName: "Coach",
+      category: "General",
+      content,
+      mediaType: null,
+      mediaUrl: "",
+      likes: [],
+      comments: [],
+      pinned: false,
+      createdAt: new Date().toISOString(),
+    };
+    setCommunityPosts(prev => [newPost, ...prev]);
+    alert("Wins posted to the community feed!");
+  };
   const [dashMetrics, setDashMetrics] = useLocalStorage("hf_dashboard_metrics", () => {
     const d = new Date();
     const cur = periodKey(d);
@@ -1420,7 +1444,7 @@ export default function BusinessDashboard() {
       case "lost_members": {
         const rows = cancelEventsInPeriod.map((e, i) => {
           const m = findMemberForEvent(e);
-          const memberCheckins = m ? attendance.filter(a => a.memberId === m.id) : [];
+          const memberCheckins = m ? attendance.filter(a => a.memberId === m.id && !a.noShow) : [];
           const lastCheckin = memberCheckins.length > 0
             ? memberCheckins.reduce((latest, a) => {
                 const t = new Date(a.checkInTime || a.date || 0).getTime();
@@ -2306,6 +2330,11 @@ export default function BusinessDashboard() {
 
       {/* ============ Member Engagement Alerts ============ */}
       <MemberEngagementAlerts members={members} attendance={attendance} plans={plans} B={B} navigate={navigate} />
+
+      {/* ============ Coach Shift Submissions ============ */}
+      <Card style={{ padding: 20, marginBottom: sectionGap }}>
+        <CoachShiftSubmissions B={B} shiftLogs={shiftLogs} members={members} plans={plans} onCreateWinsPost={handleCreateWinsPost} />
+      </Card>
 
       {/* ============ Quick Actions ============ */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>

@@ -113,6 +113,7 @@ function buildCheckInsPerMonth(attendance) {
   const months = getLast12Months();
   return months.map(m => {
     const checkIns = attendance.filter(a => {
+      if (a.noShow) return false;
       const d = (a.checkInTime || a.date || "").slice(0, 7);
       return d === m.key;
     }).length;
@@ -208,7 +209,7 @@ function OverviewTab({ B, members, payments, attendance, membershipEvents, plans
   const thisMonthKey = now.toISOString().slice(0, 7);
   const monthRevenue = payments.filter(p => p.status === "paid" && p.date && p.date.startsWith(thisMonthKey)).reduce((s, p) => s + (p.amount || 0), 0);
   const last30 = new Date(now); last30.setDate(last30.getDate() - 30);
-  const last30Attendance = attendance.filter(a => new Date(a.checkInTime || a.date) >= last30);
+  const last30Attendance = attendance.filter(a => !a.noShow && new Date(a.checkInTime || a.date) >= last30);
   const avgAttendance = last30Attendance.length > 0 ? (last30Attendance.length / 30).toFixed(1) : "0";
   const churnData = buildChurnRate(members, membershipEvents);
   const latestChurn = churnData.length > 0 ? churnData[churnData.length - 1].rate : 0;
@@ -668,6 +669,7 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
 
       // Bookings and check-ins for this class in range
       const classCheckins = attendance.filter(a =>
+        !a.noShow &&
         a.classId === cls.id &&
         a.checkInTime >= startDate && a.checkInTime <= endDate + "T23:59:59"
       ).length;
@@ -706,7 +708,7 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
 
     // -- Sessions Utilized --
     const sessionsUtilized = attendance.filter(a =>
-      a.checkInTime >= startDate && a.checkInTime <= endDate + "T23:59:59"
+      !a.noShow && a.checkInTime >= startDate && a.checkInTime <= endDate + "T23:59:59"
     ).length;
 
     // -- Utilization Rate --
@@ -731,7 +733,7 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
       const wStartISO = toISO(wStart);
       const wEndISO = toISO(wEnd);
       const weekCheckins = attendance.filter(a =>
-        a.checkInTime >= wStartISO && a.checkInTime <= wEndISO + "T23:59:59"
+        !a.noShow && a.checkInTime >= wStartISO && a.checkInTime <= wEndISO + "T23:59:59"
       ).length;
 
       const weekUtil = weekCapacity > 0 ? Math.round((weekCheckins / weekCapacity) * 100) : 0;

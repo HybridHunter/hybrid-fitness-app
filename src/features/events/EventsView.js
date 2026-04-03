@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import PlanAccessPicker, { PlanLockBadge } from "../../components/ui/PlanAccessPicker";
+import { ImageUploadZone } from "../../components/shared/ImageUpload";
 
 /* ---- helpers ---- */
 const uuid = () => crypto.randomUUID();
@@ -329,8 +330,8 @@ function NewEventModal({ B, onClose, onSave }) {
             <input style={inputStyle} value={form.locationUrl} onChange={(e) => set("locationUrl", e.target.value)} placeholder={form.locationType === "virtual" ? "https://zoom.us/j/..." : "123 Gym Street"} />
           </div>
           <div>
-            <label style={labelStyle}>Cover Image URL (optional)</label>
-            <input style={inputStyle} value={form.coverImage} onChange={(e) => set("coverImage", e.target.value)} placeholder="https://..." />
+            <label style={labelStyle}>Cover Image (optional)</label>
+            <ImageUploadZone value={form.coverImage} onChange={(url) => set("coverImage", url)} label="Upload Cover Image" />
           </div>
           <div>
             <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
