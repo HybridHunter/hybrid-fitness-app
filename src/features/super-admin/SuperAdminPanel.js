@@ -142,12 +142,40 @@ export default function SuperAdminPanel() {
     loadGymDetails(gymId);
   };
 
-  const handleImpersonate = (gym) => {
+  const [impersonateTarget, setImpersonateTarget] = useState(null);
+
+  const handleImpersonate = (gym, role, userOverride) => {
     localStorage.setItem("hf_gym_id_backup", localStorage.getItem("hf_gym_id") || "");
+    localStorage.setItem("hf_session_backup", localStorage.getItem("hf_session") || "");
     localStorage.setItem("hf_gym_id", gym.gymId);
     localStorage.setItem("hf_impersonating", "true");
-    addAction(`Impersonated ${gym.gymName}`);
-    window.location.href = "/dashboard";
+
+    // Clear cached data so it loads fresh for this gym
+    Object.keys(localStorage).filter(k => k.startsWith("hf_") && !["hf_theme","hf_session","hf_users","hf_gym_id","hf_onboarding_complete","hf_gym_id_backup","hf_session_backup","hf_impersonating"].includes(k)).forEach(k => localStorage.removeItem(k));
+
+    const actualRole = role || "admin";
+    const sessionUser = userOverride || {
+      id: "impersonate_" + Date.now(),
+      username: "superadmin",
+      role: actualRole,
+      displayName: `Super Admin (as ${actualRole})`,
+      gymId: gym.gymId,
+      isSuperAdmin: true,
+    };
+
+    // If impersonating as client, need a memberId
+    if (actualRole === "client" && !sessionUser.memberId) {
+      // Use the first member from this gym's data
+      const gymMembers = gymDetails[gym.gymId]?.members;
+      if (gymMembers && gymMembers.length > 0) {
+        sessionUser.memberId = gymMembers[0].id;
+        sessionUser.displayName = gymMembers[0].firstName + " " + gymMembers[0].lastName + " (impersonating)";
+      }
+    }
+
+    localStorage.setItem("hf_session", JSON.stringify(sessionUser));
+    addAction(`Impersonated ${gym.gymName} as ${actualRole}`);
+    window.location.href = actualRole === "client" ? "/" : "/";
   };
 
   const handleStopImpersonating = () => {
@@ -903,7 +931,7 @@ export default function SuperAdminPanel() {
                       </td>
                       <td style={tableCell}>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <button style={btnSmall} onClick={(e) => { e.stopPropagation(); handleImpersonate(g); }}>Impersonate</button>
+                          <button style={btnSmall} onClick={(e) => { e.stopPropagation(); setImpersonateTarget(g); }}>Impersonate</button>
                           <button style={{ ...btnSmall, background: B.green }} onClick={(e) => { e.stopPropagation(); openEdit(g); }}>Edit</button>
                           <button style={{ ...btnSmall, background: B.orange || "#e67e22" }} onClick={(e) => { e.stopPropagation(); handleExtendTrial(g); }}>Extend Trial</button>
                           <button style={btnDanger} onClick={(e) => { e.stopPropagation(); setDeleteConfirm(g); }}>Delete</button>
@@ -1024,7 +1052,7 @@ export default function SuperAdminPanel() {
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button style={btnSmall} onClick={() => handleExtendTrial(g)}>Extend Trial</button>
-                    <button style={btnSmall} onClick={() => handleImpersonate(g)}>Impersonate</button>
+                    <button style={btnSmall} onClick={() => setImpersonateTarget(g)}>Impersonate</button>
                   </div>
                 </div>
               ))}
@@ -1133,6 +1161,49 @@ export default function SuperAdminPanel() {
       {renderCreateModal()}
       {renderEditModal()}
       {renderDeleteConfirm()}
+
+      {/* Impersonate Role Picker */}
+      {impersonateTarget && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={() => setImpersonateTarget(null)}>
+          <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 440, width: "90%" }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 700, color: B.text }}>Impersonate</h3>
+            <p style={{ color: B.muted, fontSize: 13, margin: "0 0 20px" }}>
+              View <strong>{impersonateTarget.gymName}</strong> as:
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {[
+                { role: "admin", label: "Admin", desc: "Full access — business dashboard, billing, settings", color: "#f59e0b", icon: "\uD83D\uDC51" },
+                { role: "coach", label: "Coach", desc: "Coaching tools — session view, workouts, clients", color: "#3b82f6", icon: "\uD83C\uDFCB\uFE0F" },
+                { role: "client", label: "Client", desc: "Mobile client portal — workouts, booking, progress", color: "#22c55e", icon: "\uD83D\uDCF1" },
+              ].map(opt => (
+                <button key={opt.role} onClick={() => { handleImpersonate(impersonateTarget, opt.role); setImpersonateTarget(null); }}
+                  style={{
+                    padding: "14px 16px", borderRadius: 12, cursor: "pointer", textAlign: "left",
+                    border: "1px solid " + B.border, background: B.dark, transition: "all 0.15s",
+                    display: "flex", alignItems: "center", gap: 14,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = opt.color; e.currentTarget.style.background = opt.color + "10"; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = B.border; e.currentTarget.style.background = B.dark; }}
+                >
+                  <span style={{ fontSize: 28 }}>{opt.icon}</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: B.text }}>{opt.label}</div>
+                    <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>{opt.desc}</div>
+                  </div>
+                  <span style={{
+                    marginLeft: "auto", padding: "3px 10px", borderRadius: 6,
+                    fontSize: 10, fontWeight: 700, background: opt.color + "22", color: opt.color,
+                    textTransform: "uppercase",
+                  }}>{opt.role}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button onClick={() => setImpersonateTarget(null)} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
