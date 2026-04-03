@@ -8,7 +8,7 @@ const SUPABASE_URL = "https://qzvxnklyeadbroesccxt.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM";
 const HEADERS = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" };
 
-const SUPER_ADMINS = ["superadmin", "hunter", "admin"];
+const SUPER_ADMINS = ["superadmin", "hunter", "admin", "Hunter@HybridFitnessGym.com", "hunter@hybridfitnessgym.com"];
 const PLAN_PRICES = { starter: 99, professional: 199, enterprise: 399, custom: 0 };
 
 const TIMEZONES = [
@@ -99,7 +99,7 @@ export default function SuperAdminPanel() {
   const [feedback, setFeedback] = useState([]);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
 
-  const isSuperAdmin = currentUser && SUPER_ADMINS.includes(currentUser.username);
+  const isSuperAdmin = currentUser && (currentUser.isSuperAdmin || SUPER_ADMINS.includes(currentUser.username?.toLowerCase()));
 
   useEffect(() => {
     if (!isSuperAdmin) return;
