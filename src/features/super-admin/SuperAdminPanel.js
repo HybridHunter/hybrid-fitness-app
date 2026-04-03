@@ -64,7 +64,7 @@ function randomChars(n) {
 export default function SuperAdminPanel() {
   const B = useTheme(); // Gets LIGHT theme from parent ThemeCtx.Provider
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
   const [tab, setTab] = useState("dashboard");
   const [registry, setRegistry] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -820,8 +820,11 @@ export default function SuperAdminPanel() {
 
       {/* Header */}
       <div style={headerStyle}>
-        <span>Super Admin Panel</span>
-        <span style={{ fontSize: 12, fontWeight: 400, background: B.green + "22", color: B.green, padding: "2px 10px", borderRadius: 10 }}>SUPER ADMIN</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span>Super Admin Panel</span>
+          <span style={{ fontSize: 12, fontWeight: 400, background: B.green + "22", color: B.green, padding: "2px 10px", borderRadius: 10 }}>SUPER ADMIN</span>
+        </div>
+        <button onClick={() => { logout(); window.location.href = "/login"; }} style={{ background: B.red + "15", border: "1px solid " + B.red + "30", borderRadius: 8, color: B.red, padding: "6px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Sign Out</button>
       </div>
 
       {actionMsg && (
