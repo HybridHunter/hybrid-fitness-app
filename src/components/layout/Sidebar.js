@@ -79,6 +79,7 @@ const NAV_GROUPS = [
     items: [
       { label: "Settings", path: "settings", icon: "\u2699\uFE0F" },
       { label: "Automations", path: "automations", icon: "\u26A1" },
+      { label: "Subscription", path: "subscription", icon: "\uD83D\uDCB3" },
       { label: "Data Migration", path: "migration", icon: "\uD83D\uDCE5" },
       { label: "Super Admin", path: "/super-admin", icon: "\uD83D\uDC51", absolute: true },
     ],

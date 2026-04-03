@@ -207,6 +207,170 @@ app.post('/api/test-sms', async (req, res) => {
   }
 });
 
+// ── Stripe: GymKit Platform Subscriptions ──
+
+// Price IDs — set these in .env or they'll be created dynamically
+const PLAN_PRICES = {
+  starter: process.env.STRIPE_PRICE_STARTER || null,
+  professional: process.env.STRIPE_PRICE_PROFESSIONAL || null,
+  enterprise: process.env.STRIPE_PRICE_ENTERPRISE || null,
+};
+
+// Create or retrieve a Stripe customer for a gym
+app.post('/api/subscription/create-customer', async (req, res) => {
+  try {
+    const { email, gymName, gymId } = req.body;
+    // Check if customer already exists
+    const existing = await stripe.customers.list({ email, limit: 1 });
+    if (existing.data.length > 0) {
+      return res.json({ customerId: existing.data[0].id });
+    }
+    const customer = await stripe.customers.create({
+      email,
+      name: gymName,
+      metadata: { gymId, platform: 'gymkit' },
+    });
+    res.json({ customerId: customer.id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Create a subscription with a trial period
+app.post('/api/subscription/create', async (req, res) => {
+  try {
+    const { customerId, planId, trialDays = 14 } = req.body;
+    const priceId = PLAN_PRICES[planId];
+
+    if (!priceId) {
+      return res.status(400).json({ error: `No Stripe price configured for plan: ${planId}. Set STRIPE_PRICE_${planId.toUpperCase()} in your environment.` });
+    }
+
+    const subscription = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [{ price: priceId }],
+      trial_period_days: trialDays,
+      payment_behavior: 'default_incomplete',
+      payment_settings: { save_default_payment_method: 'on_subscription' },
+      expand: ['latest_invoice.payment_intent'],
+    });
+
+    res.json({
+      subscriptionId: subscription.id,
+      status: subscription.status,
+      trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+      clientSecret: subscription.latest_invoice?.payment_intent?.client_secret || null,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get subscription status
+app.post('/api/subscription/status', async (req, res) => {
+  try {
+    const { customerId } = req.body;
+    const subs = await stripe.subscriptions.list({ customer: customerId, limit: 1, status: 'all' });
+    if (subs.data.length === 0) return res.json({ subscription: null });
+
+    const sub = subs.data[0];
+    res.json({
+      subscription: {
+        id: sub.id,
+        status: sub.status,
+        planId: sub.items.data[0]?.price?.id,
+        planAmount: sub.items.data[0]?.price?.unit_amount / 100,
+        planInterval: sub.items.data[0]?.price?.recurring?.interval,
+        currentPeriodEnd: new Date(sub.current_period_end * 1000).toISOString(),
+        trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+      },
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Create a Stripe Customer Portal session (for gym owners to manage billing)
+app.post('/api/subscription/portal', async (req, res) => {
+  try {
+    const { customerId, returnUrl } = req.body;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: returnUrl || `${req.headers.origin || 'http://localhost:3001'}/`,
+    });
+    res.json({ url: session.url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Cancel subscription
+app.post('/api/subscription/cancel', async (req, res) => {
+  try {
+    const { subscriptionId, immediate = false } = req.body;
+    if (immediate) {
+      const sub = await stripe.subscriptions.cancel(subscriptionId);
+      res.json({ status: sub.status });
+    } else {
+      const sub = await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+      res.json({ status: sub.status, cancelAt: new Date(sub.current_period_end * 1000).toISOString() });
+    }
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Resume cancelled subscription
+app.post('/api/subscription/resume', async (req, res) => {
+  try {
+    const { subscriptionId } = req.body;
+    const sub = await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: false });
+    res.json({ status: sub.status });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Change plan
+app.post('/api/subscription/change-plan', async (req, res) => {
+  try {
+    const { subscriptionId, newPlanId } = req.body;
+    const priceId = PLAN_PRICES[newPlanId];
+    if (!priceId) return res.status(400).json({ error: `No price for plan: ${newPlanId}` });
+
+    const sub = await stripe.subscriptions.retrieve(subscriptionId);
+    const updated = await stripe.subscriptions.update(subscriptionId, {
+      items: [{ id: sub.items.data[0].id, price: priceId }],
+      proration_behavior: 'always_invoice',
+    });
+    res.json({
+      status: updated.status,
+      planAmount: updated.items.data[0]?.price?.unit_amount / 100,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Stripe webhook for subscription events
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  try {
+    let event;
+    if (endpointSecret) {
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    } else {
+      event = JSON.parse(req.body);
+    }
+
+    switch (event.type) {
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted':
+      case 'invoice.payment_succeeded':
+      case 'invoice.payment_failed':
+        console.log(`[Stripe Webhook] ${event.type}:`, event.data.object.id);
+        // In production: update Supabase gym subscription status here
+        break;
+      default:
+        console.log(`[Stripe Webhook] Unhandled: ${event.type}`);
+    }
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error('Webhook error:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // ── Health ──
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 
