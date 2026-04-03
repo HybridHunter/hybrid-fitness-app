@@ -100,10 +100,33 @@ function AuthGate() {
 
   // Onboarding only accessible manually via /onboarding route (handled in Routes below)
 
+  const isImpersonating = localStorage.getItem("hf_impersonating") === "true";
+  const stopImpersonating = () => {
+    const backupGym = localStorage.getItem("hf_gym_id_backup");
+    const backupSession = localStorage.getItem("hf_session_backup");
+    if (backupGym) localStorage.setItem("hf_gym_id", backupGym);
+    if (backupSession) localStorage.setItem("hf_session", backupSession);
+    localStorage.removeItem("hf_gym_id_backup");
+    localStorage.removeItem("hf_session_backup");
+    localStorage.removeItem("hf_impersonating");
+    Object.keys(localStorage).filter(k => k.startsWith("hf_") && !["hf_theme","hf_session","hf_users","hf_gym_id","hf_onboarding_complete"].includes(k)).forEach(k => localStorage.removeItem(k));
+    window.location.href = "/super-admin";
+  };
+
+  const ImpersonateBanner = () => isImpersonating ? (
+    <div style={{ background: "#ef4444", color: "#fff", padding: "8px 16px", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, fontSize: 13, fontWeight: 600, zIndex: 10000 }}>
+      <span>You are impersonating as {currentUser.role} in {localStorage.getItem("hf_gym_id")}</span>
+      <button onClick={stopImpersonating} style={{ background: "#fff", color: "#ef4444", border: "none", borderRadius: 6, padding: "4px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+        Stop Impersonating
+      </button>
+    </div>
+  ) : null;
+
   // Client role — mobile-first client portal
   if (currentUser.role === "client") {
     return (
       <ThemeCtx.Provider value={B}>
+        <ImpersonateBanner />
         <ClientPortal />
       </ThemeCtx.Provider>
     );
@@ -112,6 +135,7 @@ function AuthGate() {
   // Staff (admin / coach) — full app
   return (
     <ThemeCtx.Provider value={B}>
+      <ImpersonateBanner />
       <Shell theme={theme} onToggleTheme={() => setTheme(t => t === "dark" ? "light" : "dark")}>
         <Routes>
           <Route path="/" element={currentUser.role === "admin" ? <BusinessDashboard /> : <CoachingDashboard />} />
