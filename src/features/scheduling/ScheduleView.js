@@ -96,9 +96,29 @@ export default function ScheduleView() {
     setShowNewModal(false);
   };
 
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
   const handleDeleteClass = (id) => {
-    setClasses(prev => prev.filter(c => c.id !== id));
+    const cls = classes.find(c => c.id === id);
+    if (cls && cls.recurring) {
+      setDeleteConfirm({ id, name: cls.name, recurring: true });
+    } else {
+      setClasses(prev => prev.filter(c => c.id !== id));
+      setSelectedClass(null);
+    }
+  };
+
+  const confirmDelete = (mode) => {
+    if (!deleteConfirm) return;
+    if (mode === "all") {
+      // Delete this session (which represents all recurring instances)
+      setClasses(prev => prev.filter(c => c.id !== deleteConfirm.id));
+    } else {
+      // "Just this one" — mark it as non-recurring (single instance remains)
+      setClasses(prev => prev.map(c => c.id === deleteConfirm.id ? { ...c, recurring: false } : c));
+    }
     setSelectedClass(null);
+    setDeleteConfirm(null);
   };
 
   const handleUpdateWorkoutId = (classId, workoutId) => {
@@ -393,7 +413,8 @@ export default function ScheduleView() {
             </div>
 
             {/* Delete */}
-            <div style={{borderTop:`1px solid ${B.border}`,paddingTop:16,display:"flex",justifyContent:"flex-end"}}>
+            <div style={{borderTop:`1px solid ${B.border}`,paddingTop:16,display:"flex",justifyContent:"flex-end",gap:8}}>
+              {activeClass.recurring && <span style={{fontSize:11,color:B.dim,lineHeight:"32px",marginRight:8}}>This is a recurring session</span>}
               <button onClick={()=>handleDeleteClass(activeClass.id)}
                 style={btn({background:B.red+"22",color:B.red,padding:"8px 20px"})}
               >
@@ -404,7 +425,45 @@ export default function ScheduleView() {
         </div>
       )}
 
-      {/* New Class Modal */}
+      {/* Delete Recurring Confirmation */}
+      {deleteConfirm && (
+        <div style={overlay} onClick={()=>setDeleteConfirm(null)}>
+          <div style={{...modal, maxWidth: 420}} onClick={e=>e.stopPropagation()}>
+            <h3 style={{margin:"0 0 12px",fontSize:18,fontWeight:700,color:B.text}}>Delete Recurring Session</h3>
+            <p style={{color:B.text,fontSize:14,lineHeight:1.6,margin:"0 0 8px"}}>
+              <strong>{deleteConfirm.name}</strong> is a recurring session.
+            </p>
+            <p style={{color:B.muted,fontSize:13,margin:"0 0 20px"}}>
+              Would you like to delete just this single instance or all future recurring sessions?
+            </p>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <button onClick={()=>confirmDelete("single")} style={{
+                padding:"12px 20px",borderRadius:10,border:`1px solid ${B.border}`,
+                background:B.dark,color:B.text,fontSize:14,fontWeight:600,cursor:"pointer",
+                textAlign:"left",transition:"all 0.15s"
+              }}>
+                <div style={{fontWeight:700}}>Delete only this instance</div>
+                <div style={{fontSize:12,color:B.muted,marginTop:2}}>The session will stop recurring but this single instance stays on the schedule</div>
+              </button>
+              <button onClick={()=>confirmDelete("all")} style={{
+                padding:"12px 20px",borderRadius:10,border:`1px solid ${B.red}40`,
+                background:B.red+"15",color:B.red,fontSize:14,fontWeight:600,cursor:"pointer",
+                textAlign:"left",transition:"all 0.15s"
+              }}>
+                <div style={{fontWeight:700}}>Delete all recurring sessions</div>
+                <div style={{fontSize:12,color:B.red+"99",marginTop:2}}>Remove this session entirely from the schedule</div>
+              </button>
+              <button onClick={()=>setDeleteConfirm(null)} style={{
+                padding:"8px 20px",borderRadius:8,border:`1px solid ${B.border}`,
+                background:"transparent",color:B.muted,fontSize:13,fontWeight:600,cursor:"pointer",
+                alignSelf:"flex-end",marginTop:4
+              }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Session Modal */}
       {showNewModal && (
         <div style={overlay} onClick={()=>setShowNewModal(false)}>
           <div style={modal} onClick={e=>e.stopPropagation()}>
