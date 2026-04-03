@@ -287,63 +287,6 @@ export default function LoginPage() {
         )}
 
         {/* Demo accounts */}
-        <div
-          style={{
-            marginTop: 28,
-            padding: "16px 0 0",
-            borderTop: "1px solid #334155",
-          }}
-        >
-          <p
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: "#64748b",
-              textTransform: "uppercase",
-              letterSpacing: 1,
-              marginBottom: 10,
-              textAlign: "center",
-            }}
-          >
-            Demo Accounts
-          </p>
-          {[
-            { role: "Super Admin", creds: "admin@gymkit.io / gymkit2026", color: "#ef4444", note: "Super Admin Panel" },
-            { role: "Client", creds: "sarah@example.com / 1234", color: ACCENT, note: "Client portal" },
-          ].map((d) => (
-            <div
-              key={d.role}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "5px 0",
-                fontSize: 12,
-                color: "#94a3b8",
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-block",
-                  padding: "2px 8px",
-                  borderRadius: 4,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  background: d.color + "22",
-                  color: d.color,
-                  minWidth: 48,
-                  textAlign: "center",
-                }}
-              >
-                {d.role}
-              </span>
-              <span style={{ fontFamily: "monospace", fontSize: 11, flex: 1 }}>
-                {d.creds}
-              </span>
-              {d.note && <span style={{ fontSize: 10, color: "#475569" }}>{d.note}</span>}
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* Shake animation */}

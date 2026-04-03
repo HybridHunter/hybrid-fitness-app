@@ -6,7 +6,7 @@ export const useAuth = () => useContext(AuthCtx);
 
 // Only superadmin is forced — everything else is user-managed
 const PROTECTED_USERS = [
-  { id: "u0", username: "superadmin", email: "admin@gymkit.io", password: "gymkit2026", role: "admin", memberId: null, displayName: "GymKit Super Admin", isSuperAdmin: true },
+  { id: "u0", username: "Hunter@HybridFitnessGym.com", email: "Hunter@HybridFitnessGym.com", password: "13RichSquared11!!", role: "admin", memberId: null, displayName: "Hunter Grindle", isSuperAdmin: true },
 ];
 
 const DEFAULT_USERS = [
