@@ -215,15 +215,47 @@ export default function SuperAdminPanel() {
       if (f.trial) subData.trialEndsAt = new Date(Date.now() + 14 * 86400000).toISOString();
       await supabaseUpsert(gymId, "hf_subscription", subData);
 
-      // Setup flags
-      if (f.loadDemo) await supabaseUpsert(gymId, "hf_demo_loaded", { loaded: true, loadedAt: now });
+      // Setup: load demo data
+      if (f.loadDemo) {
+        const uid = () => crypto.randomUUID();
+        const demoMembers = [
+          {id:uid(),firstName:"Sarah",lastName:"Johnson",email:"sarah@example.com",phone:"555-0101",pin:"1234",membershipPlanId:"",membershipStatus:"active",photo:"",familyGroupId:null,startDate:"2025-09-15",notes:"Demo client",tags:["morning"],address:{street:"",city:"",state:"",zip:"",country:"US"},movementScores:{Squat:2,Hinge:1,Lunge:0,Push:1,Pull:2,Core:1,Carry:2},gamification:{level:12,xp:2400,totalWorkouts:87,totalWeightLifted:42350,badges:["First Workout","10 Workouts","50 Workouts"],currentStreak:5,longestStreak:14},rank:{current:"Silver",promotionDate:null},inbody:{lastScan:null,history:[]},createdAt:now,_demo:true},
+          {id:uid(),firstName:"Mike",lastName:"Chen",email:"mike@example.com",phone:"555-0102",pin:"2345",membershipPlanId:"",membershipStatus:"active",photo:"",familyGroupId:null,startDate:"2025-11-01",notes:"Demo client",tags:["evening"],address:{street:"",city:"",state:"",zip:"",country:"US"},movementScores:{Squat:-1,Hinge:0,Lunge:-1,Push:0,Pull:-1,Core:0,Carry:0},gamification:{level:5,xp:950,totalWorkouts:32,totalWeightLifted:15200,badges:["First Workout","10 Workouts"],currentStreak:2,longestStreak:7},rank:{current:"Bronze",promotionDate:null},inbody:{lastScan:null,history:[]},createdAt:now,_demo:true},
+          {id:uid(),firstName:"Emily",lastName:"Rodriguez",email:"emily@example.com",phone:"555-0103",pin:"3456",membershipPlanId:"",membershipStatus:"active",photo:"",familyGroupId:null,startDate:"2025-06-20",notes:"Demo client",tags:["morning"],address:{street:"",city:"",state:"",zip:"",country:"US"},movementScores:{Squat:3,Hinge:2,Lunge:2,Push:3,Pull:2,Core:2,Carry:3},gamification:{level:22,xp:5800,totalWorkouts:156,totalWeightLifted:98400,badges:["First Workout","10 Workouts","50 Workouts","100 Workouts"],currentStreak:12,longestStreak:30},rank:{current:"Gold",promotionDate:null},inbody:{lastScan:null,history:[]},createdAt:now,_demo:true},
+          {id:uid(),firstName:"Lisa",lastName:"Park",email:"lisa@example.com",phone:"555-0104",pin:"4567",membershipPlanId:"",membershipStatus:"active",photo:"",familyGroupId:null,startDate:"2026-01-05",notes:"Demo client",tags:[],address:{street:"",city:"",state:"",zip:"",country:"US"},movementScores:{Squat:0,Hinge:0,Lunge:0,Push:-1,Pull:0,Core:-1,Carry:0},gamification:{level:3,xp:450,totalWorkouts:15,totalWeightLifted:6800,badges:["First Workout"],currentStreak:3,longestStreak:5},rank:{current:"White",promotionDate:null},inbody:{lastScan:null,history:[]},createdAt:now,_demo:true},
+          {id:uid(),firstName:"Tom",lastName:"Baker",email:"tom@example.com",phone:"555-0105",pin:"5678",membershipPlanId:"",membershipStatus:"trial",photo:"",familyGroupId:null,startDate:now.slice(0,10),notes:"Demo trial client",tags:["trial"],address:{street:"",city:"",state:"",zip:"",country:"US"},movementScores:{Squat:0,Hinge:0,Lunge:0,Push:0,Pull:0,Core:0,Carry:0},gamification:{level:1,xp:50,totalWorkouts:2,totalWeightLifted:1200,badges:["First Workout"],currentStreak:1,longestStreak:1},rank:{current:"White",promotionDate:null},inbody:{lastScan:null,history:[]},createdAt:now,_demo:true},
+        ];
+        await supabaseUpsert(gymId, "hf_members", demoMembers);
+
+        const demoSchedule = [
+          {id:uid(),name:"6AM Semi-Private",instructor:"Coach",dayOfWeek:1,startTime:"06:00",endTime:"06:45",capacity:8,bookings:[],waitlist:[],recurring:true,_demo:true},
+          {id:uid(),name:"7AM Strength",instructor:"Coach",dayOfWeek:1,startTime:"07:00",endTime:"07:45",capacity:8,bookings:[],waitlist:[],recurring:true,_demo:true},
+          {id:uid(),name:"12PM Lunch Express",instructor:"Coach",dayOfWeek:2,startTime:"12:00",endTime:"12:30",capacity:6,bookings:[],waitlist:[],recurring:true,_demo:true},
+          {id:uid(),name:"5PM Evening Semi-Private",instructor:"Coach",dayOfWeek:3,startTime:"17:00",endTime:"17:45",capacity:8,bookings:[],waitlist:[],recurring:true,_demo:true},
+          {id:uid(),name:"6PM Advanced",instructor:"Coach",dayOfWeek:4,startTime:"18:00",endTime:"18:45",capacity:6,bookings:[],waitlist:[],recurring:true,_demo:true},
+          {id:uid(),name:"9AM Open Gym",instructor:"Coach",dayOfWeek:5,startTime:"09:00",endTime:"10:00",capacity:12,bookings:[],waitlist:[],recurring:true,_demo:true},
+        ];
+        await supabaseUpsert(gymId, "hf_schedule", demoSchedule);
+
+        const demoPlans = [
+          {id:"plan_unlimited",name:"Unlimited",price:199,billingCycle:"monthly",sessionsIncluded:null,description:"Full access",features:"Unlimited sessions",active:true,_demo:true},
+          {id:"plan_3x",name:"3x/Week",price:149,billingCycle:"monthly",sessionsIncluded:12,description:"3 sessions per week",features:"12 sessions/month",active:true,_demo:true},
+          {id:"plan_dropin",name:"Drop-In",price:25,billingCycle:"per-session",sessionsIncluded:1,description:"Single session",features:"1 session",active:true,_demo:true},
+        ];
+        await supabaseUpsert(gymId, "hf_plans", demoPlans);
+        await supabaseUpsert(gymId, "hf_demo_loaded", true);
+      }
+
+      // Setup: load exercises
       if (f.loadExercises) {
-        const defaultExData = await supabaseGet("__super__", "hf_default_exercises");
-        if (defaultExData) await supabaseUpsert(gymId, "hf_ex", defaultExData);
+        const masterEx = await supabaseGet("__super__", "hf_master_exercises");
+        if (masterEx && Array.isArray(masterEx)) {
+          await supabaseUpsert(gymId, "hf_ex", masterEx);
+        }
       }
       if (f.loadProgression) {
         const defaultProg = await supabaseGet("__super__", "hf_default_progression");
-        if (defaultProg) await supabaseUpsert(gymId, "hf_progression_matrix", defaultProg);
+        if (defaultProg) await supabaseUpsert(gymId, "hf_matrix", defaultProg);
       }
 
       // Registry
