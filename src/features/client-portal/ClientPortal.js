@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useMembers } from "../../hooks/useMembers";
@@ -8,6 +8,9 @@ import EditProfileModal from "../auth/EditProfileModal";
 import { autoIndividualize } from "../../utils/autoIndividualize";
 import { DEFAULT_MATRIX } from "../../data/movementMatrix";
 import { EX } from "../../data/exercises";
+import { getYTId, getYTThumb } from "../../utils/youtube";
+import { requestPermission } from "../../utils/pushNotifications";
+import ProgressPhotos from "../members/ProgressPhotos";
 
 /* ═══════════════════════════════════════════════════════════
    HELPERS
@@ -115,6 +118,12 @@ const RESOURCE_ICONS = {
   image: "\uD83D\uDDBC\uFE0F",
 };
 
+const formatRWTimer = (seconds) => {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+};
+
 /* ═══════════════════════════════════════════════════════════
    CLIENT PORTAL — MAIN COMPONENT
    ═══════════════════════════════════════════════════════════ */
@@ -126,6 +135,8 @@ export default function ClientPortal() {
   const [activeTab, setActiveTab] = useState("home");
   const [prevTab, setPrevTab] = useState("home");
   const [transitioning, setTransitioning] = useState(false);
+  const [clientChatOpen, setClientChatOpen] = useState(null);
+  const [clientChatText, setClientChatText] = useState("");
 
   // Data stores
   const [classes] = useLocalStorage("hf_schedule", []);
@@ -138,11 +149,31 @@ export default function ClientPortal() {
   const [exercises] = useLocalStorage("hf_ex", [...EX]);
   const [challenges, setChallenges] = useLocalStorage("hf_challenges", []);
   const [resources] = useLocalStorage("hf_resources", []);
+  const [remoteWorkouts, setRemoteWorkouts] = useLocalStorage("hf_remote_workouts", []);
 
   // Video modal
   const [videoModal, setVideoModal] = useState(null);
   // Edit profile modal
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+
+  // Remote workout completion
+  const [remoteCompletionNotes, setRemoteCompletionNotes] = useState({});
+
+  // Remote workout full-screen mode
+  const [remoteWorkoutMode, setRemoteWorkoutMode] = useState(null);
+  const [rwExIndex, setRwExIndex] = useState(0);
+  const [rwTimer, setRwTimer] = useState(0);
+  const [rwLogs, setRwLogs] = useState([]);
+  const [rwShowCues, setRwShowCues] = useState(false);
+  const [rwVideoUrl, setRwVideoUrl] = useState(null);
+  const [rwFinished, setRwFinished] = useState(false);
+  const [rwWeightInput, setRwWeightInput] = useState("");
+  const [rwRepsInput, setRwRepsInput] = useState("");
+  const [rwRpeInput, setRwRpeInput] = useState("");
+  const [rwShowDrawer, setRwShowDrawer] = useState(false);
+  const rwTimerRef = useRef(null);
+  const rwTouchStartX = useRef(null);
+  const [stationSettings] = useLocalStorage("hf_station_settings", { showWeight: true, showReps: true, showRPE: true, showMedia: true });
 
   // Community sub-tab state
   const [communitySubTab, setCommunitySubTab] = useState("feed");
@@ -290,18 +321,9 @@ export default function ClientPortal() {
      TAB CONTENTS
      ═══════════════════════════════════════════════════════════ */
 
-  if (!member) {
-    return (
-      <div style={{ ...shell, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>&#x1F3CB;&#xFE0F;</div>
-          <h2 style={{ color: B.text, fontSize: 20, margin: "0 0 8px" }}>Loading your profile...</h2>
-          <p style={{ color: B.muted, fontSize: 14 }}>If this persists, please sign out and back in.</p>
-          <button onClick={logout} style={touchBtn(B.accent, B.darker, { marginTop: 20 })}>Sign Out</button>
-        </div>
-      </div>
-    );
-  }
+  // NOTE: Don't early-return here — hooks below need to run on every render.
+  // Instead we check !member in the final return.
+  const memberMissing = !member;
 
   /* ─────────── HOME TAB ─────────── */
   const renderHome = () => {
@@ -537,6 +559,128 @@ export default function ClientPortal() {
 
         <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Workouts</h1>
         <p style={mutedText}>{dateStr}</p>
+
+        {/* Remote Workouts */}
+        {(() => {
+          const today = todayISO();
+          const myRemote = (remoteWorkouts || []).filter(rw =>
+            rw.memberId === myId && rw.status === "active" && rw.startDate <= today && rw.endDate >= today
+          );
+          if (myRemote.length === 0) return null;
+
+          const handleMarkComplete = (rwId) => {
+            const notes = remoteCompletionNotes[rwId] || "";
+            setRemoteWorkouts(prev => prev.map(rw => {
+              if (rw.id !== rwId) return rw;
+              const alreadyDone = (rw.completions || []).some(c => c.date === today);
+              if (alreadyDone) return rw;
+              const updated = { ...rw, completions: [...(rw.completions || []), { date: today, notes }] };
+              // Auto-complete if end date reached
+              const totalDays = Math.round((new Date(rw.endDate + "T00:00:00Z") - new Date(rw.startDate + "T00:00:00Z")) / 86400000) + 1;
+              if (updated.completions.length >= totalDays) updated.status = "completed";
+              return updated;
+            }));
+            setRemoteCompletionNotes(prev => ({ ...prev, [rwId]: "" }));
+          };
+
+          return (
+            <>
+              <h3 style={{ ...sectionTitle, marginTop: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                &#127757; Remote Workouts
+              </h3>
+              {myRemote.map(rw => {
+                const totalDays = Math.round((new Date(rw.endDate + "T00:00:00Z") - new Date(rw.startDate + "T00:00:00Z")) / 86400000) + 1;
+                const completedDays = (rw.completions || []).length;
+                const todayDone = (rw.completions || []).some(c => c.date === today);
+                const templateWk = rw.workoutId ? workouts.find(w => w.id === rw.workoutId) : null;
+                const exerciseList = rw.customExercises || (templateWk?.sections?.flatMap(s => (s.slots || s.exercises || []).map(sl => {
+                  const ex = sl.exercise || sl;
+                  return { name: ex.n || ex.name || "Exercise", sets: sl.sets || "", reps: sl.reps || "", notes: "" };
+                })) || []);
+
+                const fmtD = (d) => {
+                  const date = new Date(d + "T00:00:00");
+                  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                  return `${months[date.getMonth()]} ${date.getDate()}`;
+                };
+
+                return (
+                  <div key={rw.id} style={{
+                    ...cardStyle, marginBottom: 12,
+                    background: `linear-gradient(135deg, #3b82f615 0%, ${B.card} 100%)`,
+                    border: `1px solid #3b82f640`,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", textTransform: "uppercase", letterSpacing: 0.5 }}>Remote Workout</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: B.text, marginTop: 4 }}>{rw.workoutName || "Custom Workout"}</div>
+                      </div>
+                      <span style={pillBadge("#3b82f622", "#3b82f6")}>{fmtD(rw.startDate)} - {fmtD(rw.endDate)}</span>
+                    </div>
+
+                    {/* Progress */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <div style={{ flex: 1, height: 6, borderRadius: 3, background: B.border, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${totalDays > 0 ? Math.round((completedDays / totalDays) * 100) : 0}%`, background: "#3b82f6", borderRadius: 3 }} />
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6" }}>Day {completedDays} of {totalDays}</span>
+                    </div>
+
+                    {/* Coach notes */}
+                    {rw.coachNotes && (
+                      <div style={{ fontSize: 13, color: B.muted, marginBottom: 10, fontStyle: "italic", padding: "8px 12px", borderRadius: 8, background: B.dark }}>
+                        &#128172; {rw.coachNotes}
+                      </div>
+                    )}
+
+                    {/* Exercise list */}
+                    {exerciseList.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        {exerciseList.map((ex, i) => (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < exerciseList.length - 1 ? `1px solid ${B.border}40` : "none" }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#3b82f6", minWidth: 20 }}>{i + 1}</span>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: B.text, flex: 1 }}>{ex.name}</span>
+                            <span style={{ fontSize: 12, color: B.muted }}>
+                              {ex.sets && `${ex.sets}x`}{ex.reps || ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Start Workout + Mark complete */}
+                    {todayDone ? (
+                      <div style={{ textAlign: "center", padding: "10px 0", color: B.green || "#4ade80", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <span>&#10003;</span> Completed today
+                      </div>
+                    ) : (
+                      <div>
+                        <button
+                          onClick={() => handleStartRemoteWorkout(rw)}
+                          style={touchBtn(B.accent || "#8fbf3b", "#fff", { width: "100%", fontSize: 15, minHeight: 48, marginBottom: 8, boxSizing: "border-box" })}
+                        >
+                          &#x1F3CB;&#xFE0F; Start Workout
+                        </button>
+                        <input
+                          value={remoteCompletionNotes[rw.id] || ""}
+                          onChange={e => setRemoteCompletionNotes(prev => ({ ...prev, [rw.id]: e.target.value }))}
+                          placeholder="Notes (optional)..."
+                          style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${B.border}`, background: B.dark, color: B.text, fontSize: 13, outline: "none", marginBottom: 8, boxSizing: "border-box" }}
+                        />
+                        <button
+                          onClick={() => handleMarkComplete(rw.id)}
+                          style={touchBtn("#3b82f6", "#fff", { width: "100%", fontSize: 14, boxSizing: "border-box" })}
+                        >
+                          &#10003; Mark Today as Complete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          );
+        })()}
 
         {/* Today's Workout */}
         {individualized ? (
@@ -1706,35 +1850,6 @@ export default function ClientPortal() {
           </div>
         </div>
 
-        {/* Movement Scores */}
-        <h3 style={sectionTitle}>&#x1F3AF; Movement Scores</h3>
-        <div style={cardStyle}>
-          {Object.entries(scores).map(([pattern, score]) => {
-            const pct = ((score + 3) / 6) * 100;
-            const color = PATTERN_COLORS[pattern] || B.accent;
-            return (
-              <div key={pattern} style={{ marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{pattern}</span>
-                  <span style={{
-                    fontSize: 12, fontWeight: 700, color,
-                    background: color + "18", padding: "2px 8px", borderRadius: 6,
-                  }}>
-                    {score > 0 ? "+" : ""}{score} {SCORE_LABELS[String(score)] || ""}
-                  </span>
-                </div>
-                <div style={{ height: 6, background: B.border, borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{
-                    height: "100%", borderRadius: 3, background: color,
-                    width: `${Math.max(4, pct)}%`,
-                    transition: "width 0.5s ease",
-                  }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
         {/* Body Composition */}
         {latestScan && (
           <>
@@ -1854,6 +1969,12 @@ export default function ClientPortal() {
           </div>
         </div>
 
+        {/* Progress Photos */}
+        <h3 style={sectionTitle}>&#x1F4F7; Progress Photos</h3>
+        <div style={cardStyle}>
+          <ProgressPhotos memberId={member.id} compact={true} />
+        </div>
+
         <div style={{ height: 20 }} />
       </div>
     );
@@ -1957,7 +2078,18 @@ export default function ClientPortal() {
 
         {/* Message Coach */}
         <button
-          onClick={() => { /* TODO: open messaging */ }}
+          onClick={() => {
+            // Find or create a conversation with the coach for this client
+            const myMemberId = currentUser?.memberId;
+            if (!myMemberId) return;
+            const convs = Array.isArray(messages) ? messages : [];
+            let myConv = convs.find(c => c.participants?.includes(myMemberId));
+            if (!myConv) {
+              myConv = { id: crypto.randomUUID(), participants: [myMemberId], messages: [], lastActivity: new Date().toISOString() };
+              setMessages([...convs, myConv]);
+            }
+            setClientChatOpen(myConv.id);
+          }}
           style={{
             ...touchBtn(B.card, B.text, { width: "100%", marginTop: 8, border: `1px solid ${B.border}`, gap: 10 }),
             boxSizing: "border-box",
@@ -2014,6 +2146,741 @@ export default function ClientPortal() {
         </div>
 
         <div style={{ height: 20 }} />
+      </div>
+    );
+  };
+
+  /* ─────────── REMOTE WORKOUT MODE ─────────── */
+
+  // Resolve exercises for a remote workout
+  const resolveRemoteExercises = useCallback((rw) => {
+    if (rw.workoutId) {
+      const templateWk = workouts.find(w => w.id === rw.workoutId);
+      if (!templateWk) return [];
+      const individualized = member?.movementScores
+        ? autoIndividualize(templateWk, member.movementScores, matrix, exercises)
+        : templateWk;
+      const flat = [];
+      (individualized.sections || []).forEach(sec => {
+        (sec.slots || sec.exercises || []).forEach(slot => {
+          const ex = slot.exercise || slot;
+          if (ex && ex.n) {
+            flat.push({
+              ...slot,
+              exercise: ex,
+              sectionName: sec.name || sec.label || "",
+            });
+          }
+        });
+      });
+      return flat;
+    }
+    // Custom exercises — look up full data from hf_ex
+    return (rw.customExercises || []).map((ce, i) => {
+      const fullEx = exercises.find(e => e.n === ce.name) || { n: ce.name || `Exercise ${i + 1}` };
+      return {
+        exercise: fullEx,
+        sets: ce.sets || "",
+        reps: ce.reps || "",
+        rpe: ce.rpe || "",
+        tempo: ce.tempo || "",
+        sectionName: "",
+      };
+    });
+  }, [workouts, member, matrix, exercises]);
+
+  const handleStartRemoteWorkout = useCallback((rw) => {
+    const resolved = resolveRemoteExercises(rw);
+    if (resolved.length === 0) return;
+    setRemoteWorkoutMode({ ...rw, _resolvedExercises: resolved });
+    setRwExIndex(0);
+    setRwTimer(0);
+    setRwLogs([]);
+    setRwShowCues(false);
+    setRwVideoUrl(null);
+    setRwFinished(false);
+    setRwWeightInput("");
+    setRwRepsInput("");
+    setRwRpeInput("");
+    setRwShowDrawer(false);
+  }, [resolveRemoteExercises]);
+
+  // Request notification permission on first load of client portal
+  useEffect(() => {
+    requestPermission();
+  }, []);
+
+  // Timer for remote workout
+  useEffect(() => {
+    if (!remoteWorkoutMode || rwFinished) {
+      if (rwTimerRef.current) clearInterval(rwTimerRef.current);
+      return;
+    }
+    rwTimerRef.current = setInterval(() => setRwTimer(t => t + 1), 1000);
+    return () => clearInterval(rwTimerRef.current);
+  }, [remoteWorkoutMode, rwFinished]);
+
+  // Remote workout navigation
+  const rwFlatExercises = remoteWorkoutMode?._resolvedExercises || [];
+
+  const rwGoNext = useCallback(() => {
+    if (rwExIndex < rwFlatExercises.length - 1) {
+      setRwExIndex(i => i + 1);
+      setRwShowCues(false);
+      setRwWeightInput("");
+      setRwRepsInput("");
+      setRwRpeInput("");
+    }
+  }, [rwExIndex, rwFlatExercises.length]);
+
+  const rwGoPrev = useCallback(() => {
+    if (rwExIndex > 0) {
+      setRwExIndex(i => i - 1);
+      setRwShowCues(false);
+      setRwWeightInput("");
+      setRwRepsInput("");
+      setRwRpeInput("");
+    }
+  }, [rwExIndex]);
+
+  const rwGoTo = useCallback((idx) => {
+    setRwExIndex(idx);
+    setRwShowCues(false);
+    setRwWeightInput("");
+    setRwRepsInput("");
+    setRwRpeInput("");
+  }, []);
+
+  // Swipe for remote workout
+  const rwHandleTouchStart = useCallback((e) => {
+    rwTouchStartX.current = e.touches[0].clientX;
+  }, []);
+
+  const rwHandleTouchEnd = useCallback((e) => {
+    if (rwTouchStartX.current === null) return;
+    const diff = e.changedTouches[0].clientX - rwTouchStartX.current;
+    if (Math.abs(diff) > 60) {
+      if (diff < 0) rwGoNext();
+      else rwGoPrev();
+    }
+    rwTouchStartX.current = null;
+  }, [rwGoNext, rwGoPrev]);
+
+  // Log a set in remote workout mode
+  const rwLogSet = useCallback(() => {
+    const w = parseFloat(rwWeightInput) || 0;
+    const r = parseInt(rwRepsInput) || 0;
+    const rpe = parseInt(rwRpeInput) || 0;
+    const slot = rwFlatExercises[rwExIndex];
+    if ((!w && !r && !rpe) || !slot?.exercise || !member) return;
+    const logEntry = {
+      id: crypto.randomUUID(),
+      memberId: member.id,
+      stationId: "remote",
+      exerciseName: slot.exercise.n,
+      weight: w,
+      reps: r,
+      rpe: rpe,
+      timestamp: new Date().toISOString(),
+    };
+    // Save to hf_workout_logs
+    setWorkoutLogs(prev => [...prev, logEntry]);
+    // Save to session logs for summary
+    setRwLogs(prev => [...prev, logEntry]);
+    setRwWeightInput("");
+    setRwRepsInput("");
+    setRwRpeInput("");
+  }, [rwWeightInput, rwRepsInput, rwRpeInput, rwFlatExercises, rwExIndex, member, setWorkoutLogs]);
+
+  // Finish remote workout
+  const rwHandleFinish = useCallback(() => {
+    clearInterval(rwTimerRef.current);
+    setRwFinished(true);
+    // Auto-mark the day as complete
+    if (remoteWorkoutMode) {
+      const today = todayISO();
+      setRemoteWorkouts(prev => prev.map(rw => {
+        if (rw.id !== remoteWorkoutMode.id) return rw;
+        const alreadyDone = (rw.completions || []).some(c => c.date === today);
+        if (alreadyDone) return rw;
+        const updated = { ...rw, completions: [...(rw.completions || []), { date: today, notes: "Completed via workout mode" }] };
+        const totalDays = Math.round((new Date(rw.endDate + "T00:00:00Z") - new Date(rw.startDate + "T00:00:00Z")) / 86400000) + 1;
+        if (updated.completions.length >= totalDays) updated.status = "completed";
+        return updated;
+      }));
+    }
+  }, [remoteWorkoutMode, setRemoteWorkouts]);
+
+  const rwExitWorkout = useCallback(() => {
+    clearInterval(rwTimerRef.current);
+    setRemoteWorkoutMode(null);
+    setRwFinished(false);
+  }, []);
+
+  // Get session logs for current exercise
+  const rwCurrentSlot = rwFlatExercises[rwExIndex] || null;
+  const rwCurrentEx = rwCurrentSlot?.exercise || null;
+  const rwCurrentExLogs = useMemo(() => {
+    if (!rwCurrentEx) return [];
+    return rwLogs.filter(l => l.exerciseName === rwCurrentEx.n);
+  }, [rwLogs, rwCurrentEx]);
+
+  // Last session hint
+  const rwLastSession = useMemo(() => {
+    if (!rwCurrentEx || !member) return null;
+    const pastLogs = workoutLogs.filter(
+      l => l.memberId === member.id && l.exerciseName === rwCurrentEx.n && !rwLogs.some(rl => rl.id === l.id)
+    );
+    return pastLogs.length > 0 ? pastLogs[pastLogs.length - 1] : null;
+  }, [workoutLogs, rwCurrentEx, member, rwLogs]);
+
+  // Check if exercise has logged sets this session
+  const rwIsExLogged = useCallback((exName) => {
+    return rwLogs.some(l => l.exerciseName === exName);
+  }, [rwLogs]);
+
+  // Remote workout summary stats
+  const rwTotalSets = rwLogs.length;
+  const rwTotalWeight = rwLogs.reduce((s, l) => s + (l.weight || 0) * (l.reps || 1), 0);
+  const rwExercisesCompleted = new Set(rwLogs.map(l => l.exerciseName)).size;
+
+  // ─── Render remote workout full-screen mode ───
+  const renderRemoteWorkoutMode = () => {
+    if (!remoteWorkoutMode) return null;
+
+    const D = {
+      darker: "#080c12", dark: "#0d1117", card: "#161b22", border: "#21262d",
+      text: "#e6edf3", muted: "#8b949e", dim: "#484f58", white: "#fff",
+      accent: "#8fbf3b", red: "#ef4444", orange: "#f59e0b", green: "#22c55e",
+      blue: "#3b82f6",
+    };
+
+    // Completion screen
+    if (rwFinished) {
+      return (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 500,
+          background: D.darker,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          padding: 24,
+        }}>
+          <div style={{
+            width: 100, height: 100, borderRadius: "50%",
+            background: `${D.green}22`, color: D.green,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 52, animation: "rwPopIn 0.5s ease-out",
+          }}>
+            &#10003;
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: D.text, marginTop: 20, textAlign: "center" }}>
+            Great work{firstName ? `, ${firstName}` : ""}!
+          </div>
+          <div style={{ display: "flex", gap: 24, marginTop: 28, flexWrap: "wrap", justifyContent: "center" }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: D.accent }}>{rwExercisesCompleted}</div>
+              <div style={{ fontSize: 13, color: D.muted }}>Exercises</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: D.accent }}>{rwTotalSets}</div>
+              <div style={{ fontSize: 13, color: D.muted }}>Total Sets</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: D.accent }}>
+                {rwTotalWeight > 0 ? `${rwTotalWeight.toLocaleString()}` : "--"}
+              </div>
+              <div style={{ fontSize: 13, color: D.muted }}>{rwTotalWeight > 0 ? "lbs Volume" : "Volume"}</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: D.accent }}>{formatRWTimer(rwTimer)}</div>
+              <div style={{ fontSize: 13, color: D.muted }}>Time</div>
+            </div>
+          </div>
+          <button
+            onClick={rwExitWorkout}
+            style={{
+              marginTop: 36, background: D.accent, color: "#fff", border: "none",
+              borderRadius: 14, padding: "16px 48px", fontSize: 17, fontWeight: 700,
+              cursor: "pointer", minHeight: 60,
+            }}
+          >
+            Done
+          </button>
+          <style>{`
+            @keyframes rwPopIn {
+              0% { transform: scale(0.3); opacity: 0; }
+              70% { transform: scale(1.1); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `}</style>
+        </div>
+      );
+    }
+
+    const currentSlot = rwFlatExercises[rwExIndex] || null;
+    const currentEx = currentSlot?.exercise || null;
+
+    const cueSteps = currentEx?.c
+      ? currentEx.c.split(/(?=\d+\.\s)/).filter(Boolean)
+      : [];
+
+    return (
+      <div
+        style={{
+          position: "fixed", inset: 0, zIndex: 500,
+          background: D.darker,
+          display: "flex", flexDirection: "column",
+          overflow: "hidden", userSelect: "none",
+          maxWidth: 480, margin: "0 auto",
+        }}
+        onTouchStart={rwHandleTouchStart}
+        onTouchEnd={rwHandleTouchEnd}
+      >
+        {/* Video overlay */}
+        {rwVideoUrl && (
+          <div
+            onClick={() => setRwVideoUrl(null)}
+            style={{
+              position: "fixed", inset: 0, zIndex: 600,
+              background: "rgba(0,0,0,0.9)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 16,
+            }}
+          >
+            <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 460, aspectRatio: "16/9" }}>
+              {(() => {
+                const ytId = getYTId(rwVideoUrl);
+                if (!ytId) return <div style={{ color: "#888", textAlign: "center" }}>Video unavailable</div>;
+                return (
+                  <iframe
+                    src={`https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0`}
+                    title="Exercise video"
+                    allow="autoplay; fullscreen"
+                    allowFullScreen
+                    style={{ width: "100%", height: "100%", border: "none", borderRadius: 12 }}
+                  />
+                );
+              })()}
+            </div>
+            <button
+              onClick={() => setRwVideoUrl(null)}
+              style={{
+                position: "absolute", top: 16, right: 16,
+                width: 44, height: 44, borderRadius: 22, border: "none",
+                background: "rgba(255,255,255,0.15)", color: "#fff",
+                fontSize: 24, cursor: "pointer", display: "flex",
+                alignItems: "center", justifyContent: "center",
+              }}
+            >&#10005;</button>
+          </div>
+        )}
+
+        {/* ─── Top Bar ─── */}
+        <div style={{
+          height: 56, minHeight: 56,
+          background: D.dark,
+          borderBottom: `1px solid ${D.border}`,
+          display: "flex", alignItems: "center",
+          padding: "0 12px",
+          gap: 10,
+        }}>
+          <button
+            onClick={rwExitWorkout}
+            style={{
+              width: 44, height: 44, borderRadius: 12, border: "none",
+              background: D.card, color: D.text, fontSize: 20, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >&#8592;</button>
+          <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
+            <div style={{
+              fontSize: 15, fontWeight: 700, color: D.text,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {remoteWorkoutMode.workoutName || "Workout"}
+            </div>
+            <div style={{ fontSize: 12, color: D.muted }}>
+              {rwExIndex + 1} of {rwFlatExercises.length}
+            </div>
+          </div>
+          <div style={{
+            fontSize: 16, fontWeight: 700, color: D.accent,
+            fontFamily: "monospace", flexShrink: 0,
+          }}>
+            {formatRWTimer(rwTimer)}
+          </div>
+        </div>
+
+        {/* ─── Main Exercise View ─── */}
+        <div style={{
+          flex: 1, overflow: "auto", position: "relative",
+          display: "flex", flexDirection: "column",
+          WebkitOverflowScrolling: "touch",
+        }}>
+          {/* Left/Right navigation arrows */}
+          <button
+            onClick={rwGoPrev}
+            disabled={rwExIndex === 0}
+            style={{
+              position: "absolute", left: 6, top: "40%", transform: "translateY(-50%)",
+              width: 48, height: 48, borderRadius: 14,
+              background: rwExIndex === 0 ? D.border : D.card,
+              border: `1px solid ${D.border}`,
+              color: rwExIndex === 0 ? D.dim : D.text,
+              fontSize: 22, cursor: rwExIndex === 0 ? "default" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              zIndex: 10, opacity: rwExIndex === 0 ? 0.3 : 1,
+            }}
+          >&#9664;</button>
+
+          <button
+            onClick={rwGoNext}
+            disabled={rwExIndex >= rwFlatExercises.length - 1}
+            style={{
+              position: "absolute", right: 6, top: "40%", transform: "translateY(-50%)",
+              width: 48, height: 48, borderRadius: 14,
+              background: rwExIndex >= rwFlatExercises.length - 1 ? D.border : D.card,
+              border: `1px solid ${D.border}`,
+              color: rwExIndex >= rwFlatExercises.length - 1 ? D.dim : D.text,
+              fontSize: 22, cursor: rwExIndex >= rwFlatExercises.length - 1 ? "default" : "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              zIndex: 10, opacity: rwExIndex >= rwFlatExercises.length - 1 ? 0.3 : 1,
+            }}
+          >&#9654;</button>
+
+          {currentEx ? (
+            <div style={{
+              padding: "20px 56px", display: "flex", flexDirection: "column",
+              alignItems: "center", gap: 14, maxWidth: 480, margin: "0 auto", width: "100%",
+              boxSizing: "border-box",
+            }}>
+              {/* Exercise name */}
+              <h1 style={{
+                fontSize: 24, fontWeight: 800, color: D.text, margin: 0,
+                textAlign: "center", lineHeight: 1.2,
+              }}>
+                {currentEx.n}
+              </h1>
+
+              {/* Section name if available */}
+              {currentSlot.sectionName && (
+                <span style={{ fontSize: 12, color: D.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  {currentSlot.sectionName}
+                </span>
+              )}
+
+              {/* GIF or Video thumbnail */}
+              {stationSettings.showMedia !== false && (
+                currentEx.g ? (
+                  <div style={{
+                    width: "100%", maxWidth: 320, borderRadius: 14,
+                    overflow: "hidden", border: `2px solid ${D.border}`,
+                  }}>
+                    <img
+                      src={currentEx.g}
+                      alt={currentEx.n}
+                      style={{ width: "100%", display: "block", borderRadius: 12 }}
+                    />
+                  </div>
+                ) : currentEx.u ? (
+                  <div
+                    onClick={() => setRwVideoUrl(currentEx.u)}
+                    style={{
+                      width: "100%", maxWidth: 320, aspectRatio: "16/9",
+                      borderRadius: 14, overflow: "hidden", cursor: "pointer",
+                      position: "relative", border: `2px solid ${D.border}`,
+                    }}
+                  >
+                    <img
+                      src={getYTThumb(currentEx.u)}
+                      alt={currentEx.n}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                    <div style={{
+                      position: "absolute", inset: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: "rgba(0,0,0,0.3)",
+                    }}>
+                      <div style={{
+                        width: 52, height: 52, borderRadius: "50%",
+                        background: "rgba(0,0,0,0.6)", color: "#fff",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 22,
+                      }}>&#9654;</div>
+                    </div>
+                  </div>
+                ) : null
+              )}
+
+              {/* Prescription */}
+              <div style={{
+                display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center",
+                fontSize: 18, fontWeight: 600, color: D.text,
+              }}>
+                {currentSlot.sets && (
+                  <span>{currentSlot.sets} <span style={{ color: D.muted, fontWeight: 400 }}>sets</span></span>
+                )}
+                {currentSlot.reps && (
+                  <span>{currentSlot.reps} <span style={{ color: D.muted, fontWeight: 400 }}>reps</span></span>
+                )}
+                {currentSlot.rpe && (
+                  <span>RPE <span style={{ color: D.orange }}>{currentSlot.rpe}</span></span>
+                )}
+                {currentSlot.tempo && (
+                  <span style={{ color: D.muted }}>Tempo: {currentSlot.tempo}</span>
+                )}
+              </div>
+
+              {/* Coaching cues (expandable) */}
+              {currentEx.c && (
+                <>
+                  <button
+                    onClick={() => setRwShowCues(c => !c)}
+                    style={{
+                      background: "none", border: `1px solid ${D.border}`,
+                      borderRadius: 10, padding: "10px 20px",
+                      color: D.muted, fontSize: 14, cursor: "pointer",
+                      minHeight: 44,
+                    }}
+                  >
+                    {rwShowCues ? "Hide Coaching Cues" : "Show Coaching Cues"}
+                  </button>
+                  {rwShowCues && cueSteps.length > 0 && (
+                    <div style={{
+                      background: D.card, borderRadius: 12, padding: 14,
+                      width: "100%", border: `1px solid ${D.border}`,
+                    }}>
+                      {cueSteps.map((step, i) => (
+                        <p key={i} style={{ fontSize: 14, color: D.text, margin: "5px 0", lineHeight: 1.5 }}>
+                          {step.trim()}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Logging inputs */}
+              <div style={{
+                width: "100%", background: D.card, borderRadius: 14,
+                padding: 14, border: `1px solid ${D.border}`,
+              }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  flexWrap: "wrap", justifyContent: "center",
+                }}>
+                  {stationSettings.showWeight && (
+                    <input
+                      type="number"
+                      placeholder="lbs"
+                      value={rwWeightInput}
+                      onChange={e => setRwWeightInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && rwLogSet()}
+                      style={{
+                        width: 90, padding: "14px 10px", fontSize: 17, fontWeight: 600,
+                        background: D.dark, color: D.text,
+                        border: `2px solid ${D.border}`, borderRadius: 12,
+                        textAlign: "center", outline: "none",
+                      }}
+                    />
+                  )}
+                  {stationSettings.showReps && (
+                    <input
+                      type="number"
+                      placeholder="Reps"
+                      value={rwRepsInput}
+                      onChange={e => setRwRepsInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && rwLogSet()}
+                      style={{
+                        width: 80, padding: "14px 10px", fontSize: 17, fontWeight: 600,
+                        background: D.dark, color: D.text,
+                        border: `2px solid ${D.border}`, borderRadius: 12,
+                        textAlign: "center", outline: "none",
+                      }}
+                    />
+                  )}
+                  {stationSettings.showRPE && (
+                    <input
+                      type="number"
+                      placeholder="RPE"
+                      min="1" max="10"
+                      value={rwRpeInput}
+                      onChange={e => setRwRpeInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && rwLogSet()}
+                      style={{
+                        width: 70, padding: "14px 10px", fontSize: 17, fontWeight: 600,
+                        background: D.dark, color: D.text,
+                        border: `2px solid ${D.border}`, borderRadius: 12,
+                        textAlign: "center", outline: "none",
+                      }}
+                    />
+                  )}
+                  <button
+                    onClick={rwLogSet}
+                    style={{
+                      background: D.accent, color: "#fff", border: "none",
+                      borderRadius: 12, padding: "14px 22px",
+                      fontSize: 16, fontWeight: 700, cursor: "pointer",
+                      minHeight: 50,
+                    }}
+                  >
+                    Log Set
+                  </button>
+                </div>
+
+                {/* Logged sets for this exercise */}
+                {rwCurrentExLogs.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    {rwCurrentExLogs.map((log, i) => (
+                      <div key={log.id} style={{
+                        fontSize: 14, color: D.text, padding: "6px 0",
+                        borderTop: i === 0 ? `1px solid ${D.border}` : "none",
+                        display: "flex", alignItems: "center", gap: 8,
+                      }}>
+                        <span style={{
+                          width: 24, height: 24, borderRadius: "50%",
+                          background: `${D.green}22`, color: D.green,
+                          display: "inline-flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 11, fontWeight: 700, flexShrink: 0,
+                        }}>&#10003;</span>
+                        <span style={{ fontWeight: 600 }}>Set {i + 1}:</span>
+                        {log.weight > 0 && <span>{log.weight} lbs</span>}
+                        {log.reps > 0 && <span>x {log.reps}</span>}
+                        {log.rpe > 0 && <span style={{ color: D.orange }}>@ RPE {log.rpe}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Last session hint */}
+                {rwLastSession && rwCurrentExLogs.length === 0 && (
+                  <div style={{ marginTop: 10, fontSize: 13, color: D.dim, textAlign: "center" }}>
+                    Last session: {rwLastSession.weight ? rwLastSession.weight + " lbs" : ""}{rwLastSession.reps ? " x " + rwLastSession.reps : ""}{rwLastSession.rpe ? " @ RPE " + rwLastSession.rpe : ""}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+              color: D.muted, fontSize: 18,
+            }}>No exercise</div>
+          )}
+        </div>
+
+        {/* ─── Exercise Dots ─── */}
+        <div style={{
+          display: "flex", justifyContent: "center", gap: 5,
+          padding: "8px 12px",
+          background: D.dark,
+          borderTop: `1px solid ${D.border}`,
+          flexWrap: "wrap",
+        }}>
+          {rwFlatExercises.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={() => rwGoTo(idx)}
+              style={{
+                width: idx === rwExIndex ? 20 : 8,
+                height: 8,
+                borderRadius: 4,
+                border: "none",
+                background: idx === rwExIndex ? D.accent : rwIsExLogged(rwFlatExercises[idx]?.exercise?.n) ? D.green : D.border,
+                cursor: "pointer",
+                transition: "width 0.2s",
+                padding: 0,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* ─── Exercise List Drawer Toggle ─── */}
+        <button
+          onClick={() => setRwShowDrawer(d => !d)}
+          style={{
+            width: "100%", background: D.dark, border: "none",
+            borderTop: `1px solid ${D.border}`,
+            color: D.muted, fontSize: 13, fontWeight: 600,
+            padding: "10px 0", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          }}
+        >
+          {rwShowDrawer ? "\u25BC Hide Exercises" : "\u25B2 All Exercises"}
+        </button>
+
+        {/* Exercise List Drawer */}
+        {rwShowDrawer && (
+          <div style={{
+            maxHeight: 220, overflowY: "auto",
+            background: D.dark, borderTop: `1px solid ${D.border}`,
+            padding: "8px 0",
+          }}>
+            {rwFlatExercises.map((slot, idx) => {
+              const logged = rwIsExLogged(slot.exercise?.n);
+              const active = idx === rwExIndex;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => { rwGoTo(idx); setRwShowDrawer(false); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, width: "100%",
+                    textAlign: "left", border: "none", cursor: "pointer",
+                    background: active ? `${D.accent}22` : "transparent",
+                    borderLeft: active ? `3px solid ${D.accent}` : "3px solid transparent",
+                    padding: "10px 16px", fontSize: 14,
+                    color: active ? D.accent : D.text,
+                  }}
+                >
+                  <span style={{
+                    width: 24, height: 24, borderRadius: "50%",
+                    background: logged ? `${D.green}22` : D.border,
+                    color: logged ? D.green : D.dim,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 12, flexShrink: 0,
+                  }}>
+                    {logged ? "\u2713" : idx + 1}
+                  </span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {slot.exercise?.n || "Exercise"}
+                  </span>
+                  {slot.sets && slot.reps && (
+                    <span style={{ fontSize: 12, color: D.dim, marginLeft: "auto", flexShrink: 0 }}>
+                      {slot.sets}x{slot.reps}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ─── Bottom: Finish Workout ─── */}
+        <div style={{
+          padding: "10px 16px", paddingBottom: "max(10px, env(safe-area-inset-bottom))",
+          background: D.dark,
+          borderTop: `1px solid ${D.border}`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <button
+            onClick={rwHandleFinish}
+            style={{
+              background: D.accent, color: "#fff", border: "none",
+              borderRadius: 14, padding: "16px 40px",
+              fontSize: 17, fontWeight: 700, cursor: "pointer",
+              minHeight: 56, width: "100%",
+            }}
+          >
+            Finish Workout
+          </button>
+        </div>
+
+        {/* Transition animation */}
+        <style>{`
+          @keyframes rwSlideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
       </div>
     );
   };
@@ -2077,8 +2944,73 @@ export default function ClientPortal() {
     }
   };
 
+  if (memberMissing) {
+    return (
+      <div style={{ ...shell, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <div style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>{"\uD83C\uDFCB\uFE0F"}</div>
+          <h2 style={{ color: B.text, fontSize: 20, margin: "0 0 8px" }}>Loading your profile...</h2>
+          <p style={{ color: B.muted, fontSize: 14 }}>If this persists, please sign out and back in.</p>
+          <button onClick={logout} style={touchBtn(B.accent, B.darker, { marginTop: 20 })}>Sign Out</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={shell}>
+      {/* Remote Workout Full-Screen Mode */}
+      {remoteWorkoutMode && renderRemoteWorkoutMode()}
+
+      {/* Client Chat Modal */}
+      {clientChatOpen && (() => {
+        const convs = Array.isArray(messages) ? messages : [];
+        const conv = convs.find(c => c.id === clientChatOpen);
+        if (!conv) return null;
+        const myMemberId = currentUser?.memberId;
+        const chatMsgs = conv.messages || [];
+        const sendClientMsg = () => {
+          if (!clientChatText.trim()) return;
+          const msg = { id: crypto.randomUUID(), senderId: myMemberId, text: clientChatText.trim(), timestamp: new Date().toISOString(), read: false };
+          setMessages(prev => (Array.isArray(prev) ? prev : []).map(c => c.id === clientChatOpen ? { ...c, messages: [...c.messages, msg], lastActivity: msg.timestamp } : c));
+          setClientChatText("");
+        };
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 300, display: "flex", flexDirection: "column" }}>
+            {/* Header */}
+            <div style={{ background: B.card, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: "1px solid " + B.border }}>
+              <button onClick={() => setClientChatOpen(null)} style={{ background: "none", border: "none", color: B.text, fontSize: 20, cursor: "pointer", padding: 4 }}>{"\u2190"}</button>
+              <div style={{ flex: 1, fontWeight: 700, fontSize: 16, color: B.text }}>Coach</div>
+            </div>
+            {/* Messages */}
+            <div style={{ flex: 1, overflowY: "auto", padding: 16, background: B.darker, display: "flex", flexDirection: "column", gap: 8 }}>
+              {chatMsgs.map(msg => {
+                const isMe = msg.senderId === myMemberId;
+                return (
+                  <div key={msg.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "75%" }}>
+                    <div style={{ padding: "10px 14px", borderRadius: 18, fontSize: 14, lineHeight: 1.4, background: isMe ? B.accent : B.card, color: isMe ? "#fff" : B.text, borderBottomRightRadius: isMe ? 4 : 18, borderBottomLeftRadius: isMe ? 18 : 4 }}>
+                      {msg.text}
+                    </div>
+                    <div style={{ fontSize: 10, color: B.dim, marginTop: 2, textAlign: isMe ? "right" : "left" }}>
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Input */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", background: B.card, borderTop: "1px solid " + B.border }}>
+              <input value={clientChatText} onChange={e => setClientChatText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") sendClientMsg(); }} placeholder="Aa" style={{ flex: 1, background: B.darker, border: "1px solid " + B.border, borderRadius: 20, padding: "10px 16px", color: B.text, fontSize: 14, outline: "none" }} />
+              {clientChatText.trim() ? (
+                <button onClick={sendClientMsg} style={{ background: B.accent, color: "#fff", border: "none", borderRadius: "50%", width: 38, height: 38, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{"\u27A4"}</button>
+              ) : (
+                <button onClick={() => { setClientChatText("\uD83D\uDC4D"); setTimeout(sendClientMsg, 50); }} style={{ background: "none", border: "none", fontSize: 26, cursor: "pointer", color: B.accent }}>{"\uD83D\uDC4D"}</button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Check-in toast */}
       {checkInMsg && (
         <div style={{

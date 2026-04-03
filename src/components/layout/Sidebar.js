@@ -11,14 +11,15 @@ const NAV_GROUPS = [
     icon: "\uD83C\uDFCB\uFE0F",
     adminOnly: false,
     items: [
-      { label: "Coaching Dashboard", path: "/coaching", icon: "\uD83D\uDCCA" },
-      { label: "Build", path: "/build", icon: "\uD83D\uDD28" },
-      { label: "Workouts", path: "/workouts", icon: "\uD83D\uDCCB" },
-      { label: "Programs", path: "/programs", icon: "\uD83D\uDCC1" },
-      { label: "Library", path: "/library", icon: "\uD83D\uDCDA" },
-      { label: "Progression Engine", path: "/matrix", icon: "\u2699\uFE0F" },
-      { label: "Session View", path: "/command", icon: "\uD83D\uDCFA" },
-      { label: "Stations", path: "/stations", icon: "\uD83D\uDCF1" },
+      { label: "Coaching Dashboard", path: "coaching", icon: "\uD83D\uDCCA" },
+      { label: "Build", path: "build", icon: "\uD83D\uDD28" },
+      { label: "Workouts", path: "workouts", icon: "\uD83D\uDCCB" },
+      { label: "Programs", path: "programs", icon: "\uD83D\uDCC1" },
+      { label: "Library", path: "library", icon: "\uD83D\uDCDA" },
+      { label: "Progression Engine", path: "matrix", icon: "\u2699\uFE0F" },
+      { label: "Session View", path: "command", icon: "\uD83D\uDCFA" },
+      { label: "Stations", path: "stations", icon: "\uD83D\uDCF1" },
+      { label: "Remote Workouts", path: "remote-workouts", icon: "\uD83C\uDF0D" },
     ],
   },
   {
@@ -26,10 +27,10 @@ const NAV_GROUPS = [
     icon: "\uD83D\uDC65",
     adminOnly: false,
     items: [
-      { label: "Feed", path: "/community", icon: "\uD83D\uDCAC" },
-      { label: "Classroom", path: "/classroom", icon: "\uD83C\uDF93" },
-      { label: "Events", path: "/events", icon: "\uD83C\uDF89" },
-      { label: "Resources", path: "/resources", icon: "\uD83D\uDCC2" },
+      { label: "Feed", path: "community", icon: "\uD83D\uDCAC" },
+      { label: "Classroom", path: "classroom", icon: "\uD83C\uDF93" },
+      { label: "Events", path: "events", icon: "\uD83C\uDF89" },
+      { label: "Resources", path: "resources", icon: "\uD83D\uDCC2" },
     ],
   },
   {
@@ -37,9 +38,9 @@ const NAV_GROUPS = [
     icon: "\uD83D\uDC64",
     adminOnly: false,
     items: [
-      { label: "Clients", path: "/members", icon: "\uD83D\uDC65" },
-      { label: "Assessments", path: "/assessments", icon: "\uD83D\uDCCB" },
-      { label: "Gamification", path: "/gamification", icon: "\uD83C\uDFC6" },
+      { label: "Clients", path: "members", icon: "\uD83D\uDC65" },
+      { label: "Assessments", path: "assessments", icon: "\uD83D\uDCCB" },
+      { label: "Gamification", path: "gamification", icon: "\uD83C\uDFC6" },
     ],
   },
   {
@@ -47,9 +48,9 @@ const NAV_GROUPS = [
     icon: "\u2699\uFE0F",
     adminOnly: false,
     items: [
-      { label: "Schedule", path: "/schedule", icon: "\uD83D\uDCC5" },
-      { label: "Check-in", path: "/checkin", icon: "\u2705" },
-      { label: "Waivers", path: "/waivers", icon: "\uD83D\uDCDD" },
+      { label: "Schedule", path: "schedule", icon: "\uD83D\uDCC5" },
+      { label: "Check-in", path: "checkin", icon: "\u2705" },
+      { label: "Waivers", path: "waivers", icon: "\uD83D\uDCDD" },
     ],
   },
   {
@@ -57,7 +58,7 @@ const NAV_GROUPS = [
     icon: "\uD83D\uDCE8",
     adminOnly: false,
     items: [
-      { label: "Messages", path: "/messages", icon: "\uD83D\uDCE9" },
+      { label: "Messages", path: "messages", icon: "\uD83D\uDCE9" },
     ],
   },
   {
@@ -65,9 +66,9 @@ const NAV_GROUPS = [
     icon: "\uD83D\uDCB0",
     adminOnly: true,
     items: [
-      { label: "Business Dashboard", path: "/business", icon: "\uD83D\uDCC8" },
-      { label: "Billing", path: "/billing", icon: "\uD83D\uDCB3" },
-      { label: "Analytics", path: "/analytics", icon: "\uD83D\uDCC9" },
+      { label: "Business Dashboard", path: "business", icon: "\uD83D\uDCC8" },
+      { label: "Billing", path: "billing", icon: "\uD83D\uDCB3" },
+      { label: "Analytics", path: "analytics", icon: "\uD83D\uDCC9" },
     ],
   },
   {
@@ -75,11 +76,10 @@ const NAV_GROUPS = [
     icon: "\uD83D\uDD12",
     adminOnly: true,
     items: [
-      { label: "Settings", path: "/settings", icon: "\u2699\uFE0F" },
-      { label: "Automations", path: "/automations", icon: "\u26A1" },
-      { label: "Integrations", path: "/integrations", icon: "\uD83D\uDD17" },
-      { label: "Data Migration", path: "/migration", icon: "\uD83D\uDCE5" },
-      { label: "Super Admin", path: "/super-admin", icon: "\uD83D\uDC51" },
+      { label: "Settings", path: "settings", icon: "\u2699\uFE0F" },
+      { label: "Automations", path: "automations", icon: "\u26A1" },
+      { label: "Data Migration", path: "migration", icon: "\uD83D\uDCE5" },
+      { label: "Super Admin", path: "/super-admin", icon: "\uD83D\uDC51", absolute: true },
     ],
   },
 ];
@@ -118,8 +118,16 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
     setCollapsedGroups(prev => ({ ...prev, [label]: !prev[label] }));
   };
 
+  const gymId = localStorage.getItem("hf_gym_id") || "default";
+  const gymPrefix = `/gym/${gymId}`;
+
   const handleNavClick = (path) => {
-    navigate(path);
+    // Absolute paths (like /super-admin) stay as-is
+    if (path.startsWith("/")) {
+      navigate(path);
+    } else {
+      navigate(`${gymPrefix}/${path}`);
+    }
     if (mobile) onClose();
   };
 
@@ -140,8 +148,11 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
     : "??";
   const roleColor = ROLE_COLORS[currentUser?.role] || B.muted;
 
+  // Resolve a nav item path to its full URL for comparison
+  const resolvedPath = (item) => item.absolute || item.path.startsWith("/") ? item.path : `${gymPrefix}/${item.path}`;
+
   // Check if any item in a group is active
-  const isGroupActive = (group) => group.items.some(item => location.pathname === item.path);
+  const isGroupActive = (group) => group.items.some(item => location.pathname === resolvedPath(item));
 
   return (
     <nav
@@ -236,7 +247,7 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
                   transition: "max-height 0.2s ease",
                 }}>
                   {group.items.map((item) => {
-                    const active = location.pathname === item.path;
+                    const active = location.pathname === resolvedPath(item);
                     return (
                       <button
                         key={item.path}
@@ -267,7 +278,7 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
                       >
                         <span style={{ fontSize: 13, flexShrink: 0, width: 18, textAlign: "center", opacity: active ? 1 : 0.6 }}>{item.icon}</span>
                         <span style={{ flex: 1 }}>{item.label}</span>
-                        {item.path === "/messages" && unreadCount > 0 && (
+                        {item.path === "messages" && unreadCount > 0 && (
                           <span style={{
                             minWidth: 18, height: 18, borderRadius: 9,
                             background: B.accent, color: "#fff",
@@ -290,25 +301,43 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
         })}
       </div>
 
-      {/* Help & Feedback standalone link */}
+      {/* Help & Feedback standalone links */}
       {showFull && (
         <div style={{ padding: "4px 6px 4px 0" }}>
           <button
-            onClick={() => handleNavClick("/feedback")}
+            onClick={() => handleNavClick("help")}
             style={{
               display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
-              background: location.pathname === "/feedback" ? `${B.accent}15` : "transparent",
-              color: location.pathname === "/feedback" ? B.accent : B.muted,
+              background: location.pathname === `${gymPrefix}/help` ? `${B.accent}15` : "transparent",
+              color: location.pathname === `${gymPrefix}/help` ? B.accent : B.muted,
               border: "none",
-              borderLeft: location.pathname === "/feedback" ? `3px solid ${B.accent}` : "3px solid transparent",
+              borderLeft: location.pathname === `${gymPrefix}/help` ? `3px solid ${B.accent}` : "3px solid transparent",
               padding: "8px 12px 8px 12px", fontSize: 13,
-              fontWeight: location.pathname === "/feedback" ? 600 : 400,
+              fontWeight: location.pathname === `${gymPrefix}/help` ? 600 : 400,
               cursor: "pointer", borderRadius: "0 6px 6px 0", transition: "all 0.15s",
             }}
-            onMouseEnter={e => { if (location.pathname !== "/feedback") e.currentTarget.style.background = `${B.border}55`; }}
-            onMouseLeave={e => { if (location.pathname !== "/feedback") e.currentTarget.style.background = "transparent"; }}
+            onMouseEnter={e => { if (location.pathname !== `${gymPrefix}/help`) e.currentTarget.style.background = `${B.border}55`; }}
+            onMouseLeave={e => { if (location.pathname !== `${gymPrefix}/help`) e.currentTarget.style.background = "transparent"; }}
           >
-            <span style={{ fontSize: 13, flexShrink: 0, width: 18, textAlign: "center", opacity: location.pathname === "/feedback" ? 1 : 0.6 }}>{"\u2753"}</span>
+            <span style={{ fontSize: 13, flexShrink: 0, width: 18, textAlign: "center", opacity: location.pathname === `${gymPrefix}/help` ? 1 : 0.6 }}>{"\uD83D\uDCD6"}</span>
+            <span>Help Center</span>
+          </button>
+          <button
+            onClick={() => handleNavClick("feedback")}
+            style={{
+              display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+              background: location.pathname === `${gymPrefix}/feedback` ? `${B.accent}15` : "transparent",
+              color: location.pathname === `${gymPrefix}/feedback` ? B.accent : B.muted,
+              border: "none",
+              borderLeft: location.pathname === `${gymPrefix}/feedback` ? `3px solid ${B.accent}` : "3px solid transparent",
+              padding: "8px 12px 8px 12px", fontSize: 13,
+              fontWeight: location.pathname === `${gymPrefix}/feedback` ? 600 : 400,
+              cursor: "pointer", borderRadius: "0 6px 6px 0", transition: "all 0.15s",
+            }}
+            onMouseEnter={e => { if (location.pathname !== `${gymPrefix}/feedback`) e.currentTarget.style.background = `${B.border}55`; }}
+            onMouseLeave={e => { if (location.pathname !== `${gymPrefix}/feedback`) e.currentTarget.style.background = "transparent"; }}
+          >
+            <span style={{ fontSize: 13, flexShrink: 0, width: 18, textAlign: "center", opacity: location.pathname === `${gymPrefix}/feedback` ? 1 : 0.6 }}>{"\u2753"}</span>
             <span>Help & Feedback</span>
           </button>
         </div>

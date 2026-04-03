@@ -5,6 +5,7 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
 import Card from "../../components/ui/Card";
 import PaymentModal from "../../components/shared/PaymentModal";
+import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
 
 /* ── Default Plans ────────────────────────────────── */
 const DEFAULT_PLANS = [
@@ -343,6 +344,13 @@ export default function BillingView() {
         method: methodLabel,
       };
       setPayments(prev => [newPayment, ...prev]);
+
+      // Send notification
+      if (getNotificationPrefs().payment !== false) {
+        sendLocalNotification("Payment received", {
+          body: `Payment of $${detail.amount || target.amount} from ${target.memberName || "Manual"}`,
+        });
+      }
     }
     setPaymentTarget(null);
   };

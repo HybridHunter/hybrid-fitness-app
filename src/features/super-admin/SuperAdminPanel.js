@@ -62,7 +62,7 @@ function randomChars(n) {
 }
 
 export default function SuperAdminPanel() {
-  const B = useTheme();
+  const B = useTheme(); // Gets LIGHT theme from parent ThemeCtx.Provider
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const [tab, setTab] = useState("dashboard");
@@ -144,7 +144,7 @@ export default function SuperAdminPanel() {
 
   const [impersonateTarget, setImpersonateTarget] = useState(null);
 
-  const handleImpersonate = (gym, role, userOverride) => {
+  const handleImpersonate = async (gym, role, userOverride) => {
     localStorage.setItem("hf_gym_id_backup", localStorage.getItem("hf_gym_id") || "");
     localStorage.setItem("hf_session_backup", localStorage.getItem("hf_session") || "");
     localStorage.setItem("hf_gym_id", gym.gymId);
@@ -163,11 +163,16 @@ export default function SuperAdminPanel() {
       isSuperAdmin: true,
     };
 
+    // Pre-fetch and cache members data for this gym so client portal loads instantly
+    const memberData = await supabaseGet(gym.gymId, "hf_members");
+    const gymMembers = Array.isArray(memberData) ? memberData : [];
+    if (gymMembers.length > 0) {
+      localStorage.setItem("hf_members", JSON.stringify(gymMembers));
+    }
+
     // If impersonating as client, need a memberId
     if (actualRole === "client" && !sessionUser.memberId) {
-      // Use the first member from this gym's data
-      const gymMembers = gymDetails[gym.gymId]?.members;
-      if (gymMembers && gymMembers.length > 0) {
+      if (gymMembers.length > 0) {
         sessionUser.memberId = gymMembers[0].id;
         sessionUser.displayName = gymMembers[0].firstName + " " + gymMembers[0].lastName + " (impersonating)";
       }
@@ -175,7 +180,7 @@ export default function SuperAdminPanel() {
 
     localStorage.setItem("hf_session", JSON.stringify(sessionUser));
     addAction(`Impersonated ${gym.gymName} as ${actualRole}`);
-    window.location.href = actualRole === "client" ? "/" : "/";
+    window.location.href = `/gym/${gym.gymId}/`;
   };
 
   const handleStopImpersonating = () => {
@@ -360,10 +365,16 @@ export default function SuperAdminPanel() {
   const openEdit = async (gym) => {
     if (!gymDetails[gym.gymId]) await loadGymDetails(gym.gymId);
     const info = gymDetails[gym.gymId]?.info || {};
+    const sub = gymDetails[gym.gymId]?.sub || {};
     setEditForm({
       gymName: gym.gymName || "", phone: info.phone || "", email: info.email || gym.adminEmail || "",
       street: info.address?.street || "", city: info.address?.city || "", state: info.address?.state || "", zip: info.address?.zip || "",
       timezone: info.timezone || "America/New_York", website: info.website || "",
+      planId: sub.planId || gym.planId || "professional",
+      customPlanName: sub.planName || gym.planName || "",
+      customPrice: sub.price || gym.price || "",
+      status: sub.status || gym.status || "active",
+      trialEndsAt: sub.trialEndsAt || "",
     });
     setEditGym(gym);
   };
@@ -380,8 +391,15 @@ export default function SuperAdminPanel() {
         timezone: editForm.timezone, website: editForm.website,
       };
       await supabaseUpsert(editGym.gymId, "hf_gym_info", updatedInfo);
+      // Save subscription changes
+      const planName = editForm.planId === "custom" ? (editForm.customPlanName || "Custom") : (editForm.planId.charAt(0).toUpperCase() + editForm.planId.slice(1));
+      const price = editForm.planId === "custom" ? (parseFloat(editForm.customPrice) || 0) : (PLAN_PRICES[editForm.planId] || 199);
+      const subUpdate = { planId: editForm.planId, planName, price, status: editForm.status };
+      if (editForm.trialEndsAt) subUpdate.trialEndsAt = editForm.trialEndsAt;
+      await supabaseUpsert(editGym.gymId, "hf_subscription", { ...(gymDetails[editGym.gymId]?.sub || {}), ...subUpdate });
+      setGymDetails(prev => ({ ...prev, [editGym.gymId]: { ...prev[editGym.gymId], sub: { ...(prev[editGym.gymId]?.sub || {}), ...subUpdate } } }));
       // Update registry
-      const updatedReg = registry.map(g => g.gymId === editGym.gymId ? { ...g, gymName: editForm.gymName, adminEmail: editForm.email } : g);
+      const updatedReg = registry.map(g => g.gymId === editGym.gymId ? { ...g, gymName: editForm.gymName, adminEmail: editForm.email, planId: editForm.planId, planName, price, status: editForm.status } : g);
       await supabaseUpsert("__super__", "hf_gyms_registry", updatedReg);
       setRegistry(updatedReg);
       setGymDetails(prev => ({ ...prev, [editGym.gymId]: { ...prev[editGym.gymId], info: updatedInfo } }));
@@ -404,8 +422,8 @@ export default function SuperAdminPanel() {
       const d = new Date(g.createdAt);
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }).length;
-    const byPlan = { starter: 0, professional: 0, enterprise: 0 };
-    registry.forEach(g => { if (byPlan[g.planId] !== undefined) byPlan[g.planId]++; });
+    const byPlan = { starter: 0, professional: 0, enterprise: 0, custom: 0 };
+    registry.forEach(g => { if (byPlan[g.planId] !== undefined) byPlan[g.planId]++; else byPlan.custom++; });
     const trialCount = registry.filter(g => g.status === "trial").length;
     const activeCount = registry.filter(g => g.status === "active").length;
     return { total, mrr, thisMonth, byPlan, trialCount, activeCount };
@@ -445,7 +463,7 @@ export default function SuperAdminPanel() {
         <div style={{ fontSize: 48, marginBottom: 16 }}>&#128274;</div>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: B.text, marginBottom: 8 }}>Access Denied</h1>
         <p style={{ color: B.muted, fontSize: 15 }}>You do not have permission to view this page.</p>
-        <button style={{ ...btnPrimary, marginTop: 20 }} onClick={() => navigate("/dashboard")}>Go to Dashboard</button>
+        <button style={{ ...btnPrimary, marginTop: 20 }} onClick={() => { const gid = localStorage.getItem("hf_gym_id") || "default"; navigate(`/gym/${gid}/`); }}>Go to Dashboard</button>
       </div>
     );
   }
@@ -701,6 +719,50 @@ export default function SuperAdminPanel() {
             </select>
           </div>
 
+          {/* Plan & Subscription */}
+          <div style={{ borderTop: "1px solid " + B.border, paddingTop: 16, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: B.text, margin: "0 0 12px" }}>Subscription</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={labelStyle}>Plan</label>
+                <select style={inputStyle} value={editForm.planId || "professional"} onChange={e => setEditForm(p => ({ ...p, planId: e.target.value }))}>
+                  <option value="starter">Starter ($99/mo)</option>
+                  <option value="professional">Professional ($199/mo)</option>
+                  <option value="enterprise">Enterprise ($399/mo)</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Status</label>
+                <select style={inputStyle} value={editForm.status || "active"} onChange={e => setEditForm(p => ({ ...p, status: e.target.value }))}>
+                  <option value="active">Active</option>
+                  <option value="trial">Trial</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="suspended">Suspended</option>
+                </select>
+              </div>
+            </div>
+            {editForm.planId === "custom" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                <div>
+                  <label style={labelStyle}>Custom Plan Name</label>
+                  <input style={inputStyle} value={editForm.customPlanName || ""} onChange={e => setEditForm(p => ({ ...p, customPlanName: e.target.value }))} placeholder="e.g. Premium" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Custom Price ($/mo)</label>
+                  <input style={inputStyle} type="number" value={editForm.customPrice || ""} onChange={e => setEditForm(p => ({ ...p, customPrice: e.target.value }))} placeholder="299" />
+                </div>
+              </div>
+            )}
+            {editForm.status === "trial" && (
+              <button style={{ background: B.orange + "18", color: B.orange, border: "1px solid " + B.orange + "40", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }} onClick={() => {
+                const newEnd = new Date(Date.now() + 14 * 86400000).toISOString();
+                setEditForm(p => ({ ...p, trialEndsAt: newEnd }));
+                flash("Trial will be extended to " + new Date(newEnd).toLocaleDateString() + " when you save.");
+              }}>Extend Trial 14 Days</button>
+            )}
+          </div>
+
           <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
             <button style={btnOutline} onClick={() => setEditGym(null)}>Cancel</button>
             <button style={{ ...btnPrimary, opacity: editSaving ? 0.6 : 1 }} onClick={handleSaveEdit} disabled={editSaving}>
@@ -841,6 +903,7 @@ export default function SuperAdminPanel() {
                 { label: "Starter", count: stats.byPlan.starter, color: B.blue || "#3498db" },
                 { label: "Professional", count: stats.byPlan.professional, color: B.green },
                 { label: "Enterprise", count: stats.byPlan.enterprise, color: B.purple || "#9b59b6" },
+                { label: "Custom", count: stats.byPlan.custom, color: B.orange || "#f59e0b" },
               ].map(p => (
                 <div key={p.label}>
                   <span style={{ fontSize: 24, fontWeight: 800, color: p.color }}>{p.count}</span>
@@ -914,7 +977,7 @@ export default function SuperAdminPanel() {
                       </td>
                       <td style={{ ...tableCell, fontFamily: "monospace", fontSize: 12, color: B.muted }}>{g.gymId}</td>
                       <td style={tableCell}>
-                        <span style={badge(g.planId === "enterprise" ? (B.purple || "#9b59b6") : g.planId === "professional" ? B.green : (B.blue || "#3498db"))}>
+                        <span style={badge(g.planId === "enterprise" ? (B.purple || "#9b59b6") : g.planId === "professional" ? B.green : g.planId === "custom" ? (B.orange || "#f59e0b") : (B.blue || "#3498db"))}>
                           {g.planName || g.planId}
                         </span>
                       </td>
@@ -933,7 +996,6 @@ export default function SuperAdminPanel() {
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button style={btnSmall} onClick={(e) => { e.stopPropagation(); setImpersonateTarget(g); }}>Impersonate</button>
                           <button style={{ ...btnSmall, background: B.green }} onClick={(e) => { e.stopPropagation(); openEdit(g); }}>Edit</button>
-                          <button style={{ ...btnSmall, background: B.orange || "#e67e22" }} onClick={(e) => { e.stopPropagation(); handleExtendTrial(g); }}>Extend Trial</button>
                           <button style={btnDanger} onClick={(e) => { e.stopPropagation(); setDeleteConfirm(g); }}>Delete</button>
                         </div>
                       </td>

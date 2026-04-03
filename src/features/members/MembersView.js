@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
+import { sendEmail } from "../../utils/messaging";
 
 const STATUS_COLORS = (B) => ({ active: B.green, trial: B.orange, frozen: B.blue, inactive: B.red });
 const STATUS_OPTIONS = ["All", "Active", "Trial", "Frozen", "Inactive"];
@@ -22,6 +23,7 @@ const emptyForm = () => ({
   firstName: "", lastName: "", email: "", phone: "", pin: "", startDate: "",
   membershipStatus: "active", notes: "", tagsStr: "",
   street: "", city: "", state: "", zip: "",
+  usePassword: false,
 });
 
 export default function MembersView() {
@@ -37,6 +39,42 @@ export default function MembersView() {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm());
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [sendingCredentials, setSendingCredentials] = useState(null);
+
+  const showToast = (msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const getBranding = () => {
+    try { return JSON.parse(localStorage.getItem("hf_branding") || "{}"); } catch { return {}; }
+  };
+
+  const sendCredentialsEmail = async (member) => {
+    if (!member.email) {
+      showToast("No email address on file", "error");
+      return;
+    }
+    setSendingCredentials(member.id);
+    try {
+      const branding = getBranding();
+      const gymName = branding.gymName || "GymKit";
+      const gymUrl = branding.gymUrl || window.location.origin;
+      const credLabel = (member.pin && member.pin.length === 4 && /^\d{4}$/.test(member.pin)) ? "PIN" : "Password";
+      await sendEmail({
+        to: member.email,
+        subject: `Your ${gymName} Login Credentials`,
+        html: `<h2>Hi ${member.firstName},</h2><p>Here are your login credentials:</p><p><strong>Login URL:</strong> <a href="${gymUrl}">${gymUrl}</a></p><p><strong>Email:</strong> ${member.email}</p><p><strong>${credLabel}:</strong> <span style="font-size:18px;letter-spacing:2px;font-weight:bold;">${member.pin}</span></p><p>Use these to log in to the client portal from your phone.</p><p>If you have any questions, message your coach through the app.</p>`,
+      });
+      showToast(`Credentials sent to ${member.email}`);
+    } catch (err) {
+      console.error("Failed to send credentials email:", err);
+      showToast("Failed to send credentials email", "error");
+    } finally {
+      setSendingCredentials(null);
+    }
+  };
 
   // filtering
   const filtered = members.filter((m) => {
@@ -93,6 +131,24 @@ export default function MembersView() {
     } else {
       const newMember = addMember(data);
       logEvent(newMember.id, fullName, "join", { newStatus: data.membershipStatus });
+      // Auto-send welcome email
+      if (data.email) {
+        const branding = getBranding();
+        const gymName = branding.gymName || "GymKit";
+        const gymUrl = branding.gymUrl || window.location.origin;
+        const credLabel = form.usePassword ? "Password" : "PIN";
+        sendEmail({
+          to: data.email,
+          subject: `Welcome to ${gymName}! Your login credentials`,
+          html: `<h2>Welcome, ${data.firstName}!</h2><p>Your account has been created. Here are your login details:</p><p><strong>Login URL:</strong> <a href="${gymUrl}">${gymUrl}</a></p><p><strong>Email:</strong> ${data.email}</p><p><strong>${credLabel}:</strong> <span style="font-size:18px;letter-spacing:2px;font-weight:bold;">${data.pin}</span></p><p>You can use these to log in to the client portal from your phone.</p><p>If you have any questions, message your coach through the app.</p>`,
+        }).then(() => {
+          showToast(`Welcome email sent to ${data.email}`);
+        }).catch((err) => {
+          console.error("Failed to send welcome email:", err);
+        });
+      } else {
+        showToast("Client created (no email to send to)", "info");
+      }
     }
     setModalOpen(false);
   };
@@ -216,6 +272,27 @@ export default function MembersView() {
                 <div style={s.actions}>
                   <button style={s.actionBtn(B.accent + "22", B.accent)} onClick={() => navigate(`/members/${m.id}`)}>View</button>
                   <button style={s.actionBtn(B.border, B.text)} onClick={() => openEdit(m)}>Edit</button>
+                  <button
+                    style={{ ...s.actionBtn(B.blue + "18", B.blue), opacity: sendingCredentials === m.id ? 0.6 : 1 }}
+                    onClick={() => sendCredentialsEmail(m)}
+                    disabled={sendingCredentials === m.id}
+                  >
+                    {sendingCredentials === m.id ? "Sending..." : "Send Credentials"}
+                  </button>
+                  <button style={s.actionBtn(B.purple + "18", B.purple || "#a855f7")} onClick={() => {
+                    const gymId = localStorage.getItem("hf_gym_id") || "default";
+                    localStorage.setItem("hf_session_backup", localStorage.getItem("hf_session") || "");
+                    localStorage.setItem("hf_impersonating", "true");
+                    localStorage.setItem("hf_session", JSON.stringify({
+                      id: "impersonate_client_" + m.id,
+                      username: m.email,
+                      role: "client",
+                      memberId: m.id,
+                      displayName: m.firstName + " " + m.lastName + " (viewing as client)",
+                      gymId,
+                    }));
+                    window.location.href = `/gym/${gymId}/`;
+                  }}>View as Client</button>
                   <button style={s.actionBtn(B.red + "18", B.red)} onClick={() => setConfirmDeleteId(m.id)}>Delete</button>
                 </div>
               </div>
@@ -252,8 +329,21 @@ export default function MembersView() {
                 <input style={s.input} value={form.phone} onChange={(e) => set("phone", e.target.value)} />
               </div>
               <div style={s.field}>
-                <label style={s.label}>PIN (4-digit)</label>
-                <input style={s.input} maxLength={4} value={form.pin} onChange={(e) => set("pin", e.target.value.replace(/\D/g, "").slice(0, 4))} />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <label style={{ ...s.label, marginBottom: 0 }}>{form.usePassword ? "Password" : "PIN (4-digit)"}</label>
+                  <button
+                    type="button"
+                    onClick={() => { set("usePassword", !form.usePassword); set("pin", ""); }}
+                    style={{ background: "transparent", border: "none", color: B.accent, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: 0 }}
+                  >
+                    {form.usePassword ? "Use PIN instead" : "Use Password instead"}
+                  </button>
+                </div>
+                {form.usePassword ? (
+                  <input style={s.input} type="password" value={form.pin} onChange={(e) => set("pin", e.target.value)} placeholder="Enter password" />
+                ) : (
+                  <input style={s.input} maxLength={4} value={form.pin} onChange={(e) => set("pin", e.target.value.replace(/\D/g, "").slice(0, 4))} />
+                )}
               </div>
             </div>
 
@@ -308,6 +398,19 @@ export default function MembersView() {
               <button style={s.saveBtn} onClick={handleSave}>{editId ? "Save Changes" : "Add Client"}</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24, zIndex: 1100,
+          background: toast.type === "error" ? "#7f1d1d" : toast.type === "info" ? B.blue : "#14532d",
+          color: toast.type === "error" ? "#fca5a5" : toast.type === "info" ? "#bfdbfe" : "#86efac",
+          padding: "12px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.3)", maxWidth: 360,
+        }}>
+          {toast.msg}
         </div>
       )}
 

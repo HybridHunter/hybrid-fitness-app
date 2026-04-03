@@ -3,6 +3,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
+import PlanAccessPicker, { PlanLockBadge } from "../../components/ui/PlanAccessPicker";
 
 const uuid = () => crypto.randomUUID();
 
@@ -74,6 +75,7 @@ function generateDemoResources() {
       createdAt: daysAgo(30),
       pinned: true,
       tags: ["onboarding", "handbook", "new members"],
+      allowedPlanIds: [],
     },
     {
       id: uuid(),
@@ -87,6 +89,7 @@ function generateDemoResources() {
       createdAt: daysAgo(21),
       pinned: false,
       tags: ["macros", "nutrition", "meal planning"],
+      allowedPlanIds: [],
     },
     {
       id: uuid(),
@@ -100,6 +103,7 @@ function generateDemoResources() {
       createdAt: daysAgo(14),
       pinned: false,
       tags: ["foam rolling", "mobility", "recovery"],
+      allowedPlanIds: [],
     },
     {
       id: uuid(),
@@ -113,6 +117,7 @@ function generateDemoResources() {
       createdAt: daysAgo(10),
       pinned: false,
       tags: ["squat", "technique", "form check"],
+      allowedPlanIds: [],
     },
     {
       id: uuid(),
@@ -126,6 +131,7 @@ function generateDemoResources() {
       createdAt: daysAgo(18),
       pinned: false,
       tags: ["meal prep", "templates", "grocery list"],
+      allowedPlanIds: [],
     },
     {
       id: uuid(),
@@ -139,6 +145,7 @@ function generateDemoResources() {
       createdAt: daysAgo(25),
       pinned: false,
       tags: ["RPE", "autoregulation", "programming"],
+      allowedPlanIds: [],
     },
     {
       id: uuid(),
@@ -152,6 +159,7 @@ function generateDemoResources() {
       createdAt: daysAgo(12),
       pinned: false,
       tags: ["sleep", "recovery", "habits"],
+      allowedPlanIds: [],
     },
     {
       id: uuid(),
@@ -165,6 +173,7 @@ function generateDemoResources() {
       createdAt: daysAgo(8),
       pinned: false,
       tags: ["competition", "peaking", "meet prep"],
+      allowedPlanIds: [],
     },
     {
       id: uuid(),
@@ -178,6 +187,7 @@ function generateDemoResources() {
       createdAt: daysAgo(5),
       pinned: false,
       tags: ["supplements", "creatine", "protein"],
+      allowedPlanIds: [],
     },
     {
       id: uuid(),
@@ -191,6 +201,7 @@ function generateDemoResources() {
       createdAt: daysAgo(45),
       pinned: true,
       tags: ["rules", "policy", "required"],
+      allowedPlanIds: [],
     },
   ];
 }
@@ -208,6 +219,7 @@ function ResourceModal({ resource, categories, onSave, onClose, B }) {
       url: "",
       tags: "",
       pinned: false,
+      allowedPlanIds: [],
     }
   );
 
@@ -392,6 +404,12 @@ function ResourceModal({ resource, categories, onSave, onClose, B }) {
             />
             Pin this resource to the top
           </label>
+          <PlanAccessPicker
+            allowedPlanIds={form.allowedPlanIds || []}
+            onChange={(ids) => setForm({ ...form, allowedPlanIds: ids })}
+            B={B}
+            labelStyle={labelStyle}
+          />
         </div>
 
         <div
@@ -966,20 +984,22 @@ export default function ResourcesView() {
                   </p>
 
                   {/* Category badge */}
-                  <span
-                    style={{
-                      display: "inline-block",
-                      padding: "3px 10px",
-                      borderRadius: 12,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      background: getCategoryColor(r.category) + "22",
-                      color: getCategoryColor(r.category),
-                      marginBottom: 8,
-                    }}
-                  >
-                    {r.category}
-                  </span>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "3px 10px",
+                        borderRadius: 12,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        background: getCategoryColor(r.category) + "22",
+                        color: getCategoryColor(r.category),
+                      }}
+                    >
+                      {r.category}
+                    </span>
+                    <PlanLockBadge allowedPlanIds={r.allowedPlanIds} B={B} />
+                  </div>
 
                   {/* Tags */}
                   {r.tags && r.tags.length > 0 && (

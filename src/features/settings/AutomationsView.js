@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembers } from "../../hooks/useMembers";
+import { sendEmail, sendSMS, replaceVariables } from "../../utils/messaging";
 
 /* ── Default automations ─────────────────────────────────── */
 const DEFAULT_AUTOMATIONS = [
@@ -114,6 +115,193 @@ export default function AutomationsView() {
   const [customName, setCustomName] = useState("");
   const [customSubject, setCustomSubject] = useState("");
   const [customBody, setCustomBody] = useState("");
+  const [sendingId, setSendingId] = useState(null);
+  const [resultMsg, setResultMsg] = useState({});
+  const { members } = useMembers();
+
+  const getBranding = () => {
+    try { return JSON.parse(localStorage.getItem('hf_branding') || '{}'); } catch { return {}; }
+  };
+  const getIntegrations = () => {
+    try { return JSON.parse(localStorage.getItem('hf_integrations') || '{}'); } catch { return {}; }
+  };
+  const getSettings = () => {
+    try { return JSON.parse(localStorage.getItem('hf_settings') || '{}'); } catch { return {}; }
+  };
+
+  const addLogEntry = useCallback((automation, member, action, status) => {
+    const entry = {
+      id: Date.now(),
+      date: new Date().toISOString().replace('T', ' ').slice(0, 16),
+      automation: automation.name,
+      member,
+      action,
+      status,
+    };
+    setLog(prev => [entry, ...prev]);
+  }, [setLog]);
+
+  const showResult = (id, msg) => {
+    setResultMsg(prev => ({ ...prev, [id]: msg }));
+    setTimeout(() => setResultMsg(prev => { const n = { ...prev }; delete n[id]; return n; }), 5000);
+  };
+
+  const handleRunNow = async (a) => {
+    setSendingId(a.id);
+    const integrations = getIntegrations();
+    const branding = getBranding();
+    const gymName = branding.gymName || 'GymKit';
+    const actionLower = a.action.toLowerCase();
+    const isEmail = actionLower.includes('email') || actionLower.includes('reminder') || actionLower.includes('birthday') || actionLower.includes('re-sign');
+    const isSMS = actionLower.includes('sms');
+    const isNotification = actionLower.includes('notification');
+    const isAlert = actionLower.includes('alert');
+
+    // Get eligible members (all active members for demo)
+    const eligibleMembers = (members || []).filter(m => m.status !== 'inactive').slice(0, 50);
+    if (eligibleMembers.length === 0) {
+      showResult(a.id, 'No eligible members found.');
+      setSendingId(null);
+      return;
+    }
+
+    let sentCount = 0;
+    let failCount = 0;
+
+    if (isEmail) {
+      if (!integrations.resendApiKey) {
+        showResult(a.id, 'Failed: no Resend API key configured. Go to Settings > Integrations.');
+        setSendingId(null);
+        return;
+      }
+      for (const member of eligibleMembers) {
+        if (!member.email) continue;
+        const vars = { firstName: member.firstName || member.name?.split(' ')[0] || 'Client', gymName, amount: '$0.00', className: 'Session', time: 'TBD' };
+        const subject = replaceVariables(a.subject, vars);
+        const html = `<p>${replaceVariables(a.body, vars).replace(/\n/g, '<br>')}</p>`;
+        try {
+          const res = await sendEmail({ to: member.email, subject, html });
+          if (res.success) {
+            sentCount++;
+            addLogEntry(a, member.name || member.email, 'Email sent', 'sent');
+          } else {
+            failCount++;
+            addLogEntry(a, member.name || member.email, 'Email failed: ' + (res.error || 'unknown'), 'failed');
+          }
+        } catch {
+          failCount++;
+          addLogEntry(a, member.name || member.email, 'Email failed: server error', 'failed');
+        }
+      }
+    } else if (isSMS) {
+      if (!integrations.twilioSid || !integrations.twilioToken) {
+        showResult(a.id, 'Failed: no Twilio credentials configured. Go to Settings > Integrations.');
+        setSendingId(null);
+        return;
+      }
+      for (const member of eligibleMembers) {
+        if (!member.phone) continue;
+        const vars = { firstName: member.firstName || member.name?.split(' ')[0] || 'Client', gymName, amount: '$0.00', className: 'Session', time: 'TBD' };
+        const body = replaceVariables(a.body || a.subject || a.name, vars);
+        try {
+          const res = await sendSMS({ to: member.phone, body });
+          if (res.success) {
+            sentCount++;
+            addLogEntry(a, member.name || member.phone, 'SMS sent', 'sent');
+          } else {
+            failCount++;
+            addLogEntry(a, member.name || member.phone, 'SMS failed: ' + (res.error || 'unknown'), 'failed');
+          }
+        } catch {
+          failCount++;
+          addLogEntry(a, member.name || member.phone, 'SMS failed: server error', 'failed');
+        }
+      }
+    } else if (isNotification || isAlert) {
+      // In-app notification: store to hf_notifications
+      const existing = JSON.parse(localStorage.getItem('hf_notifications') || '[]');
+      for (const member of eligibleMembers) {
+        const vars = { firstName: member.firstName || member.name?.split(' ')[0] || 'Client', gymName };
+        existing.unshift({
+          id: 'notif_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          type: 'automation',
+          title: replaceVariables(a.subject || a.name, vars),
+          message: replaceVariables(a.body || '', vars),
+          time: new Date().toISOString(),
+          read: false,
+        });
+        sentCount++;
+        addLogEntry(a, member.name || 'Member', isAlert ? 'Coach alerted' : 'Notification sent', 'sent');
+      }
+      localStorage.setItem('hf_notifications', JSON.stringify(existing));
+    }
+
+    const msg = failCount > 0
+      ? `Sent to ${sentCount} client${sentCount !== 1 ? 's' : ''}, ${failCount} failed.`
+      : `Sent to ${sentCount} client${sentCount !== 1 ? 's' : ''}.`;
+    showResult(a.id, msg);
+    setSendingId(null);
+  };
+
+  const handleSendTest = async (a) => {
+    setSendingId(a.id + '-test');
+    const integrations = getIntegrations();
+    const branding = getBranding();
+    const gymName = branding.gymName || 'GymKit';
+    const settings = getSettings();
+    const adminEmail = settings.email || 'admin@gym.com';
+    const actionLower = a.action.toLowerCase();
+    const isEmail = actionLower.includes('email') || actionLower.includes('reminder') || actionLower.includes('birthday') || actionLower.includes('re-sign');
+    const isSMS = actionLower.includes('sms');
+
+    const vars = { firstName: 'Test User', gymName, amount: '$99.00', className: 'HIIT Class', time: '9:00 AM' };
+
+    if (isEmail) {
+      if (!integrations.resendApiKey) {
+        showResult(a.id, 'Failed: no Resend API key configured.');
+        setSendingId(null);
+        return;
+      }
+      const subject = '[TEST] ' + replaceVariables(a.subject, vars);
+      const html = `<p style="background:#fff3cd;padding:8px 12px;border-radius:6px;font-size:12px;color:#856404;margin-bottom:16px;">This is a test email. Variables have been filled with sample data.</p><p>${replaceVariables(a.body, vars).replace(/\n/g, '<br>')}</p>`;
+      try {
+        const res = await sendEmail({ to: adminEmail, subject, html });
+        showResult(a.id, res.success ? `Test email sent to ${adminEmail}!` : 'Failed: ' + (res.error || 'unknown'));
+        addLogEntry(a, 'Admin (test)', 'Test email sent', res.success ? 'sent' : 'failed');
+      } catch {
+        showResult(a.id, 'Failed: server unreachable.');
+      }
+    } else if (isSMS) {
+      if (!integrations.twilioSid || !integrations.twilioToken) {
+        showResult(a.id, 'Failed: no Twilio credentials configured.');
+        setSendingId(null);
+        return;
+      }
+      const body = '[TEST] ' + replaceVariables(a.body || a.subject || a.name, vars);
+      try {
+        const res = await sendSMS({ to: integrations.twilioFrom || '+15551234567', body });
+        showResult(a.id, res.success ? 'Test SMS sent to your Twilio number!' : 'Failed: ' + (res.error || 'unknown'));
+        addLogEntry(a, 'Admin (test)', 'Test SMS sent', res.success ? 'sent' : 'failed');
+      } catch {
+        showResult(a.id, 'Failed: server unreachable.');
+      }
+    } else {
+      // In-app test notification
+      const existing = JSON.parse(localStorage.getItem('hf_notifications') || '[]');
+      existing.unshift({
+        id: 'notif_test_' + Date.now(),
+        type: 'automation',
+        title: '[TEST] ' + replaceVariables(a.subject || a.name, vars),
+        message: replaceVariables(a.body || '', vars),
+        time: new Date().toISOString(),
+        read: false,
+      });
+      localStorage.setItem('hf_notifications', JSON.stringify(existing));
+      showResult(a.id, 'Test notification added. Check the notification bell.');
+      addLogEntry(a, 'Admin (test)', 'Test notification', 'sent');
+    }
+    setSendingId(null);
+  };
 
   const toggleEnabled = (id) => {
     setAutomations((prev) =>
@@ -303,6 +491,50 @@ export default function AutomationsView() {
                 <div style={{ fontSize: 11, color: B.muted, marginTop: 6 }}>
                   Variables: {"{firstName}"} {"{gymName}"} {"{amount}"} {"{className}"} {"{time}"}
                 </div>
+              </div>
+            )}
+
+            {/* Run / Test buttons */}
+            {a.enabled && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${B.border}`, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  disabled={sendingId === a.id}
+                  onClick={(e) => { e.stopPropagation(); handleRunNow(a); }}
+                  style={{
+                    ...btnPrimary,
+                    opacity: sendingId === a.id ? 0.6 : 1,
+                    cursor: sendingId === a.id ? "wait" : "pointer",
+                  }}
+                >
+                  {sendingId === a.id ? "Sending..." : "Run Now"}
+                </button>
+                <button
+                  disabled={sendingId === a.id + '-test'}
+                  onClick={(e) => { e.stopPropagation(); handleSendTest(a); }}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: 6,
+                    border: `1px solid ${B.border}`,
+                    background: B.card,
+                    color: B.text,
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: sendingId === a.id + '-test' ? "wait" : "pointer",
+                    opacity: sendingId === a.id + '-test' ? 0.6 : 1,
+                  }}
+                >
+                  {sendingId === a.id + '-test' ? "Sending..." : "Send Test"}
+                </button>
+                {resultMsg[a.id] && (
+                  <span style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: resultMsg[a.id].toLowerCase().includes('fail') ? "#ef4444" : "#4ADE80",
+                    marginLeft: 4,
+                  }}>
+                    {resultMsg[a.id]}
+                  </span>
+                )}
               </div>
             )}
           </div>

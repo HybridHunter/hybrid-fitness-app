@@ -1,0 +1,26 @@
+{
+  "short_name": "GymKit",
+  "name": "GymKit - Gym Management",
+  "description": "Your gym, your workouts, your progress — all in one app.",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#8fbf3b",
+  "background_color": "#080c12",
+  "scope": "/",
+  "categories": ["fitness", "health", "lifestyle"]
+}

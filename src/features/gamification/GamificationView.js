@@ -3,19 +3,34 @@ import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 
-const ALL_BADGES = [
-  { key: "First Workout", icon: "\ud83c\udfaf", desc: "Complete your first workout" },
-  { key: "10 Workouts", icon: "\ud83d\udcaa", desc: "Complete 10 workouts" },
-  { key: "50 Workouts", icon: "\ud83d\udd25", desc: "Complete 50 workouts" },
-  { key: "100 Workouts", icon: "\u2b50", desc: "Complete 100 workouts" },
-  { key: "Iron Club", icon: "\ud83c\udfcb\ufe0f", desc: "Lift 50,000+ lbs total" },
-  { key: "Week Warrior", icon: "\u26a1", desc: "7-day workout streak" },
-  { key: "Month Machine", icon: "\ud83d\uddd3\ufe0f", desc: "30-day workout streak" },
-  { key: "Early Bird", icon: "\ud83c\udf05", desc: "Check in before 7 AM" },
-  { key: "Consistency King", icon: "\ud83d\udc51", desc: "Longest streak 21+" },
-];
+const DEFAULT_GAMIFICATION_SETTINGS = {
+  enabled: true,
+  levels: [
+    { level: 1, name: "Beginner", points: 0, color: "#8b949e" },
+    { level: 2, name: "Regular", points: 200, color: "#3b82f6" },
+    { level: 3, name: "Committed", points: 600, color: "#8b5cf6" },
+    { level: 4, name: "Dedicated", points: 1200, color: "#f59e0b" },
+    { level: 5, name: "Warrior", points: 2000, color: "#ef4444" },
+    { level: 6, name: "Elite", points: 3500, color: "#ec4899" },
+    { level: 7, name: "Champion", points: 5500, color: "#14b8a6" },
+    { level: 8, name: "Master", points: 8000, color: "#f97316" },
+    { level: 9, name: "Legend", points: 12000, color: "#eab308" },
+  ],
+  pointsPerAction: { checkin: 10, workout: 25, challengeCheckin: 15, postLike: 1, assessment: 50, streakBonus: 5 },
+  badges: [
+    { id: "b1", name: "First Workout", icon: "\ud83c\udfaf", description: "Complete your first workout", trigger: "Total Workouts >=", threshold: 1, active: true },
+    { id: "b2", name: "10 Workouts", icon: "\ud83d\udcaa", description: "Complete 10 workouts", trigger: "Total Workouts >=", threshold: 10, active: true },
+    { id: "b3", name: "50 Workouts", icon: "\ud83d\udd25", description: "Complete 50 workouts", trigger: "Total Workouts >=", threshold: 50, active: true },
+    { id: "b4", name: "100 Workouts", icon: "\u2b50", description: "Complete 100 workouts", trigger: "Total Workouts >=", threshold: 100, active: true },
+    { id: "b5", name: "Iron Club", icon: "\ud83c\udfcb\ufe0f", description: "Lift 50,000+ lbs total", trigger: "Total Weight Lifted >=", threshold: 50000, active: true },
+    { id: "b6", name: "Week Warrior", icon: "\u26a1", description: "7-day workout streak", trigger: "Current Streak >=", threshold: 7, active: true },
+    { id: "b7", name: "Month Machine", icon: "\ud83d\uddd3\ufe0f", description: "30-day workout streak", trigger: "Current Streak >=", threshold: 30, active: true },
+  ],
+  leaderboard: { enabled: true, metrics: ["xp", "workouts", "weight", "streak"], showPodium: true },
+  attendanceGoal: { enabled: true, threshold: 8 },
+};
 
-const LEADERBOARD_TABS = [
+const ALL_LEADERBOARD_TABS = [
   { key: "xp", label: "XP", field: "xp", format: (v) => v.toLocaleString() + " XP" },
   { key: "workouts", label: "Workouts", field: "totalWorkouts", format: (v) => v.toLocaleString() },
   { key: "weight", label: "Weight Lifted", field: "totalWeightLifted", format: (v) => (v >= 1000 ? (v / 1000).toFixed(1) + "K" : v) + " lbs" },
@@ -40,14 +55,39 @@ function getAttendanceByMonth(attendance, year, month) {
 export default function GamificationView() {
   const B = useTheme();
   const { members } = useMembers();
+  const [gamSettings] = useLocalStorage("hf_gamification_settings", DEFAULT_GAMIFICATION_SETTINGS);
   const [activeTab, setActiveTab] = useState("xp");
   const [attendance] = useLocalStorage("hf_attendance", []);
   const [showDidntReach, setShowDidntReach] = useState(false);
   const [showDidntReachCurrent, setShowDidntReachCurrent] = useState(false);
   const [drillDown, setDrillDown] = useState(null); // "prev" | "current" | null
 
+  // Derive badges and leaderboard tabs from settings
+  const ALL_BADGES = (gamSettings.badges || []).filter(b => b.active).map(b => ({ key: b.name, icon: b.icon, desc: b.description }));
+  const enabledMetrics = gamSettings.leaderboard?.metrics || ["xp", "workouts", "weight", "streak"];
+  const LEADERBOARD_TABS = ALL_LEADERBOARD_TABS.filter(t => enabledMetrics.includes(t.key));
+  const leaderboardEnabled = gamSettings.leaderboard?.enabled !== false;
+  const showPodium = gamSettings.leaderboard?.showPodium !== false;
+  const attendanceEnabled = gamSettings.attendanceGoal?.enabled !== false;
+  const GOAL = gamSettings.attendanceGoal?.threshold || 8;
+
+  // If gamification is disabled, show message
+  if (!gamSettings.enabled) {
+    return (
+      <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 64 }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>
+          {"\ud83d\udeab"}
+        </div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: B.text, marginBottom: 8 }}>Gamification is Disabled</div>
+        <div style={{ fontSize: 14, color: B.muted, marginBottom: 20 }}>An admin has turned off the gamification system for this gym.</div>
+        <div style={{ fontSize: 13, color: B.dim }}>To re-enable, go to <strong style={{ color: B.accent }}>Settings &rarr; Gamification</strong> and toggle it on.</div>
+      </div>
+    );
+  }
+
   const activeMembers = members.filter((m) => m.membershipStatus === "active");
-  const tab = LEADERBOARD_TABS.find((t) => t.key === activeTab);
+  const safeActiveTab = LEADERBOARD_TABS.find((t) => t.key === activeTab) ? activeTab : LEADERBOARD_TABS[0]?.key || "xp";
+  const tab = LEADERBOARD_TABS.find((t) => t.key === safeActiveTab) || ALL_LEADERBOARD_TABS[0];
 
   const sorted = [...activeMembers].sort((a, b) => {
     const av = a.gamification?.[tab.field] || 0;
@@ -55,8 +95,8 @@ export default function GamificationView() {
     return bv - av;
   });
 
-  const top3 = sorted.slice(0, 3);
-  const rest = sorted.slice(3);
+  const top3 = showPodium ? sorted.slice(0, 3) : [];
+  const rest = showPodium ? sorted.slice(3) : sorted;
 
   // Badge counts across ALL members
   const badgeCounts = {};
@@ -83,8 +123,6 @@ export default function GamificationView() {
 
   const prevCounts = getAttendanceByMonth(attendance, prevYear, prevMonth);
   const curCounts = getAttendanceByMonth(attendance, curYear, curMonth);
-
-  const GOAL = 8;
 
   // Build member lists for previous month
   const memberWithPrevCount = activeMembers.map((m) => ({
@@ -221,9 +259,9 @@ export default function GamificationView() {
       </div>
 
       {/* Monthly Attendance Goal */}
-      <div style={s.section}>
+      {attendanceEnabled && <div style={s.section}>
         <div style={s.sectionTitle}>{"\ud83d\udcc5"} Monthly Attendance Goal</div>
-        <div style={{ ...s.subtitle, marginTop: -10, marginBottom: 16 }}>Clients who attended 8+ sessions last month</div>
+        <div style={{ ...s.subtitle, marginTop: -10, marginBottom: 16 }}>Clients who attended {GOAL}+ sessions last month</div>
 
         {/* Drill-down detail view */}
         {drillDown && (() => {
@@ -382,22 +420,22 @@ export default function GamificationView() {
           </div>
         </div>
         )}
-      </div>
+      </div>}
 
       {/* Leaderboard */}
-      <div style={s.section}>
+      {leaderboardEnabled && <div style={s.section}>
         <div style={s.sectionTitle}>{"\ud83c\udfc6"} Leaderboard</div>
         <div style={s.card}>
           <div style={s.tabBar}>
             {LEADERBOARD_TABS.map((t) => (
-              <button key={t.key} style={s.tab(activeTab === t.key)} onClick={() => setActiveTab(t.key)}>
+              <button key={t.key} style={s.tab(safeActiveTab === t.key)} onClick={() => setActiveTab(t.key)}>
                 {t.label}
               </button>
             ))}
           </div>
 
           {/* Podium */}
-          {top3.length > 0 && (
+          {showPodium && top3.length > 0 && (
             <div style={s.podium}>
               {top3.map((m, idx) => {
                 const g = m.gamification || {};
@@ -410,7 +448,7 @@ export default function GamificationView() {
                     </div>
                     <div style={s.podName}>{m.firstName} {m.lastName}</div>
                     <div style={s.podValue}>{tab.format(val)}</div>
-                    <div style={s.podLevel}>Level {g.level || 1}</div>
+                    <div style={s.podLevel}>{(gamSettings.levels || []).find(l => l.level === (g.level || 1))?.name || ("Level " + (g.level || 1))}</div>
                   </div>
                 );
               })}
@@ -423,11 +461,11 @@ export default function GamificationView() {
             const val = g[tab.field] || 0;
             return (
               <div key={m.id} style={s.row(false)}>
-                <div style={s.rank}>{idx + 4}</div>
+                <div style={s.rank}>{idx + (showPodium ? 4 : 1)}</div>
                 <div style={s.rowAvatar}>{getInitials(m.firstName, m.lastName)}</div>
                 <div style={s.rowName}>{m.firstName} {m.lastName}</div>
                 <div style={s.rowValue}>{tab.format(val)}</div>
-                <div style={s.rowLevel}>Lv {g.level || 1}</div>
+                <div style={s.rowLevel}>{(gamSettings.levels || []).find(l => l.level === (g.level || 1))?.name || ("Lv " + (g.level || 1))}</div>
               </div>
             );
           })}
@@ -438,7 +476,7 @@ export default function GamificationView() {
             </div>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* Badges Gallery */}
       <div style={s.section}>

@@ -1,8 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
+import RichTextEditor from "../../components/ui/RichTextEditor";
+import PlanAccessPicker, { PlanLockBadge } from "../../components/ui/PlanAccessPicker";
 
 /* ── helpers ─────────────────────────────────────────── */
 const uid = () => crypto.randomUUID();
@@ -17,7 +19,7 @@ function getYTEmbedUrl(url) {
 const DEMO_COURSES = [
   {
     id: uid(), title: "Foundations of Strength", description: "A comprehensive beginner program covering the essential movement patterns, programming principles, and training fundamentals you need to build a strong foundation.",
-    coverImage: "", accessType: "open", requiredLevel: 0,
+    coverImage: "", accessType: "open", requiredLevel: 0, allowedPlanIds: [],
     modules: [
       { id: uid(), title: "Getting Started", dripDays: null, lessons: [
         { id: uid(), title: "Welcome to Foundations of Strength", content: "Welcome to Foundations of Strength! This course is designed to take you from complete beginner to confident, capable lifter. Whether you have never touched a barbell or you have been casually training for years without a real plan, this program will give you the knowledge and structure you need.\n\nOver the coming modules, you will learn the fundamental movement patterns that every great training program is built on. You will understand how to read a program, what sets and reps actually mean, and how to gauge your own effort so you get the most out of every session.\n\nTake your time with each lesson. Watch the videos, practice the movements, and do not rush ahead until you feel comfortable. Strength is a lifelong pursuit, and building a proper foundation now will pay dividends for decades.", videoUrl: "", resources: [{ name: "Printable Course Outline", url: "#" }], published: true },
@@ -38,7 +40,7 @@ const DEMO_COURSES = [
   },
   {
     id: uid(), title: "Advanced Training Methods", description: "Take your training to the next level with periodization strategies, advanced recovery protocols, and mobility programming for experienced lifters.",
-    coverImage: "", accessType: "level-locked", requiredLevel: 3,
+    coverImage: "", accessType: "level-locked", requiredLevel: 3, allowedPlanIds: [],
     modules: [
       { id: uid(), title: "Periodization", dripDays: null, lessons: [
         { id: uid(), title: "Linear vs. Undulating Periodization", content: "Periodization is simply the planned variation of training variables over time. Without periodization, you will eventually plateau because your body adapts to repetitive stimuli. The two most common approaches are linear and undulating periodization.\n\nLinear periodization progresses in one direction over a training block. A classic example is starting with four sets of twelve at moderate weight, then moving to four sets of eight at heavier weight, then four sets of five at near-maximal weight over a twelve-week cycle. It is straightforward, easy to follow, and very effective for beginners and intermediate lifters.\n\nUndulating periodization varies the stimulus within each week. Monday might be a heavy day with sets of three to five, Wednesday a moderate hypertrophy day with sets of eight to twelve, and Friday a light endurance day with sets of fifteen-plus. Research shows both approaches produce similar long-term results, but undulating periodization tends to keep things more interesting and may be better for athletes who need multiple qualities simultaneously.", videoUrl: "", resources: [{ name: "12-Week Linear Template", url: "#" }, { name: "Weekly Undulating Template", url: "#" }], published: true },
@@ -53,7 +55,7 @@ const DEMO_COURSES = [
   },
   {
     id: uid(), title: "Nutrition Fundamentals", description: "Learn the science of sports nutrition, from macronutrient basics to practical meal planning strategies that support your training goals.",
-    coverImage: "", accessType: "members-only", requiredLevel: 0,
+    coverImage: "", accessType: "members-only", requiredLevel: 0, allowedPlanIds: [],
     modules: [
       { id: uid(), title: "Macronutrients", dripDays: null, lessons: [
         { id: uid(), title: "Protein: The Building Block", content: "Protein is the most important macronutrient for anyone engaged in resistance training. It provides the amino acids your body needs to repair and build muscle tissue after training. Without adequate protein, you simply cannot recover optimally from hard training sessions.\n\nThe current evidence strongly supports consuming between 0.7 and 1.0 grams of protein per pound of body weight per day for active individuals. For a 180-pound person, that is 126 to 180 grams of protein daily. Spacing this evenly across three to five meals appears to be more effective for muscle protein synthesis than consuming it all in one or two sittings.\n\nGreat protein sources include chicken breast, lean beef, fish, eggs, Greek yogurt, cottage cheese, and whey protein. Each meal should contain 25 to 40 grams of protein to maximally stimulate muscle protein synthesis. If you are struggling to hit your protein target, a protein shake or two can fill the gap without requiring you to eat another full meal.", videoUrl: "", resources: [{ name: "Protein-Rich Foods List", url: "#" }], published: true },
@@ -81,6 +83,9 @@ export default function ClassroomView() {
   const [expandedModules, setExpandedModules] = useState({});
   const [editing, setEditing] = useState(false);
   const [editCourse, setEditCourse] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewLessonPath, setPreviewLessonPath] = useState(null);
+  const [previewExpandedModules, setPreviewExpandedModules] = useState({});
 
   const course = courses[selectedCourseIdx] || courses[0];
 
@@ -149,7 +154,7 @@ export default function ClassroomView() {
   /* ── editor helpers ── */
   function openEditor(c) {
     setEditCourse(JSON.parse(JSON.stringify(c || {
-      id: uid(), title: "", description: "", coverImage: "", accessType: "open", requiredLevel: 0,
+      id: uid(), title: "", description: "", coverImage: "", accessType: "open", requiredLevel: 0, allowedPlanIds: [],
       modules: [{ id: uid(), title: "Module 1", dripDays: null, lessons: [{ id: uid(), title: "Lesson 1", content: "", videoUrl: "", resources: [], published: true }] }],
     })));
     setEditing(true);
@@ -218,6 +223,44 @@ export default function ClassroomView() {
     setEditCourse(prev => ({ ...prev, modules: prev.modules.map((m, i) => i === mi ? { ...m, lessons: m.lessons.map((l, j) => j === li ? { ...l, resources: l.resources.map((r, k) => k === ri ? { ...r, [field]: val } : r) } : l) } : m) }));
   }
 
+  /* ── preview helpers ── */
+  const openPreview = useCallback(() => {
+    setPreviewing(true);
+    setPreviewLessonPath(null);
+    setPreviewExpandedModules({});
+  }, []);
+
+  const closePreview = useCallback(() => {
+    setPreviewing(false);
+    setPreviewLessonPath(null);
+    setPreviewExpandedModules({});
+  }, []);
+
+  useEffect(() => {
+    if (!previewing) return;
+    const handleEsc = (e) => { if (e.key === "Escape") closePreview(); };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [previewing, closePreview]);
+
+  const previewActiveLesson = useMemo(() => {
+    if (!previewLessonPath || !course) return null;
+    const mod = course.modules[previewLessonPath.moduleIdx];
+    return mod ? mod.lessons[previewLessonPath.lessonIdx] || null : null;
+  }, [previewLessonPath, course]);
+
+  const previewFlatLessons = useMemo(() => {
+    if (!course) return [];
+    const arr = [];
+    course.modules.forEach((m, mi) => m.lessons.forEach((l, li) => { if (l.published) arr.push({ moduleIdx: mi, lessonIdx: li, lesson: l }); }));
+    return arr;
+  }, [course]);
+
+  const previewFlatIdx = useMemo(() => {
+    if (!previewLessonPath) return -1;
+    return previewFlatLessons.findIndex(f => f.moduleIdx === previewLessonPath.moduleIdx && f.lessonIdx === previewLessonPath.lessonIdx);
+  }, [previewFlatLessons, previewLessonPath]);
+
   /* ── styles ── */
   const sidebarW = 320;
   const inputStyle = { width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${B.border}`, background: B.dark, color: B.text, fontSize: 13, outline: "none", boxSizing: "border-box" };
@@ -228,6 +271,7 @@ export default function ClassroomView() {
 
   /* ── access badge ── */
   function accessBadge(c) {
+    if (c.accessType === "plan-locked") return { label: "Plan-Locked", bg: (B.orange || "#f59e0b") + "22", color: B.orange || "#f59e0b" };
     if (c.accessType === "level-locked") return { label: `Level ${c.requiredLevel}+`, bg: B.orange + "22", color: B.orange };
     if (c.accessType === "members-only") return { label: "Clients Only", bg: B.purple + "22", color: B.purple };
     return { label: "Open", bg: B.green + "22", color: B.green };
@@ -253,10 +297,11 @@ export default function ClassroomView() {
             </div>
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: B.muted, marginBottom: 4 }}>Access Type</label>
-              <select value={editCourse.accessType} onChange={e => setEditCourse(p => ({ ...p, accessType: e.target.value }))} style={{ ...inputStyle, cursor: "pointer" }}>
+              <select value={editCourse.accessType} onChange={e => setEditCourse(p => ({ ...p, accessType: e.target.value, allowedPlanIds: e.target.value === "plan-locked" ? (p.allowedPlanIds || []) : [] }))} style={{ ...inputStyle, cursor: "pointer" }}>
                 <option value="open">Open Access</option>
                 <option value="level-locked">Level-Locked</option>
                 <option value="members-only">Clients Only</option>
+                <option value="plan-locked">Plan-Locked</option>
               </select>
             </div>
           </div>
@@ -269,6 +314,15 @@ export default function ClassroomView() {
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: B.muted, marginBottom: 4 }}>Required Level</label>
                 <input type="number" min={1} value={editCourse.requiredLevel} onChange={e => setEditCourse(p => ({ ...p, requiredLevel: Number(e.target.value) }))} style={inputStyle} />
+              </div>
+            )}
+            {editCourse.accessType === "plan-locked" && (
+              <div>
+                <PlanAccessPicker
+                  allowedPlanIds={editCourse.allowedPlanIds || []}
+                  onChange={(ids) => setEditCourse(p => ({ ...p, allowedPlanIds: ids }))}
+                  B={B}
+                />
               </div>
             )}
           </div>
@@ -307,7 +361,7 @@ export default function ClassroomView() {
                 </div>
                 <div style={{ marginBottom: 10 }}>
                   <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: B.muted, marginBottom: 3 }}>Content</label>
-                  <textarea value={les.content} onChange={e => updateLesson(mi, li, "content", e.target.value)} rows={4} placeholder="Lesson content..." style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+                  <RichTextEditor value={les.content} onChange={(val) => updateLesson(mi, li, "content", val)} placeholder="Lesson content..." />
                 </div>
                 {/* Resources */}
                 <div>
@@ -362,9 +416,11 @@ export default function ClassroomView() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: B.text, margin: 0 }}>{course.title}</h1>
           <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: badge.bg, color: badge.color }}>{badge.label}</span>
+          {course.accessType === "plan-locked" && <PlanLockBadge allowedPlanIds={course.allowedPlanIds} B={B} />}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 13, color: B.muted, fontWeight: 600 }}>{completedCount} of {totalLessons} lessons complete</span>
+          <button onClick={openPreview} style={{ ...btnSecondary, display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 14 }}>&#128065;</span> Preview Course</button>
           <button onClick={() => openEditor(course)} style={btnSecondary}>Edit Course</button>
           <button onClick={() => openEditor(null)} style={btnPrimary}>+ New Course</button>
         </div>
@@ -482,9 +538,13 @@ export default function ClassroomView() {
 
               {/* Content */}
               {activeLesson.content && (
-                <div style={{ fontSize: 15, lineHeight: 1.75, color: B.text, marginBottom: 28, whiteSpace: "pre-line" }}>
-                  {activeLesson.content}
-                </div>
+                activeLesson.content.startsWith("<") ? (
+                  <div style={{ fontSize: 15, lineHeight: 1.75, color: B.text, marginBottom: 28 }} dangerouslySetInnerHTML={{ __html: activeLesson.content }} />
+                ) : (
+                  <div style={{ fontSize: 15, lineHeight: 1.75, color: B.text, marginBottom: 28, whiteSpace: "pre-line" }}>
+                    {activeLesson.content}
+                  </div>
+                )
               )}
 
               {/* Resources */}
@@ -591,6 +651,244 @@ export default function ClassroomView() {
           )}
         </div>
       </div>
+
+      {/* ──────────────── PREVIEW MODAL ──────────────── */}
+      {previewing && course && (
+        <div
+          onClick={closePreview}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 10000,
+            display: "flex", flexDirection: "column",
+          }}
+        >
+          {/* Preview banner */}
+          <div style={{
+            background: `linear-gradient(90deg, ${B.green}22 0%, ${B.green}08 100%)`,
+            borderBottom: `1px solid ${B.green}40`,
+            padding: "10px 24px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            flexShrink: 0,
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 15 }}>&#128065;</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: B.green }}>Preview Mode</span>
+              <span style={{ fontSize: 12, color: B.muted }}>-- this is how clients will see this course</span>
+            </div>
+            <button
+              onClick={closePreview}
+              style={{
+                padding: "8px 20px", borderRadius: 8, border: "none",
+                background: B.red || "#ef4444", color: "#fff", fontWeight: 700, fontSize: 14,
+                cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <span style={{ fontSize: 16 }}>&#10005;</span> Close Preview
+            </button>
+          </div>
+
+          {/* Preview content */}
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              flex: 1, display: "flex", flexDirection: "column", overflow: "hidden",
+              background: B.bg || B.darker || "#111",
+              margin: 0,
+            }}
+          >
+            {/* Course header */}
+            <div style={{
+              padding: "24px 32px 20px", flexShrink: 0,
+              borderBottom: `1px solid ${B.border}`,
+              background: B.card,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                <h1 style={{ fontSize: 26, fontWeight: 800, color: B.text, margin: 0 }}>{course.title}</h1>
+                {(() => { const b = accessBadge(course); return <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: b.bg, color: b.color }}>{b.label}</span>; })()}
+              </div>
+              {course.description && <p style={{ fontSize: 14, color: B.muted, margin: 0, lineHeight: 1.6 }}>{course.description}</p>}
+            </div>
+
+            {/* Two-panel layout */}
+            <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+
+              {/* Left sidebar - module list */}
+              <div style={{
+                width: sidebarW, minWidth: sidebarW, background: B.card,
+                borderRight: `1px solid ${B.border}`,
+                display: "flex", flexDirection: "column", overflow: "hidden",
+              }}>
+                <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+                  {course.modules.map((mod, mi) => {
+                    const isExpanded = previewExpandedModules[mi] !== false;
+                    const modLessons = mod.lessons.filter(l => l.published);
+
+                    return (
+                      <div key={mod.id}>
+                        <div
+                          onClick={() => setPreviewExpandedModules(prev => ({ ...prev, [mi]: prev[mi] === false ? true : false }))}
+                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", cursor: "pointer", userSelect: "none", transition: "background .15s" }}
+                          onMouseEnter={e => e.currentTarget.style.background = B.border + "44"}
+                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                        >
+                          <span style={{ fontSize: 10, color: B.dim, transition: "transform .2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }}>&#9654;</span>
+                          <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: B.text }}>{mod.title}</span>
+                          <span style={{ fontSize: 11, color: B.dim, fontWeight: 600 }}>{modLessons.length} lessons</span>
+                        </div>
+
+                        {isExpanded && (
+                          <div>
+                            {modLessons.map((les) => {
+                              const realLi = mod.lessons.indexOf(les);
+                              const isActive = previewLessonPath && previewLessonPath.moduleIdx === mi && previewLessonPath.lessonIdx === realLi;
+
+                              return (
+                                <div
+                                  key={les.id}
+                                  onClick={() => setPreviewLessonPath({ moduleIdx: mi, lessonIdx: realLi })}
+                                  style={{
+                                    display: "flex", alignItems: "center", gap: 10, padding: "8px 16px 8px 38px", cursor: "pointer",
+                                    background: isActive ? B.green + "18" : "transparent",
+                                    borderLeft: isActive ? `3px solid ${B.green}` : "3px solid transparent",
+                                    transition: "all .15s",
+                                  }}
+                                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = B.border + "33"; }}
+                                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                                >
+                                  <div style={{
+                                    width: 20, height: 20, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                                    border: `2px solid ${B.dim}`, background: "transparent",
+                                  }} />
+                                  <span style={{ fontSize: 13, color: isActive ? B.text : B.muted, fontWeight: isActive ? 600 : 400, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{les.title}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right panel - lesson content */}
+              <div style={{ flex: 1, overflowY: "auto", background: B.card }}>
+                {previewActiveLesson ? (
+                  <div style={{ padding: 32 }}>
+                    <h2 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "0 0 20px" }}>{previewActiveLesson.title}</h2>
+
+                    {/* Video embed */}
+                    {getYTEmbedUrl(previewActiveLesson.videoUrl) && (
+                      <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, borderRadius: 12, overflow: "hidden", marginBottom: 24, background: "#000" }}>
+                        <iframe
+                          src={getYTEmbedUrl(previewActiveLesson.videoUrl)}
+                          title={previewActiveLesson.title}
+                          style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+                    )}
+
+                    {/* Content */}
+                    {previewActiveLesson.content && (
+                      previewActiveLesson.content.startsWith("<") ? (
+                        <div style={{ fontSize: 15, lineHeight: 1.75, color: B.text, marginBottom: 28 }} dangerouslySetInnerHTML={{ __html: previewActiveLesson.content }} />
+                      ) : (
+                        <div style={{ fontSize: 15, lineHeight: 1.75, color: B.text, marginBottom: 28, whiteSpace: "pre-line" }}>
+                          {previewActiveLesson.content}
+                        </div>
+                      )
+                    )}
+
+                    {/* Resources */}
+                    {previewActiveLesson.resources && previewActiveLesson.resources.length > 0 && (
+                      <div style={{ marginBottom: 28 }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 700, color: B.text, marginBottom: 12 }}>Resources</h3>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {previewActiveLesson.resources.map((res, ri) => (
+                            <div
+                              key={ri}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8,
+                                background: B.dark, border: `1px solid ${B.border}`, color: B.green,
+                                fontSize: 13, fontWeight: 600,
+                              }}
+                            >
+                              <span style={{ fontSize: 16 }}>&#128196;</span>
+                              {res.name || res.url}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mark Complete (disabled in preview) */}
+                    <div style={{ marginBottom: 32 }}>
+                      <button
+                        disabled
+                        style={{
+                          padding: "12px 28px", borderRadius: 10, border: "none", fontWeight: 700, fontSize: 14,
+                          background: B.border, color: B.dim, cursor: "not-allowed", opacity: 0.6,
+                          display: "flex", alignItems: "center", gap: 8,
+                        }}
+                      >
+                        <span style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${B.dim}`, display: "inline-block" }} /> Mark Complete
+                      </button>
+                    </div>
+
+                    {/* Prev / Next navigation */}
+                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 20, borderTop: `1px solid ${B.border}` }}>
+                      {previewFlatIdx > 0 ? (
+                        <button
+                          onClick={() => setPreviewLessonPath({ moduleIdx: previewFlatLessons[previewFlatIdx - 1].moduleIdx, lessonIdx: previewFlatLessons[previewFlatIdx - 1].lessonIdx })}
+                          style={{ ...btnSecondary, display: "flex", alignItems: "center", gap: 6 }}
+                        >
+                          <span style={{ fontSize: 16 }}>&#8592;</span> {previewFlatLessons[previewFlatIdx - 1].lesson.title}
+                        </button>
+                      ) : <div />}
+                      {previewFlatIdx < previewFlatLessons.length - 1 ? (
+                        <button
+                          onClick={() => setPreviewLessonPath({ moduleIdx: previewFlatLessons[previewFlatIdx + 1].moduleIdx, lessonIdx: previewFlatLessons[previewFlatIdx + 1].lessonIdx })}
+                          style={{ ...btnPrimary, display: "flex", alignItems: "center", gap: 6 }}
+                        >
+                          {previewFlatLessons[previewFlatIdx + 1].lesson.title} <span style={{ fontSize: 16 }}>&#8594;</span>
+                        </button>
+                      ) : <div />}
+                    </div>
+                  </div>
+                ) : (
+                  /* Welcome screen in preview */
+                  <div style={{ padding: 32, flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 400 }}>
+                    <div style={{ maxWidth: 520, textAlign: "center" }}>
+                      <div style={{ fontSize: 56, marginBottom: 16, opacity: 0.7 }}>&#127891;</div>
+                      <h2 style={{ fontSize: 22, fontWeight: 800, color: B.text, marginBottom: 12 }}>{course.title}</h2>
+                      <p style={{ fontSize: 14, lineHeight: 1.7, color: B.muted, marginBottom: 24 }}>{course.description}</p>
+                      <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 28 }}>
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 28, fontWeight: 800, color: B.text }}>{course.modules.length}</div>
+                          <div style={{ fontSize: 12, color: B.muted }}>Modules</div>
+                        </div>
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 28, fontWeight: 800, color: B.text }}>{totalLessons}</div>
+                          <div style={{ fontSize: 12, color: B.muted }}>Lessons</div>
+                        </div>
+                      </div>
+                      {previewFlatLessons.length > 0 && (
+                        <button
+                          onClick={() => setPreviewLessonPath({ moduleIdx: previewFlatLessons[0].moduleIdx, lessonIdx: previewFlatLessons[0].lessonIdx })}
+                          style={{ ...btnPrimary, padding: "12px 32px", fontSize: 15 }}
+                        >
+                          Start Course
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

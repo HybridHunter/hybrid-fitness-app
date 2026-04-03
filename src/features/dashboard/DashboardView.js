@@ -343,7 +343,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
               </div>
               {noshowAlerts.map(a => (
                 <AlertCard key={a.alertKey} member={a.member} reason={a.reason} severity={a.severity} planName={a.planName} B={B}
-                  onSendMessage={() => navigate("/messages")} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(`/members/${a.member.id}`)} />
+                  onSendMessage={() => navigate(_gp("messages"))} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(_gp(`members/${a.member.id}`))} />
               ))}
             </div>
           )}
@@ -358,7 +358,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
               </div>
               {unusedAlerts.map(a => (
                 <AlertCard key={a.alertKey} member={a.member} reason={a.reason} severity={a.severity} planName={a.planName} B={B}
-                  onSendMessage={() => navigate("/messages")} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(`/members/${a.member.id}`)} />
+                  onSendMessage={() => navigate(_gp("messages"))} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(_gp(`members/${a.member.id}`))} />
               ))}
             </div>
           )}
@@ -409,6 +409,7 @@ function SalesFunnel({ stages, B }) {
 export default function DashboardView() {
   const B = useTheme();
   const navigate = useNavigate();
+  const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
   const { members } = useMembers();
   const [attendance] = useLocalStorage("hf_attendance", []);
   const [plans] = useLocalStorage("hf_plans", []);
@@ -835,7 +836,7 @@ export default function DashboardView() {
       {/* ============ Quick Actions ============ */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
         {quickActions.map((qa) => (
-          <button key={qa.path} onClick={() => navigate(qa.path)}
+          <button key={qa.path} onClick={() => navigate(_gp(qa.path.replace(/^\//, "")))}
             style={{
               flex: 1, minWidth: 140, padding: "14px 16px", borderRadius: 10,
               border: "1px solid " + B.border, background: B.card, cursor: "pointer",

@@ -32,7 +32,9 @@ export default function BuildView({exercises,setExercises,workouts,setWorkouts,l
   const setExerciseInSlot=(si,idx,ex)=>setSections(p=>{const n=p.map(s=>({...s,slots:s.slots.map(sl=>({...sl}))}));n[si].slots[idx]={...n[si].slots[idx],exercise:ex};return n;});
   const clrSlot=(si,idx)=>setSections(p=>{const n=p.map(s=>({...s,slots:s.slots.map(sl=>({...sl}))}));n[si].slots[idx]=emptySlot();return n;});
   const addSlot=(si)=>setSections(p=>{const n=p.map(s=>({...s,slots:[...s.slots]}));n[si].slots.push(emptySlot());return n;});
-  const removeSlot=(si,idx)=>setSections(p=>{if(p[si].slots.length<=1)return p;const n=p.map(s=>({...s,slots:[...s.slots]}));n[si].slots.splice(idx,1);return n;});
+  const removeSlot=(si,idx)=>setSections(p=>{const n=p.map(s=>({...s,slots:[...s.slots]}));n[si].slots.splice(idx,1);return n;});
+  const removeSection=(si)=>setSections(p=>p.filter((_,i)=>i!==si));
+  const addSection=()=>setSections(p=>[...p,{id:String.fromCharCode(65+p.length),name:"New Section",repRange:"",color:["#8fbf3b","#3b82f6","#22c55e","#a855f7","#f59e0b","#ef4444"][p.length%6],slots:[emptySlot()]}]);
 
   const swapSlots=(si1,idx1,si2,idx2)=>setSections(p=>{const n=p.map(s=>({...s,slots:s.slots.map(sl=>({...sl}))}));const a=n[si1].slots[idx1];const b=n[si2].slots[idx2];n[si1].slots[idx1]=b;n[si2].slots[idx2]=a;return n;});
 
@@ -67,6 +69,7 @@ export default function BuildView({exercises,setExercises,workouts,setWorkouts,l
           <input value={sec.name} onChange={e=>setSections(p=>{const n=[...p.map(s=>({...s,slots:[...s.slots]}))];n[si].name=e.target.value;return n;})} style={{background:"transparent",border:"none",borderBottom:"1px solid "+B.border,color:B.text,fontSize:13,fontWeight:600,outline:"none",padding:"2px 4px",width:140}}/>
           <input value={sec.repRange} onChange={e=>setSections(p=>{const n=[...p.map(s=>({...s,slots:[...s.slots]}))];n[si].repRange=e.target.value;return n;})} style={{background:"transparent",border:"none",borderBottom:"1px solid "+B.border,color:B.muted,fontSize:11,outline:"none",padding:"2px 4px",width:100}}/>
           <button onClick={()=>addSlot(si)} style={{background:sec.color+"15",border:"1px solid "+sec.color+"30",borderRadius:6,color:sec.color,cursor:"pointer",fontSize:10,padding:"3px 10px",fontWeight:700}}>+ Slot</button>
+          <button onClick={()=>{if(window.confirm(`Delete Section ${sec.id} (${sec.name})?`))removeSection(si);}} style={{background:B.red+"15",border:"1px solid "+B.red+"30",borderRadius:6,color:B.red,cursor:"pointer",fontSize:10,padding:"3px 10px",fontWeight:700}}>Delete Section</button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:4}}>
           {sec.slots.map((s,idx)=>{const label=getLabel(sec.id,idx);const ex=s.exercise;return(
@@ -80,14 +83,15 @@ export default function BuildView({exercises,setExercises,workouts,setWorkouts,l
                 {inp(s.rpe,v=>upSlot(si,idx,"rpe",v),"RPE",34)}
                 {inp(s.tempo,v=>upSlot(si,idx,"tempo",v),"Tempo",46)}
                 <button onClick={()=>clrSlot(si,idx)} style={{background:"none",border:"none",color:B.muted,cursor:"pointer",fontSize:14,fontWeight:700,padding:"0 2px"}}>&times;</button>
-                <button onClick={()=>removeSlot(si,idx)} title="Remove slot" style={{background:"none",border:"none",color:B.red,cursor:"pointer",fontSize:11,padding:"0 2px",opacity:sec.slots.length<=1?.3:1}}>&#128465;</button>
+                <button onClick={()=>removeSlot(si,idx)} title="Remove slot" style={{background:"none",border:"none",color:B.red,cursor:"pointer",fontSize:11,padding:"0 2px",opacity:1}}>&#128465;</button>
               </>):(<>
                 <button onClick={()=>setPicker({si,idx})} style={{flex:1,background:"transparent",border:"1px dashed "+B.border,borderRadius:6,color:B.dim,cursor:"pointer",padding:8,fontSize:12,textAlign:"left"}}>+ Add exercise</button>
-                <button onClick={()=>removeSlot(si,idx)} title="Remove slot" style={{background:"none",border:"none",color:B.red,cursor:"pointer",fontSize:11,padding:"0 4px",opacity:sec.slots.length<=1?.3:1}}>&#128465;</button>
+                <button onClick={()=>removeSlot(si,idx)} title="Remove slot" style={{background:"none",border:"none",color:B.red,cursor:"pointer",fontSize:11,padding:"0 4px",opacity:1}}>&#128465;</button>
               </>)}
             </div>
           );})}
         </div>
       </div>))}
+    <button onClick={addSection} style={{width:"100%",padding:"12px 0",borderRadius:10,border:"2px dashed "+B.border,background:"transparent",color:B.muted,cursor:"pointer",fontSize:13,fontWeight:600,marginTop:8}}>+ Add Section</button>
   </div>);
 }

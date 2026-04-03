@@ -6,10 +6,12 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import PaymentModal from "../../components/shared/PaymentModal";
+import { sendEmail } from "../../utils/messaging";
+import ProgressPhotos from "./ProgressPhotos";
 
 const PATTERNS = ["Squat", "Hinge", "Lunge", "Push", "Pull", "Core", "Carry"];
 const SCORE_RANGE = [-3, -2, -1, 0, 1, 2, 3];
-const TABS = ["Overview", "Movement Scores", "Body Composition", "Gamification", "Billing", "History"];
+const TABS = ["Overview", "Movement Scores", "Body Composition", "Progress Photos", "Gamification", "Billing", "History"];
 
 const STATUS_COLORS = (B) => ({ active: B.green, trial: B.orange, frozen: B.blue, inactive: B.red });
 
@@ -26,6 +28,7 @@ export default function MemberProfile() {
   const B = useTheme();
   const { id } = useParams();
   const navigate = useNavigate();
+  const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
   const { getMember, updateMember } = useMembers();
   const { logEvent } = useMembershipEvents();
   const [tab, setTab] = useState("Overview");
@@ -41,13 +44,45 @@ export default function MemberProfile() {
   const [inbodyApiKey, setInbodyApiKey] = useLocalStorage("hf_inbody_api_key", "");
   const [syncing, setSyncing] = useState(false);
   const [lastSynced, setLastSynced] = useState(null);
+  const [sendingCreds, setSendingCreds] = useState(false);
+  const [credToast, setCredToast] = useState(null);
+
+  const showCredToast = (msg, type = "success") => {
+    setCredToast({ msg, type });
+    setTimeout(() => setCredToast(null), 4000);
+  };
+
+  const handleSendCredentials = async () => {
+    if (!member.email) {
+      showCredToast("No email address on file", "error");
+      return;
+    }
+    setSendingCreds(true);
+    try {
+      const branding = JSON.parse(localStorage.getItem("hf_branding") || "{}");
+      const gymName = branding.gymName || "GymKit";
+      const gymUrl = branding.gymUrl || window.location.origin;
+      const credLabel = (member.pin && member.pin.length === 4 && /^\d{4}$/.test(member.pin)) ? "PIN" : "Password";
+      await sendEmail({
+        to: member.email,
+        subject: `Your ${gymName} Login Credentials`,
+        html: `<h2>Hi ${member.firstName},</h2><p>Here are your login credentials:</p><p><strong>Login URL:</strong> <a href="${gymUrl}">${gymUrl}</a></p><p><strong>Email:</strong> ${member.email}</p><p><strong>${credLabel}:</strong> <span style="font-size:18px;letter-spacing:2px;font-weight:bold;">${member.pin}</span></p><p>Use these to log in to the client portal from your phone.</p><p>If you have any questions, message your coach through the app.</p>`,
+      });
+      showCredToast(`Credentials sent to ${member.email}`);
+    } catch (err) {
+      console.error("Failed to send credentials:", err);
+      showCredToast("Failed to send credentials email", "error");
+    } finally {
+      setSendingCreds(false);
+    }
+  };
 
   const member = getMember(id);
   if (!member) {
     return (
       <div style={{ padding: 48, textAlign: "center" }}>
         <div style={{ fontSize: 18, fontWeight: 700, color: B.text, marginBottom: 8 }}>Client not found</div>
-        <button onClick={() => navigate("/members")} style={{ background: B.accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Back to Clients</button>
+        <button onClick={() => navigate(_gp("members"))} style={{ background: B.accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Back to Clients</button>
       </div>
     );
   }
@@ -141,6 +176,19 @@ export default function MemberProfile() {
               ? member.tags.map((t) => <span key={t} style={s.tagPill}>{t}</span>)
               : "---"}
           </span>
+        </div>
+        <div style={{ paddingTop: 12 }}>
+          <button
+            onClick={handleSendCredentials}
+            disabled={sendingCreds}
+            style={{
+              background: B.accent, color: "#fff", border: "none", borderRadius: 8,
+              padding: "8px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+              opacity: sendingCreds ? 0.6 : 1,
+            }}
+          >
+            {sendingCreds ? "Sending..." : "Send Login Credentials"}
+          </button>
         </div>
       </div>
 
@@ -487,7 +535,20 @@ export default function MemberProfile() {
 
   const renderBilling = () => (
     <>
-      {/* Current Membership */}
+      {/* Send Credentials + Current Membership */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <button
+          onClick={handleSendCredentials}
+          disabled={sendingCreds}
+          style={{
+            background: B.accent, color: "#fff", border: "none", borderRadius: 8,
+            padding: "8px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            opacity: sendingCreds ? 0.6 : 1,
+          }}
+        >
+          {sendingCreds ? "Sending..." : "Send Login Credentials"}
+        </button>
+      </div>
       <div style={s.card}>
         <div style={s.cardTitle}>Membership Plan</div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
@@ -645,9 +706,27 @@ export default function MemberProfile() {
 
   return (
     <div style={s.page}>
-      <button style={s.backBtn} onClick={() => navigate("/members")}>
-        &#8592; Back to Clients
-      </button>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20 }}>
+        <button style={s.backBtn} onClick={() => navigate(_gp("members"))}>
+          &#8592; Back to Clients
+        </button>
+        <button style={{ background: (B.purple || "#a855f7") + "18", color: B.purple || "#a855f7", border: "none", borderRadius: 8, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }} onClick={() => {
+          const gymId = localStorage.getItem("hf_gym_id") || "default";
+          localStorage.setItem("hf_session_backup", localStorage.getItem("hf_session") || "");
+          localStorage.setItem("hf_impersonating", "true");
+          localStorage.setItem("hf_session", JSON.stringify({
+            id: "impersonate_client_" + member.id,
+            username: member.email,
+            role: "client",
+            memberId: member.id,
+            displayName: member.firstName + " " + member.lastName + " (viewing as client)",
+            gymId,
+          }));
+          window.location.href = `/gym/${gymId}/`;
+        }}>
+          View as Client
+        </button>
+      </div>
 
       {/* Header */}
       <div style={s.header}>
@@ -674,9 +753,27 @@ export default function MemberProfile() {
       {tab === "Overview" && renderOverview()}
       {tab === "Movement Scores" && renderMovementScores()}
       {tab === "Body Composition" && renderBodyComposition()}
+      {tab === "Progress Photos" && (
+        <div style={s.card}>
+          <ProgressPhotos memberId={member.id} />
+        </div>
+      )}
       {tab === "Gamification" && renderGamification()}
       {tab === "Billing" && renderBilling()}
       {tab === "History" && renderHistory()}
+
+      {/* Toast Notification */}
+      {credToast && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24, zIndex: 1100,
+          background: credToast.type === "error" ? "#7f1d1d" : "#14532d",
+          color: credToast.type === "error" ? "#fca5a5" : "#86efac",
+          padding: "12px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.3)", maxWidth: 360,
+        }}>
+          {credToast.msg}
+        </div>
+      )}
     </div>
   );
 }

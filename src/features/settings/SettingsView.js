@@ -1,11 +1,14 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
+import { requestPermission, getPermissionStatus, sendLocalNotification, getNotificationPrefs, setNotificationPrefs } from "../../utils/pushNotifications";
+
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 /* ========== constants ========== */
-const TABS = ["General", "Integrations", "Branding", "Locations", "Users", "Stations", "Data"];
+const TABS = ["General", "Integrations", "Branding", "Locations", "Users", "Stations", "Gamification", "Data"];
 const TIMEZONES = [
   "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
   "America/Phoenix", "America/Anchorage", "Pacific/Honolulu", "America/Toronto",
@@ -38,6 +41,107 @@ const DEFAULT_LOCATIONS = [
   { id: "loc_1", name: "Hybrid Fitness \u2014 Main", address: "123 Main Street, Austin, TX 78701", phone: "(555) 000-1234", timezone: "America/Chicago", isDefault: true },
 ];
 
+const BADGE_TRIGGERS = [
+  "Total Workouts >=",
+  "Total Weight Lifted >=",
+  "Current Streak >=",
+  "Longest Streak >=",
+  "Level >=",
+  "Check-ins This Month >=",
+];
+
+const DEFAULT_GAMIFICATION_SETTINGS = {
+  enabled: true,
+  levels: [
+    { level: 1, name: "Beginner", points: 0, color: "#8b949e" },
+    { level: 2, name: "Regular", points: 200, color: "#3b82f6" },
+    { level: 3, name: "Committed", points: 600, color: "#8b5cf6" },
+    { level: 4, name: "Dedicated", points: 1200, color: "#f59e0b" },
+    { level: 5, name: "Warrior", points: 2000, color: "#ef4444" },
+    { level: 6, name: "Elite", points: 3500, color: "#ec4899" },
+    { level: 7, name: "Champion", points: 5500, color: "#14b8a6" },
+    { level: 8, name: "Master", points: 8000, color: "#f97316" },
+    { level: 9, name: "Legend", points: 12000, color: "#eab308" },
+  ],
+  pointsPerAction: {
+    checkin: 10,
+    workout: 25,
+    challengeCheckin: 15,
+    postLike: 1,
+    assessment: 50,
+    streakBonus: 5,
+  },
+  badges: [
+    { id: "b1", name: "First Workout", icon: "\ud83c\udfaf", description: "Complete your first workout", trigger: "Total Workouts >=", threshold: 1, active: true },
+    { id: "b2", name: "10 Workouts", icon: "\ud83d\udcaa", description: "Complete 10 workouts", trigger: "Total Workouts >=", threshold: 10, active: true },
+    { id: "b3", name: "50 Workouts", icon: "\ud83d\udd25", description: "Complete 50 workouts", trigger: "Total Workouts >=", threshold: 50, active: true },
+    { id: "b4", name: "100 Workouts", icon: "\u2b50", description: "Complete 100 workouts", trigger: "Total Workouts >=", threshold: 100, active: true },
+    { id: "b5", name: "Iron Club", icon: "\ud83c\udfcb\ufe0f", description: "Lift 50,000+ lbs total", trigger: "Total Weight Lifted >=", threshold: 50000, active: true },
+    { id: "b6", name: "Week Warrior", icon: "\u26a1", description: "7-day workout streak", trigger: "Current Streak >=", threshold: 7, active: true },
+    { id: "b7", name: "Month Machine", icon: "\ud83d\uddd3\ufe0f", description: "30-day workout streak", trigger: "Current Streak >=", threshold: 30, active: true },
+  ],
+  leaderboard: { enabled: true, metrics: ["xp", "workouts", "weight", "streak"], showPodium: true },
+  attendanceGoal: { enabled: true, threshold: 8 },
+};
+
+const BADGE_EMOJIS = [
+  "\uD83C\uDFC6","\uD83C\uDFC5","\uD83E\uDD47","\uD83E\uDD48","\uD83E\uDD49","\uD83C\uDFAF","\uD83D\uDCAA","\uD83D\uDD25",
+  "\u2B50","\uD83C\uDF1F","\u26A1","\uD83D\uDE80","\uD83D\uDC51","\uD83D\uDC8E","\u2764\uFE0F","\uD83C\uDF89",
+  "\uD83C\uDF93","\uD83C\uDFCB\uFE0F","\uD83C\uDFC3","\uD83E\uDDD8","\uD83D\uDEB4","\uD83C\uDFCA","\u26BD","\uD83C\uDFC0",
+  "\uD83C\uDFBE","\uD83E\uDD4A","\u2603\uFE0F","\uD83C\uDF0D","\uD83C\uDF08","\uD83C\uDF1E","\uD83C\uDF19","\uD83D\uDD2E",
+  "\uD83C\uDFAF","\uD83D\uDCA5","\uD83D\uDCAB","\u2728","\uD83C\uDF40","\uD83C\uDF3B","\uD83E\uDDE0","\u2705",
+  "\uD83D\uDE4C","\uD83D\uDC4D","\uD83D\uDE0E","\uD83E\uDD29","\uD83E\uDDB8","\uD83E\uDDB9","\uD83C\uDFA8","\uD83C\uDFB5",
+];
+
+function EmojiPickerBtn({ value, onChange, B }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => setOpen(!open)} style={{
+        width: 52, height: 44, borderRadius: 8, border: "1px solid " + B.border,
+        background: B.card, cursor: "pointer", fontSize: 24, display: "flex",
+        alignItems: "center", justifyContent: "center", transition: "border-color 0.15s",
+      }}>
+        {value || "\uD83C\uDFC5"}
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 100,
+          background: B.card, border: "1px solid " + B.border, borderRadius: 12,
+          padding: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.25)", width: 240,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: B.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Choose an icon</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 4 }}>
+            {BADGE_EMOJIS.map((emoji, i) => (
+              <button key={i} onClick={() => { onChange(emoji); setOpen(false); }}
+                style={{
+                  width: 28, height: 28, borderRadius: 6, border: value === emoji ? "2px solid " + B.accent : "1px solid transparent",
+                  background: value === emoji ? B.accent + "15" : "transparent",
+                  cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "all 0.1s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = B.border; }}
+                onMouseLeave={e => { e.currentTarget.style.background = value === emoji ? B.accent + "15" : "transparent"; }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsView() {
   const B = useTheme();
   const { currentUser, users, addUser, removeUser, updateUser } = useAuth();
@@ -48,11 +152,22 @@ export default function SettingsView() {
   const [integrations, setIntegrations] = useLocalStorage("hf_integrations", {
     stripe: { publishableKey: "", connected: false },
     inbody: { apiKey: "", environment: "sandbox", lastSync: null },
+    resendApiKey: "",
+    emailFrom: "",
+    resendConnected: false,
+    twilioSid: "",
+    twilioToken: "",
+    twilioFrom: "",
+    twilioConnected: false,
   });
   const [branding, setBranding] = useLocalStorage("hf_branding", DEFAULT_BRANDING);
   const [stationSettings, setStationSettings] = useLocalStorage("hf_station_settings", { showWeight: true, showReps: true, showRPE: true, showMedia: true });
   const [locations, setLocations] = useLocalStorage("hf_locations", DEFAULT_LOCATIONS);
   const [newUser, setNewUser] = useState({ email: "", username: "", password: "", role: "coach", displayName: "" });
+  const [gamificationSettings, setGamificationSettings] = useLocalStorage("hf_gamification_settings", DEFAULT_GAMIFICATION_SETTINGS);
+
+  const [collapsedSections, setCollapsedSections] = useState({});
+  const toggleSection = (key) => setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -144,67 +259,349 @@ export default function SettingsView() {
       <div style={{ marginTop: 20 }}>
         <button style={s.btn()} onClick={() => showToast("Settings saved!")}>Save Settings</button>
       </div>
+
+      {/* Push Notifications */}
+      <h3 style={s.sectionTitle}>Push Notifications</h3>
+      <div style={{ background: B.darker, borderRadius: 10, padding: 16, border: "1px solid " + B.border, marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Browser Notification Permission</div>
+            <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>
+              Status: <span style={{ fontWeight: 700, color: getPermissionStatus() === "granted" ? B.green : getPermissionStatus() === "denied" ? B.red : B.orange }}>{getPermissionStatus()}</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {getPermissionStatus() !== "granted" && (
+              <button style={s.btn()} onClick={async () => {
+                const result = await requestPermission();
+                showToast(result === "granted" ? "Notifications enabled!" : result === "denied" ? "Notifications blocked by browser." : "Notifications not supported.");
+              }}>Request Permission</button>
+            )}
+            <button style={s.btn(B.border, B.text)} onClick={() => {
+              sendLocalNotification("Test Notification", { body: "Notifications are working correctly!" });
+              showToast("Test notification sent!");
+            }}>Send Test</button>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 13, fontWeight: 600, color: B.text, marginBottom: 8 }}>Notification Triggers</div>
+        {[
+          { key: "checkin", label: "Check-in confirmations" },
+          { key: "payment", label: "Payment processed" },
+          { key: "message", label: "New messages" },
+          { key: "booking", label: "Session bookings" },
+        ].map(item => {
+          const prefs = getNotificationPrefs();
+          return (
+            <label key={item.key} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "4px 0", color: B.text, fontSize: 13 }}>
+              <input type="checkbox" checked={prefs[item.key] !== false} onChange={e => {
+                const updated = { ...prefs, [item.key]: e.target.checked };
+                setNotificationPrefs(updated);
+                showToast(e.target.checked ? `${item.label} enabled` : `${item.label} disabled`);
+              }} style={{ width: 16, height: 16, accentColor: B.green }} />
+              {item.label}
+            </label>
+          );
+        })}
+      </div>
+      <h3 style={s.sectionTitle}>Onboarding Tour</h3>
+      <p style={{ fontSize: 13, color: B.muted, marginBottom: 12 }}>
+        Replay the guided tour that introduces the key areas of GymKit.
+      </p>
+      <button
+        style={s.btn(B.border, B.text)}
+        onClick={() => {
+          localStorage.removeItem("hf_tour_completed");
+          showToast("Tour restarted! Refresh the page to begin.");
+        }}
+      >
+        Restart Onboarding Tour
+      </button>
     </Card>
   );
 
   /* ========== Integrations ========== */
+  const CollapseCard = ({ id, title, badge, children }) => {
+    const isOpen = !collapsedSections[id];
+    return (
+      <Card style={{ padding: 0, overflow: "hidden" }}>
+        <button onClick={() => toggleSection(id)} style={{
+          display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%",
+          padding: "14px 20px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 12, color: B.dim, transition: "transform 0.2s", transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}>{"\u25BE"}</span>
+            <h3 style={{ ...s.sectionTitle, margin: 0 }}>{title}</h3>
+          </div>
+          {badge}
+        </button>
+        {isOpen && <div style={{ padding: "0 20px 20px" }}>{children}</div>}
+      </Card>
+    );
+  };
+
   const renderIntegrations = () => (
     <div style={{ display: "grid", gap: 20 }}>
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ ...s.sectionTitle, margin: 0 }}>Stripe Payments</h3>
-          <span style={s.badge(integrations.stripe.connected ? B.green : B.orange)}>
-            <span style={s.dot(integrations.stripe.connected ? B.green : B.orange)} />
-            {integrations.stripe.connected ? "Connected" : "Not Connected"}
-          </span>
-        </div>
-        <div style={{ ...s.field, marginTop: 16 }}>
+      <CollapseCard id="stripe" title="Stripe Payments" badge={
+        <span style={s.badge(integrations.stripe?.connected ? B.green : B.orange)}>
+          <span style={s.dot(integrations.stripe?.connected ? B.green : B.orange)} />
+          {integrations.stripe?.connected ? "Connected" : "Not Connected"}
+        </span>
+      }>
+        <div style={{ ...s.field }}>
           <label style={s.label}>Publishable Key</label>
-          <input style={s.input} value={integrations.stripe.publishableKey} onChange={e => setIntegrations(prev => ({ ...prev, stripe: { ...prev.stripe, publishableKey: e.target.value } }))} placeholder="pk_live_..." />
+          <input style={s.input} value={integrations.stripe?.publishableKey} onChange={e => setIntegrations(prev => ({ ...prev, stripe: { ...(prev.stripe || {}), publishableKey: e.target.value } }))} placeholder="pk_live_..." />
         </div>
         <p style={{ fontSize: 12, color: B.muted, margin: "0 0 16px" }}>Secret key should be configured server-side only. Never expose it in the client.</p>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={s.btn()} onClick={() => {
-            setIntegrations(prev => ({ ...prev, stripe: { ...prev.stripe, connected: !!prev.stripe.publishableKey } }));
-            showToast(integrations.stripe.publishableKey ? "Stripe connection successful!" : "Please enter a publishable key first.");
+            setIntegrations(prev => ({ ...prev, stripe: { ...(prev.stripe || {}), connected: !!prev.stripe.publishableKey } }));
+            showToast(integrations.stripe?.publishableKey ? "Stripe connection successful!" : "Please enter a publishable key first.");
           }}>Test Connection</button>
           <button style={s.btn(B.border, B.text)} onClick={() => {
             setIntegrations(prev => ({ ...prev, stripe: { publishableKey: "", connected: false } }));
             showToast("Stripe disconnected.");
           }}>Disconnect</button>
         </div>
-      </Card>
+      </CollapseCard>
 
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ ...s.sectionTitle, margin: 0 }}>InBody Scanner</h3>
-          <span style={s.badge(integrations.inbody.apiKey ? B.green : B.dim)}>
-            <span style={s.dot(integrations.inbody.apiKey ? B.green : B.dim)} />
-            {integrations.inbody.apiKey ? "Configured" : "Not Configured"}
-          </span>
-        </div>
-        <div style={{ ...s.row, marginTop: 16 }}>
+      <CollapseCard id="inbody" title="InBody Scanner" badge={
+        <span style={s.badge(integrations.inbody?.apiKey ? B.green : B.dim)}>
+          <span style={s.dot(integrations.inbody?.apiKey ? B.green : B.dim)} />
+          {integrations.inbody?.apiKey ? "Configured" : "Not Configured"}
+        </span>
+      }>
+        <div style={{ ...s.row }}>
           <div>
             <label style={s.label}>API Key</label>
-            <input style={s.input} value={integrations.inbody.apiKey} onChange={e => setIntegrations(prev => ({ ...prev, inbody: { ...prev.inbody, apiKey: e.target.value } }))} placeholder="Enter InBody API key" />
+            <input style={s.input} value={integrations.inbody?.apiKey} onChange={e => setIntegrations(prev => ({ ...prev, inbody: { ...(prev.inbody || {}), apiKey: e.target.value } }))} placeholder="Enter InBody API key" />
           </div>
           <div>
             <label style={s.label}>Environment</label>
-            <select style={s.select} value={integrations.inbody.environment} onChange={e => setIntegrations(prev => ({ ...prev, inbody: { ...prev.inbody, environment: e.target.value } }))}>
+            <select style={s.select} value={integrations.inbody?.environment} onChange={e => setIntegrations(prev => ({ ...prev, inbody: { ...(prev.inbody || {}), environment: e.target.value } }))}>
               <option value="sandbox">Sandbox</option>
               <option value="production">Production</option>
             </select>
           </div>
         </div>
-        {integrations.inbody.lastSync && (
-          <p style={{ fontSize: 12, color: B.muted, margin: "0 0 12px" }}>Last sync: {new Date(integrations.inbody.lastSync).toLocaleString()}</p>
+        {integrations.inbody?.lastSync && (
+          <p style={{ fontSize: 12, color: B.muted, margin: "0 0 12px" }}>Last sync: {new Date(integrations.inbody?.lastSync).toLocaleString()}</p>
         )}
         <button style={s.btn()} onClick={() => {
-          if (!integrations.inbody.apiKey) { showToast("Please enter an API key first."); return; }
-          setIntegrations(prev => ({ ...prev, inbody: { ...prev.inbody, lastSync: new Date().toISOString() } }));
+          if (!integrations.inbody?.apiKey) { showToast("Please enter an API key first."); return; }
+          setIntegrations(prev => ({ ...prev, inbody: { ...(prev.inbody || {}), lastSync: new Date().toISOString() } }));
           showToast("InBody sync complete!");
         }}>Sync Now</button>
+      </CollapseCard>
+
+      {/* Messaging Mode */}
+      <Card>
+        <h3 style={{ ...s.sectionTitle, margin: 0, marginBottom: 8 }}>Email & SMS Delivery</h3>
+        <p style={{ color: B.muted, fontSize: 13, margin: "0 0 16px" }}>Choose how emails and SMS messages are sent from your gym.</p>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          {[
+            { key: "platform", label: "GymKit Platform", desc: "Emails & SMS sent through GymKit's accounts. No setup needed.", color: B.accent },
+            { key: "byok", label: "Your Own Keys", desc: "Use your own Resend & Twilio accounts. You control and pay directly.", color: B.blue || "#3b82f6" },
+          ].map(opt => (
+            <button key={opt.key} onClick={() => setIntegrations(prev => ({ ...prev, messagingMode: opt.key }))}
+              style={{
+                flex: 1, padding: 14, borderRadius: 10, cursor: "pointer", textAlign: "left",
+                border: (integrations.messagingMode || "platform") === opt.key ? `2px solid ${opt.color}` : `1px solid ${B.border}`,
+                background: (integrations.messagingMode || "platform") === opt.key ? opt.color + "10" : B.dark,
+                transition: "all 0.15s",
+              }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: (integrations.messagingMode || "platform") === opt.key ? opt.color : B.text, marginBottom: 4 }}>{opt.label}</div>
+              <div style={{ fontSize: 12, color: B.muted }}>{opt.desc}</div>
+            </button>
+          ))}
+        </div>
+        {(integrations.messagingMode || "platform") === "platform" && (
+          <div style={{ padding: 12, borderRadius: 8, background: B.accent + "08", border: "1px solid " + B.accent + "20", fontSize: 13, color: B.muted }}>
+            Email and SMS are handled by GymKit. No configuration needed — just set up your automations and they'll work.
+          </div>
+        )}
       </Card>
+
+      {/* Resend (Email) — only show in BYOK mode */}
+      {(integrations.messagingMode === "byok") && <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ ...s.sectionTitle, margin: 0 }}>Resend (Email)</h3>
+          <span style={s.badge(integrations.resendConnected ? B.green : B.dim)}>
+            <span style={s.dot(integrations.resendConnected ? B.green : B.dim)} />
+            {integrations.resendConnected ? "Connected" : "Not Connected"}
+          </span>
+        </div>
+        <div style={{ ...s.row, marginTop: 16 }}>
+          <div>
+            <label style={s.label}>API Key</label>
+            <input style={s.input} value={integrations.resendApiKey || ""} onChange={e => setIntegrations(prev => ({ ...prev, resendApiKey: e.target.value }))} placeholder="re_..." />
+          </div>
+          <div>
+            <label style={s.label}>From Email</label>
+            <input style={s.input} value={integrations.emailFrom || ""} onChange={e => setIntegrations(prev => ({ ...prev, emailFrom: e.target.value }))} placeholder="GymKit <noreply@gymkit.io>" />
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: B.muted, margin: "0 0 16px" }}>Enter your Resend API key to enable automated email sending. From email must use a verified domain.</p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={s.btn()} onClick={async () => {
+            if (!integrations.resendApiKey) { showToast("Please enter a Resend API key first."); return; }
+            try {
+              const res = await fetch(`${API_BASE}/api/test-email`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ resendApiKey: integrations.resendApiKey }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                setIntegrations(prev => ({ ...prev, resendConnected: true }));
+                showToast("Resend connection successful!");
+              } else {
+                setIntegrations(prev => ({ ...prev, resendConnected: false }));
+                showToast("Connection failed: " + (data.error || "Unknown error"));
+              }
+            } catch {
+              setIntegrations(prev => ({ ...prev, resendConnected: !!integrations.resendApiKey }));
+              showToast(integrations.resendApiKey ? "API key saved (server unreachable, will verify on send)." : "Enter an API key first.");
+            }
+          }}>Test Connection</button>
+          <button style={s.btn(B.border, B.text)} onClick={async () => {
+            if (!integrations.resendApiKey) { showToast("Configure your API key first."); return; }
+            const adminEmail = settings.email || "admin@gym.com";
+            try {
+              const res = await fetch(`${API_BASE}/api/send-email`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  resendApiKey: integrations.resendApiKey,
+                  to: adminEmail,
+                  subject: "GymKit Test Email",
+                  html: "<h2>It works!</h2><p>Your email integration is configured correctly.</p>",
+                  from: integrations.emailFrom || `${branding.gymName || "GymKit"} <noreply@gymkit.io>`,
+                }),
+              });
+              const data = await res.json();
+              showToast(data.success ? `Test email sent to ${adminEmail}!` : "Send failed: " + (data.error || "Unknown error"));
+            } catch {
+              showToast("Server unreachable. Make sure the API server is running.");
+            }
+          }}>Send Test Email</button>
+          <button style={s.btn(B.border, B.text)} onClick={() => {
+            setIntegrations(prev => ({ ...prev, resendApiKey: "", emailFrom: "", resendConnected: false }));
+            showToast("Resend disconnected.");
+          }}>Disconnect</button>
+        </div>
+      </Card>}
+
+      {/* Twilio (SMS) — only show in BYOK mode */}
+      {(integrations.messagingMode === "byok") && <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 style={{ ...s.sectionTitle, margin: 0 }}>Twilio (SMS)</h3>
+          <span style={s.badge(integrations.twilioConnected ? B.green : B.dim)}>
+            <span style={s.dot(integrations.twilioConnected ? B.green : B.dim)} />
+            {integrations.twilioConnected ? "Connected" : "Not Connected"}
+          </span>
+        </div>
+        <div style={{ ...s.row, marginTop: 16 }}>
+          <div>
+            <label style={s.label}>Account SID</label>
+            <input style={s.input} value={integrations.twilioSid || ""} onChange={e => setIntegrations(prev => ({ ...prev, twilioSid: e.target.value }))} placeholder="AC..." />
+          </div>
+          <div>
+            <label style={s.label}>Auth Token</label>
+            <input style={s.input} type="password" value={integrations.twilioToken || ""} onChange={e => setIntegrations(prev => ({ ...prev, twilioToken: e.target.value }))} placeholder="Enter auth token" />
+          </div>
+        </div>
+        <div style={s.field}>
+          <label style={s.label}>Twilio Phone Number (from)</label>
+          <input style={s.input} value={integrations.twilioFrom || ""} onChange={e => setIntegrations(prev => ({ ...prev, twilioFrom: e.target.value }))} placeholder="+15551234567" />
+        </div>
+        <p style={{ fontSize: 12, color: B.muted, margin: "0 0 16px" }}>Enter your Twilio credentials to enable automated SMS sending.</p>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={s.btn()} onClick={async () => {
+            if (!integrations.twilioSid || !integrations.twilioToken) { showToast("Please enter Twilio SID and Auth Token."); return; }
+            try {
+              const res = await fetch(`${API_BASE}/api/test-sms`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  twilioSid: integrations.twilioSid,
+                  twilioToken: integrations.twilioToken,
+                  twilioFrom: integrations.twilioFrom,
+                }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                setIntegrations(prev => ({ ...prev, twilioConnected: true }));
+                showToast("Twilio connection successful!");
+              } else {
+                setIntegrations(prev => ({ ...prev, twilioConnected: false }));
+                showToast("Connection failed: " + (data.error || "Unknown error"));
+              }
+            } catch {
+              setIntegrations(prev => ({ ...prev, twilioConnected: !!(integrations.twilioSid && integrations.twilioToken) }));
+              showToast(integrations.twilioSid ? "Credentials saved (server unreachable, will verify on send)." : "Enter credentials first.");
+            }
+          }}>Test Connection</button>
+          <button style={s.btn(B.border, B.text)} onClick={() => {
+            setIntegrations(prev => ({ ...prev, twilioSid: "", twilioToken: "", twilioFrom: "", twilioConnected: false }));
+            showToast("Twilio disconnected.");
+          }}>Disconnect</button>
+        </div>
+      </Card>}
+
+      {/* Zapier */}
+      <CollapseCard id="zapier" title="Zapier" badge={
+        <span style={s.badge(integrations.zapierApiKey ? B.green : B.dim)}>
+          <span style={s.dot(integrations.zapierApiKey ? B.green : B.dim)} />
+          {integrations.zapierApiKey ? "Configured" : "Not Configured"}
+        </span>
+      }>
+        <p style={{ fontSize: 12, color: B.muted, margin: "0 0 16px" }}>Connect GymKit to 5,000+ apps via Zapier webhooks.</p>
+        <div style={s.field}>
+          <label style={s.label}>API Key</label>
+          <input style={s.input} value={integrations.zapierApiKey || ""} onChange={e => setIntegrations(prev => ({ ...prev, zapierApiKey: e.target.value }))} placeholder="Enter Zapier API key" />
+        </div>
+        <div style={s.field}>
+          <label style={s.label}>Webhook URL</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input style={{ ...s.input, flex: 1 }} readOnly value={`https://hooks.gymkit.io/${localStorage.getItem("hf_gym_id") || "default"}/events`} />
+            <button style={s.btn()} onClick={() => { navigator.clipboard.writeText(`https://hooks.gymkit.io/${localStorage.getItem("hf_gym_id") || "default"}/events`); showToast("Copied!"); }}>Copy</button>
+          </div>
+        </div>
+        <p style={{ fontSize: 11, color: B.dim, margin: "8px 0 0" }}>Use this webhook URL in your Zapier triggers. Available events: New Client, Session Booked, Payment Received, Check-in, Assessment Completed.</p>
+      </CollapseCard>
+
+      {/* GoHighLevel */}
+      <CollapseCard id="ghl" title="GoHighLevel" badge={
+        <span style={s.badge(integrations.ghlApiKey ? B.green : B.dim)}>
+          <span style={s.dot(integrations.ghlApiKey ? B.green : B.dim)} />
+          {integrations.ghlApiKey ? "Configured" : "Not Configured"}
+          </span>
+      }>
+        <p style={{ fontSize: 12, color: B.muted, margin: "0 0 16px" }}>Sync contacts, automations, and pipelines with GoHighLevel.</p>
+        <div style={s.field}>
+          <label style={s.label}>GHL API Key</label>
+          <input style={s.input} value={integrations.ghlApiKey || ""} onChange={e => setIntegrations(prev => ({ ...prev, ghlApiKey: e.target.value }))} placeholder="Enter GoHighLevel API key" />
+        </div>
+        <div style={s.field}>
+          <label style={s.label}>Location ID</label>
+          <input style={s.input} value={integrations.ghlLocationId || ""} onChange={e => setIntegrations(prev => ({ ...prev, ghlLocationId: e.target.value }))} placeholder="Enter GHL Location ID" />
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <p style={{ fontSize: 12, fontWeight: 600, color: B.text, marginBottom: 8 }}>Sync Settings</p>
+          {[
+            { key: "ghlSyncMembers", label: "Sync new clients to GHL contacts" },
+            { key: "ghlSyncStatus", label: "Sync client status changes" },
+            { key: "ghlSyncPayments", label: "Sync payments to GHL" },
+            { key: "ghlImportContacts", label: "Import GHL contacts as clients" },
+          ].map(opt => (
+            <label key={opt.key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, cursor: "pointer", fontSize: 13, color: B.text }}>
+              <input type="checkbox" checked={!!integrations[opt.key]} onChange={e => setIntegrations(prev => ({ ...prev, [opt.key]: e.target.checked }))} style={{ accentColor: B.accent }} />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+      </CollapseCard>
     </div>
   );
 
@@ -246,12 +643,31 @@ export default function SettingsView() {
             </div>
           </div>
         </div>
-        <button style={s.btn()} onClick={() => {
-          // Force save to localStorage and reload so Logo + theme pick up changes
-          try { localStorage.setItem("hf_branding", JSON.stringify(branding)); } catch {}
-          showToast("Branding applied! Reloading...");
-          setTimeout(() => window.location.reload(), 500);
-        }}>Apply Branding</button>
+        <h3 style={s.sectionTitle}>PWA App Icon</h3>
+        <div style={s.field}>
+          <label style={s.label}>App Icon (for mobile home screen)</label>
+          <input style={s.input} value={branding.pwaIcon || ""} onChange={e => setBranding(prev => ({ ...prev, pwaIcon: e.target.value }))} placeholder="https://example.com/icon-192.png" />
+          <div style={{ fontSize: 11, color: B.dim, marginTop: 4 }}>Upload a square image (192x192 or larger) that will appear as the app icon when clients install the PWA</div>
+        </div>
+        {branding.pwaIcon && (
+          <div style={{ marginTop: 8, background: B.darker, borderRadius: 12, padding: 12, border: "1px solid " + B.border, display: "inline-block" }}>
+            <img
+              src={branding.pwaIcon}
+              alt="PWA icon preview"
+              style={{ width: 64, height: 64, borderRadius: 14, objectFit: "cover", display: "block" }}
+              onError={e => { e.target.style.display = "none"; }}
+            />
+          </div>
+        )}
+
+        <div style={{ marginTop: 20 }}>
+          <button style={s.btn()} onClick={() => {
+            // Force save to localStorage and reload so Logo + theme pick up changes
+            try { localStorage.setItem("hf_branding", JSON.stringify(branding)); } catch {}
+            showToast("Branding applied! Reloading...");
+            setTimeout(() => window.location.reload(), 500);
+          }}>Apply Branding</button>
+        </div>
       </Card>
 
       <Card>
@@ -432,6 +848,248 @@ export default function SettingsView() {
     </div>
   );
 
+  /* ========== Gamification ========== */
+  const gam = gamificationSettings;
+  const updateGam = (key, val) => setGamificationSettings(prev => ({ ...prev, [key]: val }));
+  const updateGamNested = (section, key, val) => setGamificationSettings(prev => ({ ...prev, [section]: { ...prev[section], [key]: val } }));
+
+  const renderGamification = () => (
+    <div style={{ display: "grid", gap: 20 }}>
+      {/* Section 1: Points & Levels */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h3 style={{ ...s.sectionTitle, margin: 0 }}>Points & Levels</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 13, color: B.muted, fontWeight: 600 }}>Gamification {gam.enabled ? "ON" : "OFF"}</span>
+            <button onClick={() => updateGam("enabled", !gam.enabled)}
+              style={{ width: 46, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: gam.enabled ? B.green : B.border, position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+              <div style={{ width: 18, height: 18, borderRadius: 9, background: "#fff", position: "absolute", top: 3, left: gam.enabled ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+            </button>
+          </div>
+        </div>
+
+        <h4 style={{ fontSize: 14, fontWeight: 600, color: B.text, marginBottom: 10, marginTop: 4 }}>Level Thresholds</h4>
+        <table style={s.table}>
+          <thead>
+            <tr>
+              <th style={s.th}>Level</th>
+              <th style={s.th}>Name</th>
+              <th style={s.th}>Points Required</th>
+              <th style={s.th}>Color</th>
+              <th style={s.th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {(gam.levels || []).map((lvl, idx) => (
+              <tr key={idx}>
+                <td style={s.td}>{lvl.level}</td>
+                <td style={s.td}>
+                  <input style={{ ...s.input, width: 140 }} value={lvl.name} onChange={e => {
+                    const updated = [...gam.levels];
+                    updated[idx] = { ...updated[idx], name: e.target.value };
+                    updateGam("levels", updated);
+                  }} />
+                </td>
+                <td style={s.td}>
+                  <input type="number" style={{ ...s.input, width: 100 }} value={lvl.points} onChange={e => {
+                    const updated = [...gam.levels];
+                    updated[idx] = { ...updated[idx], points: parseInt(e.target.value) || 0 };
+                    updateGam("levels", updated);
+                  }} />
+                </td>
+                <td style={s.td}>
+                  <input type="color" value={lvl.color} onChange={e => {
+                    const updated = [...gam.levels];
+                    updated[idx] = { ...updated[idx], color: e.target.value };
+                    updateGam("levels", updated);
+                  }} style={{ width: 40, height: 30, border: "1px solid " + B.border, borderRadius: 6, cursor: "pointer", background: "none" }} />
+                </td>
+                <td style={s.td}>
+                  {gam.levels.length > 1 && (
+                    <button style={s.btnSm(B.red + "22", B.red)} onClick={() => {
+                      const updated = gam.levels.filter((_, i) => i !== idx).map((l, i) => ({ ...l, level: i + 1 }));
+                      updateGam("levels", updated);
+                    }}>Remove</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button style={{ ...s.btn(B.border, B.text), marginTop: 10 }} onClick={() => {
+          const nextLvl = gam.levels.length + 1;
+          const lastPts = gam.levels[gam.levels.length - 1]?.points || 0;
+          updateGam("levels", [...gam.levels, { level: nextLvl, name: "Level " + nextLvl, points: lastPts + 2000, color: "#8b949e" }]);
+        }}>+ Add Level</button>
+
+        <h4 style={{ fontSize: 14, fontWeight: 600, color: B.text, marginBottom: 10, marginTop: 24 }}>Points Per Action</h4>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          {[
+            { key: "checkin", label: "Check-in" },
+            { key: "workout", label: "Workout Completed" },
+            { key: "challengeCheckin", label: "Challenge Check-in" },
+            { key: "postLike", label: "Post Like Received" },
+            { key: "assessment", label: "Assessment Completed" },
+            { key: "streakBonus", label: "Streak Bonus (per day)" },
+          ].map(action => (
+            <div key={action.key}>
+              <label style={s.label}>{action.label}</label>
+              <input type="number" style={s.input} value={gam.pointsPerAction?.[action.key] ?? 0} onChange={e => {
+                setGamificationSettings(prev => ({ ...prev, pointsPerAction: { ...prev.pointsPerAction, [action.key]: parseInt(e.target.value) || 0 } }));
+              }} />
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <button style={s.btn()} onClick={() => showToast("Gamification settings saved!")}>Save Points & Levels</button>
+        </div>
+      </Card>
+
+      {/* Section 2: Badges */}
+      <Card>
+        <h3 style={{ ...s.sectionTitle, marginTop: 0 }}>Badges</h3>
+        <div style={{ display: "grid", gap: 12 }}>
+          {(gam.badges || []).map((badge, idx) => (
+            <div key={badge.id} style={{ display: "grid", gridTemplateColumns: "60px 1fr 1fr 1fr auto auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 10, background: B.darker, border: "1px solid " + B.border }}>
+              <EmojiPickerBtn value={badge.icon} onChange={icon => {
+                const updated = [...gam.badges];
+                updated[idx] = { ...updated[idx], icon };
+                updateGam("badges", updated);
+              }} B={B} />
+              <div>
+                <label style={{ ...s.label, marginBottom: 2 }}>Name</label>
+                <input style={s.input} value={badge.name} onChange={e => {
+                  const updated = [...gam.badges];
+                  updated[idx] = { ...updated[idx], name: e.target.value };
+                  updateGam("badges", updated);
+                }} />
+              </div>
+              <div>
+                <label style={{ ...s.label, marginBottom: 2 }}>Trigger</label>
+                <select style={s.select} value={badge.trigger} onChange={e => {
+                  const updated = [...gam.badges];
+                  updated[idx] = { ...updated[idx], trigger: e.target.value };
+                  updateGam("badges", updated);
+                }}>
+                  {BADGE_TRIGGERS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ ...s.label, marginBottom: 2 }}>Threshold</label>
+                <input type="number" style={s.input} value={badge.threshold} onChange={e => {
+                  const updated = [...gam.badges];
+                  updated[idx] = { ...updated[idx], threshold: parseInt(e.target.value) || 0 };
+                  updateGam("badges", updated);
+                }} />
+              </div>
+              <button onClick={() => {
+                const updated = [...gam.badges];
+                updated[idx] = { ...updated[idx], active: !updated[idx].active };
+                updateGam("badges", updated);
+              }} style={{ width: 46, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: badge.active ? B.green : B.border, position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+                <div style={{ width: 18, height: 18, borderRadius: 9, background: "#fff", position: "absolute", top: 3, left: badge.active ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+              </button>
+              <button style={s.btnSm(B.red + "22", B.red)} onClick={() => {
+                updateGam("badges", gam.badges.filter((_, i) => i !== idx));
+              }}>Remove</button>
+            </div>
+          ))}
+        </div>
+        <button style={{ ...s.btn(B.border, B.text), marginTop: 12 }} onClick={() => {
+          const newId = "b" + Date.now();
+          updateGam("badges", [...(gam.badges || []), { id: newId, name: "New Badge", icon: "\ud83c\udfc5", description: "Badge description", trigger: "Total Workouts >=", threshold: 1, active: true }]);
+        }}>+ Add Badge</button>
+        <div style={{ marginTop: 16 }}>
+          <button style={s.btn()} onClick={() => showToast("Badges saved!")}>Save Badges</button>
+        </div>
+      </Card>
+
+      {/* Section 3: Leaderboard Settings */}
+      <Card>
+        <h3 style={{ ...s.sectionTitle, marginTop: 0 }}>Leaderboard Settings</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <span style={{ fontSize: 14, color: B.text, fontWeight: 500 }}>Show Leaderboard</span>
+          <button onClick={() => updateGamNested("leaderboard", "enabled", !gam.leaderboard?.enabled)}
+            style={{ width: 46, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: gam.leaderboard?.enabled ? B.green : B.border, position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+            <div style={{ width: 18, height: 18, borderRadius: 9, background: "#fff", position: "absolute", top: 3, left: gam.leaderboard?.enabled ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </button>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={s.label}>Leaderboard Metrics</label>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {[
+              { key: "xp", label: "XP" },
+              { key: "workouts", label: "Workouts" },
+              { key: "weight", label: "Weight Lifted" },
+              { key: "streak", label: "Streak" },
+            ].map(m => {
+              const metrics = gam.leaderboard?.metrics || [];
+              const checked = metrics.includes(m.key);
+              return (
+                <label key={m.key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, color: B.text, cursor: "pointer" }}>
+                  <input type="checkbox" checked={checked} style={{ accentColor: B.green }} onChange={() => {
+                    const updated = checked ? metrics.filter(x => x !== m.key) : [...metrics, m.key];
+                    updateGamNested("leaderboard", "metrics", updated);
+                  }} />
+                  {m.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 14, color: B.text, fontWeight: 500 }}>Show Top 3 Podium</span>
+          <button onClick={() => updateGamNested("leaderboard", "showPodium", !gam.leaderboard?.showPodium)}
+            style={{ width: 46, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: gam.leaderboard?.showPodium ? B.green : B.border, position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+            <div style={{ width: 18, height: 18, borderRadius: 9, background: "#fff", position: "absolute", top: 3, left: gam.leaderboard?.showPodium ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </button>
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <button style={s.btn()} onClick={() => showToast("Leaderboard settings saved!")}>Save Leaderboard</button>
+        </div>
+      </Card>
+
+      {/* Section 4: Attendance Goals */}
+      <Card>
+        <h3 style={{ ...s.sectionTitle, marginTop: 0 }}>Attendance Goals</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <span style={{ fontSize: 14, color: B.text, fontWeight: 500 }}>Show Attendance Goal Section</span>
+          <button onClick={() => updateGamNested("attendanceGoal", "enabled", !gam.attendanceGoal?.enabled)}
+            style={{ width: 46, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: gam.attendanceGoal?.enabled ? B.green : B.border, position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+            <div style={{ width: 18, height: 18, borderRadius: 9, background: "#fff", position: "absolute", top: 3, left: gam.attendanceGoal?.enabled ? 25 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </button>
+        </div>
+        <div>
+          <label style={s.label}>Monthly Attendance Goal (sessions)</label>
+          <input type="number" style={{ ...s.input, width: 120 }} value={gam.attendanceGoal?.threshold ?? 8} onChange={e => {
+            updateGamNested("attendanceGoal", "threshold", parseInt(e.target.value) || 1);
+          }} />
+        </div>
+        <div style={{ marginTop: 16 }}>
+          <button style={s.btn()} onClick={() => showToast("Attendance goal saved!")}>Save Attendance Goal</button>
+        </div>
+      </Card>
+
+      {/* Reset to Defaults */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h3 style={{ ...s.sectionTitle, margin: 0 }}>Reset to Defaults</h3>
+            <p style={{ color: B.muted, fontSize: 12, margin: "4px 0 0" }}>Restore all gamification settings to their original values.</p>
+          </div>
+          <button style={s.btn(B.red + "22", B.red)} onClick={() => {
+            if (window.confirm("Reset all gamification settings to defaults?")) {
+              setGamificationSettings(DEFAULT_GAMIFICATION_SETTINGS);
+              showToast("Gamification settings reset to defaults.");
+            }
+          }}>Reset All</button>
+        </div>
+      </Card>
+    </div>
+  );
+
   return (
     <div style={s.page}>
       <h1 style={s.h1}>Settings</h1>
@@ -483,6 +1141,7 @@ export default function SettingsView() {
           </Card>
         </div>
       )}
+      {activeTab === "Gamification" && renderGamification()}
       {activeTab === "Data" && (() => {
         const dataKeys = [
           { key: "hf_members", label: "Demo Clients" },

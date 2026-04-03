@@ -77,19 +77,14 @@ function getScoreColor(val) {
   return "#22c55e";
 }
 
-function formatTimerDisplay(seconds) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
 /* ========== component ========== */
 export default function CoachingDashboard() {
   const B = useTheme();
   const navigate = useNavigate();
-  const { members, getMember } = useMembers();
+  const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
+  const { members, getMember, updateMember } = useMembers();
   const [schedule] = useLocalStorage("hf_schedule", []);
-  const [attendance] = useLocalStorage("hf_attendance", []);
+  const [attendance, setAttendance] = useLocalStorage("hf_attendance", []);
   const [assessments] = useLocalStorage("hf_assessments", []);
 
   // Live clock
@@ -102,20 +97,6 @@ export default function CoachingDashboard() {
   // Quick member lookup
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
-
-  // Timer state
-  const [timerSeconds, setTimerSeconds] = useState(0);
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [timerTarget, setTimerTarget] = useState(0);
-
-  useEffect(() => {
-    if (!timerRunning || timerTarget <= 0) return;
-    if (timerSeconds <= 0) { setTimerRunning(false); return; }
-    const t = setInterval(() => setTimerSeconds(s => { if (s <= 1) { setTimerRunning(false); return 0; } return s - 1; }), 1000);
-    return () => clearInterval(t);
-  }, [timerRunning, timerTarget, timerSeconds]);
-
-  const timerActive = timerTarget > 0;
 
   // Derived data
   const todayDow = getTodayDayOfWeek();
@@ -160,6 +141,31 @@ export default function CoachingDashboard() {
     ).slice(0, 8);
   }, [searchQuery, members]);
 
+  // Quick check-in handler
+  const handleQuickCheckIn = (memberId, classId) => {
+    const member = getMember(memberId);
+    if (!member) return;
+    const record = {
+      id: crypto.randomUUID(),
+      memberId,
+      checkInTime: new Date().toISOString(),
+      method: "coach",
+      ...(classId ? { classId } : {}),
+    };
+    setAttendance(prev => [...prev, record]);
+
+    // Update gamification stats
+    const g = member.gamification || { level: 1, xp: 0, totalWorkouts: 0, totalWeightLifted: 0, badges: [], currentStreak: 0, longestStreak: 0 };
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const alreadyToday = attendance.some(a => a.memberId === memberId && a.checkInTime.slice(0, 10) === todayStr);
+    const newTotalWorkouts = (g.totalWorkouts || 0) + 1;
+    const newCurrentStreak = alreadyToday ? (g.currentStreak || 0) : (g.currentStreak || 0) + 1;
+    const newLongestStreak = Math.max(newCurrentStreak, g.longestStreak || 0);
+    updateMember(memberId, {
+      gamification: { ...g, totalWorkouts: newTotalWorkouts, currentStreak: newCurrentStreak, longestStreak: newLongestStreak },
+    });
+  };
+
   // Styles
   const sectionTitle = { fontSize: 20, fontWeight: 700, color: B.text, margin: "0 0 12px 0" };
   const label = { fontSize: 13, color: B.muted, fontWeight: 500 };
@@ -169,7 +175,7 @@ export default function CoachingDashboard() {
   const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" });
 
   return (
-    <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto", paddingBottom: timerActive ? 100 : 24 }}>
+    <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>
 
       {/* ===== HEADER ===== */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 28 }}>
@@ -206,7 +212,7 @@ export default function CoachingDashboard() {
               {searchResults.map(m => (
                 <div
                   key={m.id}
-                  onClick={() => { navigate(`/members/${m.id}`); setSearchQuery(""); }}
+                  onClick={() => { navigate(_gp(`members/${m.id}`)); setSearchQuery(""); }}
                   style={{
                     display: "flex", alignItems: "center", gap: 12, padding: "10px 14px",
                     cursor: "pointer", borderBottom: `1px solid ${B.border}`,
@@ -310,26 +316,51 @@ export default function CoachingDashboard() {
                     </div>
                   </div>
 
-                  {/* Member list */}
+                  {/* Member list with quick check-in */}
                   {booked > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
                       {(cls.bookings || []).map(memberId => {
                         const m = getMember(memberId);
                         if (!m) return null;
                         const checkedIn = todayCheckins.some(a => a.memberId === memberId);
+                        const canQuickCheckIn = (isActive || (isNext && startMin - currentMinutes <= 30)) && !checkedIn;
                         return (
                           <div key={memberId} style={{
-                            display: "flex", alignItems: "center", gap: 6,
-                            background: B.darker, borderRadius: 20, padding: "4px 10px 4px 4px",
+                            display: "flex", alignItems: "center", gap: 8,
+                            background: B.darker, borderRadius: 8, padding: "5px 8px",
                           }}>
                             <div style={{
-                              width: 8, height: 8, borderRadius: "50%",
-                              background: checkedIn ? B.green : B.dim,
+                              width: 28, height: 28, borderRadius: "50%",
+                              background: checkedIn ? B.green + "22" : B.accent + "22",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontWeight: 700, fontSize: 11, color: checkedIn ? B.green : B.accent,
                               flexShrink: 0,
-                            }} />
-                            <span style={{ fontSize: 13, color: B.text }}>
+                            }}>
+                              {getInitials(m.firstName, m.lastName)}
+                            </div>
+                            <span style={{ fontSize: 13, color: B.text, flex: 1 }}>
                               {m.firstName} {m.lastName?.[0]}.
                             </span>
+                            {checkedIn ? (
+                              <span style={{ fontSize: 16, color: B.green, flexShrink: 0 }} title="Checked in">&#10003;</span>
+                            ) : canQuickCheckIn ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleQuickCheckIn(memberId, cls.id); }}
+                                style={{
+                                  padding: "3px 10px", borderRadius: 6, border: "none",
+                                  background: B.green, color: "#fff", fontWeight: 700,
+                                  fontSize: 11, cursor: "pointer", flexShrink: 0,
+                                  transition: "opacity 0.15s",
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.opacity = "0.85"}
+                                onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                              >Check In</button>
+                            ) : (
+                              <div style={{
+                                width: 8, height: 8, borderRadius: "50%",
+                                background: B.dim, flexShrink: 0,
+                              }} />
+                            )}
                           </div>
                         );
                       })}
@@ -337,7 +368,7 @@ export default function CoachingDashboard() {
                   )}
 
                   <button
-                    onClick={() => navigate("/command")}
+                    onClick={() => navigate(_gp("command"))}
                     style={{
                       width: "100%", padding: "10px 0", borderRadius: 8,
                       border: `1px solid ${B.accent}`, background: "transparent",
@@ -365,7 +396,7 @@ export default function CoachingDashboard() {
             { label: "Send Message", icon: "&#9993;", route: "/messages", color: B.orange },
           ].map(action => (
             <Card key={action.label} style={{ cursor: "pointer", textAlign: "center", padding: 24, transition: "transform 0.15s" }}
-              onClick={() => navigate(action.route)}>
+              onClick={() => navigate(_gp(action.route.replace(/^\//, "")))}>
               <div
                 style={{ fontSize: 36, marginBottom: 8, color: action.color }}
                 dangerouslySetInnerHTML={{ __html: action.icon }}
@@ -409,7 +440,7 @@ export default function CoachingDashboard() {
                       <div style={{ fontSize: 12, color: B.dim }}>{m.membershipStatus}</div>
                     </div>
                     <button
-                      onClick={() => navigate("/messages")}
+                      onClick={() => navigate(_gp("messages"))}
                       style={{
                         padding: "6px 14px", borderRadius: 8, border: `1px solid ${severity}`,
                         background: "transparent", color: severity, fontWeight: 600,
@@ -421,7 +452,7 @@ export default function CoachingDashboard() {
               })}
               {atRiskMembers.length > 5 && (
                 <div
-                  onClick={() => navigate("/members")}
+                  onClick={() => navigate(_gp("members"))}
                   style={{ textAlign: "center", padding: "10px 0", color: B.accent, fontWeight: 600, fontSize: 14, cursor: "pointer", marginTop: 8 }}
                 >
                   View all {atRiskMembers.length} at-risk clients
@@ -543,7 +574,7 @@ export default function CoachingDashboard() {
                     })}
                   </div>
                   <button
-                    onClick={() => navigate(`/members/${m.id}`)}
+                    onClick={() => navigate(_gp(`members/${m.id}`))}
                     style={{
                       width: "100%", padding: "8px 0", borderRadius: 8,
                       border: `1px solid ${B.border}`, background: "transparent",
@@ -555,73 +586,6 @@ export default function CoachingDashboard() {
             })}
           </div>
         )}
-      </div>
-
-      {/* ===== SECTION 6: ACTIVE TIMER (sticky bottom bar) ===== */}
-      {timerActive && (
-        <div style={{
-          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 200,
-          background: B.darker, borderTop: `2px solid ${B.accent}`,
-          padding: "12px 24px", display: "flex", alignItems: "center",
-          justifyContent: "center", gap: 20, flexWrap: "wrap",
-          boxShadow: "0 -4px 20px rgba(0,0,0,0.3)",
-        }}>
-          <div style={{ fontSize: 48, fontWeight: 800, color: timerSeconds <= 5 && timerSeconds > 0 ? B.red : B.text, fontVariantNumeric: "tabular-nums", minWidth: 140, textAlign: "center" }}>
-            {formatTimerDisplay(timerSeconds)}
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={() => { timerRunning ? setTimerRunning(false) : setTimerRunning(true); }}
-              style={{
-                padding: "10px 20px", borderRadius: 8, border: "none",
-                background: timerRunning ? B.red : B.green, color: "#fff",
-                fontWeight: 700, fontSize: 16, cursor: "pointer",
-              }}
-            >{timerRunning ? "Stop" : "Start"}</button>
-            <button
-              onClick={() => { setTimerRunning(false); setTimerSeconds(0); setTimerTarget(0); }}
-              style={{
-                padding: "10px 20px", borderRadius: 8, border: `1px solid ${B.border}`,
-                background: "transparent", color: B.muted, fontWeight: 700, fontSize: 16, cursor: "pointer",
-              }}
-            >Reset</button>
-          </div>
-        </div>
-      )}
-
-      {/* Timer preset buttons (always visible) */}
-      <div style={{ marginBottom: 28 }}>
-        <h2 style={sectionTitle}>Session Timer</h2>
-        <Card style={{ padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 14, color: B.muted, fontWeight: 600 }}>Presets:</span>
-            {[
-              { label: "30s", secs: 30 },
-              { label: "45s", secs: 45 },
-              { label: "60s", secs: 60 },
-              { label: "90s", secs: 90 },
-              { label: "2min", secs: 120 },
-              { label: "3min", secs: 180 },
-            ].map(p => (
-              <button
-                key={p.label}
-                onClick={() => { setTimerTarget(p.secs); setTimerSeconds(p.secs); setTimerRunning(true); }}
-                style={{
-                  padding: "12px 24px", borderRadius: 10, border: `2px solid ${B.accent}`,
-                  background: timerTarget === p.secs ? B.accent : "transparent",
-                  color: timerTarget === p.secs ? "#fff" : B.accent,
-                  fontWeight: 700, fontSize: 18, cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
-              >{p.label}</button>
-            ))}
-            {timerActive && (
-              <div style={{ fontSize: 28, fontWeight: 800, color: B.text, marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
-                {formatTimerDisplay(timerSeconds)}
-              </div>
-            )}
-          </div>
-        </Card>
       </div>
 
       {/* Pulse animation keyframes */}

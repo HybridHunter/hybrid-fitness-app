@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
 
 function getInitials(f, l) {
   return ((f?.[0] || "") + (l?.[0] || "")).toUpperCase();
@@ -34,11 +36,11 @@ function buildDemoConversations(members) {
       id: "demo-conv-1",
       participants: [m0.id],
       messages: [
-        { id: "dm1-1", senderId: "coach", text: "Hey Sarah! Great job on your 10K this weekend. How are your legs feeling?", timestamp: new Date(now - 86400000 * 2).toISOString(), read: true },
+        { id: "dm1-1", senderId: myId, text: "Hey Sarah! Great job on your 10K this weekend. How are your legs feeling?", timestamp: new Date(now - 86400000 * 2).toISOString(), read: true },
         { id: "dm1-2", senderId: m0.id, text: "Thanks coach! A little sore in my calves but nothing major. Should I still come in tomorrow?", timestamp: new Date(now - 86400000 * 2 + 3600000).toISOString(), read: true },
-        { id: "dm1-3", senderId: "coach", text: "Absolutely. We'll do a recovery session - foam rolling, light stretching, and some easy mobility work. No heavy lifting.", timestamp: new Date(now - 86400000 * 2 + 7200000).toISOString(), read: true },
+        { id: "dm1-3", senderId: myId, text: "Absolutely. We'll do a recovery session - foam rolling, light stretching, and some easy mobility work. No heavy lifting.", timestamp: new Date(now - 86400000 * 2 + 7200000).toISOString(), read: true },
         { id: "dm1-4", senderId: m0.id, text: "Sounds perfect. See you at 7am!", timestamp: new Date(now - 86400000 + 1800000).toISOString(), read: true },
-        { id: "dm1-5", senderId: "coach", text: "Also, I updated your program to include more hip mobility work. Check it out when you get a chance.", timestamp: new Date(now - 3600000).toISOString(), read: false },
+        { id: "dm1-5", senderId: myId, text: "Also, I updated your program to include more hip mobility work. Check it out when you get a chance.", timestamp: new Date(now - 3600000).toISOString(), read: false },
       ],
       lastActivity: new Date(now - 3600000).toISOString(),
     },
@@ -46,11 +48,11 @@ function buildDemoConversations(members) {
       id: "demo-conv-2",
       participants: [m1.id],
       messages: [
-        { id: "dm2-1", senderId: "coach", text: "Mike, I noticed your squat form was off yesterday. Let's work on that next session.", timestamp: new Date(now - 86400000 * 3).toISOString(), read: true },
+        { id: "dm2-1", senderId: myId, text: "Mike, I noticed your squat form was off yesterday. Let's work on that next session.", timestamp: new Date(now - 86400000 * 3).toISOString(), read: true },
         { id: "dm2-2", senderId: m1.id, text: "Yeah I felt like I was leaning forward a lot. Any drills I can do at home?", timestamp: new Date(now - 86400000 * 3 + 5400000).toISOString(), read: true },
-        { id: "dm2-3", senderId: "coach", text: "Try goblet squats with a 3-second pause at the bottom. Do 3 sets of 8 with light weight. Focus on keeping your chest up.", timestamp: new Date(now - 86400000 * 3 + 7200000).toISOString(), read: true },
+        { id: "dm2-3", senderId: myId, text: "Try goblet squats with a 3-second pause at the bottom. Do 3 sets of 8 with light weight. Focus on keeping your chest up.", timestamp: new Date(now - 86400000 * 3 + 7200000).toISOString(), read: true },
         { id: "dm2-4", senderId: m1.id, text: "Got it, I'll practice tonight. Also, can we reschedule Thursday to Friday this week?", timestamp: new Date(now - 86400000).toISOString(), read: true },
-        { id: "dm2-5", senderId: "coach", text: "Friday at 6pm works. See you then!", timestamp: new Date(now - 43200000).toISOString(), read: true },
+        { id: "dm2-5", senderId: myId, text: "Friday at 6pm works. See you then!", timestamp: new Date(now - 43200000).toISOString(), read: true },
         { id: "dm2-6", senderId: m1.id, text: "Perfect, thanks!", timestamp: new Date(now - 36000000).toISOString(), read: false },
       ],
       lastActivity: new Date(now - 36000000).toISOString(),
@@ -60,9 +62,9 @@ function buildDemoConversations(members) {
       participants: [m2.id],
       messages: [
         { id: "dm3-1", senderId: m2.id, text: "Coach, I just hit a 225lb clean and jerk! New PR!", timestamp: new Date(now - 86400000 * 5).toISOString(), read: true },
-        { id: "dm3-2", senderId: "coach", text: "That's incredible Emily! All that technique work is paying off. How did it feel?", timestamp: new Date(now - 86400000 * 5 + 1800000).toISOString(), read: true },
+        { id: "dm3-2", senderId: myId, text: "That's incredible Emily! All that technique work is paying off. How did it feel?", timestamp: new Date(now - 86400000 * 5 + 1800000).toISOString(), read: true },
         { id: "dm3-3", senderId: m2.id, text: "Felt smooth! The catch position was solid. I think 235 is within reach.", timestamp: new Date(now - 86400000 * 5 + 3600000).toISOString(), read: true },
-        { id: "dm3-4", senderId: "coach", text: "Let's not rush it. We'll add 5lbs next week and keep building. Consistency over everything.", timestamp: new Date(now - 86400000 * 4).toISOString(), read: true },
+        { id: "dm3-4", senderId: myId, text: "Let's not rush it. We'll add 5lbs next week and keep building. Consistency over everything.", timestamp: new Date(now - 86400000 * 4).toISOString(), read: true },
         { id: "dm3-5", senderId: "system", text: "Coach assigned a new workout: Competition Prep Week 12", timestamp: new Date(now - 86400000 * 2).toISOString(), read: true },
       ],
       lastActivity: new Date(now - 86400000 * 2).toISOString(),
@@ -71,9 +73,9 @@ function buildDemoConversations(members) {
       id: "demo-conv-4",
       participants: [m4.id],
       messages: [
-        { id: "dm4-1", senderId: "coach", text: "Hi Lisa! Welcome to your second month. How are you feeling about the program so far?", timestamp: new Date(now - 86400000 * 7).toISOString(), read: true },
+        { id: "dm4-1", senderId: myId, text: "Hi Lisa! Welcome to your second month. How are you feeling about the program so far?", timestamp: new Date(now - 86400000 * 7).toISOString(), read: true },
         { id: "dm4-2", senderId: m4.id, text: "I'm really enjoying it! I feel stronger already. The nutrition tips have been super helpful too.", timestamp: new Date(now - 86400000 * 7 + 7200000).toISOString(), read: true },
-        { id: "dm4-3", senderId: "coach", text: "That's great to hear! Remember, consistency is key. Even on days you don't feel like it, just show up and do something.", timestamp: new Date(now - 86400000 * 6).toISOString(), read: true },
+        { id: "dm4-3", senderId: myId, text: "That's great to hear! Remember, consistency is key. Even on days you don't feel like it, just show up and do something.", timestamp: new Date(now - 86400000 * 6).toISOString(), read: true },
         { id: "dm4-4", senderId: "system", text: "Coach assigned a new workout: Full Body Foundations B", timestamp: new Date(now - 86400000 * 4).toISOString(), read: true },
         { id: "dm4-5", senderId: m4.id, text: "Quick question - should I be sore after every workout? Sometimes I feel fine the next day and worry I'm not working hard enough.", timestamp: new Date(now - 86400000 * 1).toISOString(), read: false },
       ],
@@ -84,7 +86,10 @@ function buildDemoConversations(members) {
 
 export default function MessagingView() {
   const B = useTheme();
+  const { currentUser, isClient } = useAuth();
   const { members } = useMembers();
+  // Determine sender ID: staff uses "coach", clients use their memberId
+  const myId = isClient ? currentUser?.memberId : "coach";
   const [conversations, setConversations] = useLocalStorage("hf_messages", () => buildDemoConversations(members));
   const [activeConvId, setActiveConvId] = useState(null);
   const [search, setSearch] = useState("");
@@ -113,11 +118,11 @@ export default function MessagingView() {
   // Mark messages as read when opening a conversation
   useEffect(() => {
     if (activeConv) {
-      const hasUnread = activeConv.messages.some(m => !m.read && m.senderId !== "coach");
+      const hasUnread = activeConv.messages.some(m => !m.read && m.senderId !== myId);
       if (hasUnread) {
         setConversations(prev => prev.map(c =>
           c.id === activeConvId
-            ? { ...c, messages: c.messages.map(m => m.senderId !== "coach" ? { ...m, read: true } : m) }
+            ? { ...c, messages: c.messages.map(m => m.senderId !== myId ? { ...m, read: true } : m) }
             : c
         ));
       }
@@ -128,7 +133,7 @@ export default function MessagingView() {
     if (messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
   }, [activeConv?.messages?.length]);
 
-  const totalUnread = conversations.reduce((sum, c) => sum + c.messages.filter(m => !m.read && m.senderId !== "coach").length, 0);
+  const totalUnread = conversations.reduce((sum, c) => sum + c.messages.filter(m => !m.read && m.senderId !== myId).length, 0);
 
   const sortedConversations = [...conversations].sort((a, b) => new Date(b.lastActivity) - new Date(a.lastActivity));
 
@@ -141,19 +146,28 @@ export default function MessagingView() {
 
   const handleSendMessage = () => {
     if (!messageText.trim() || !activeConvId) return;
-    const msg = { id: crypto.randomUUID(), senderId: "coach", text: messageText.trim(), timestamp: new Date().toISOString(), read: true };
+    const msg = { id: crypto.randomUUID(), senderId: myId, text: messageText.trim(), timestamp: new Date().toISOString(), read: true };
     setConversations(prev => prev.map(c =>
       c.id === activeConvId
         ? { ...c, messages: [...c.messages, msg], lastActivity: msg.timestamp }
         : c
     ));
+
+    // Send notification for new message
+    if (getNotificationPrefs().message !== false && activeConv) {
+      const senderInfo = getMemberInfo(activeConv.participants[0]);
+      const senderName = myId === "coach" ? "Coach" : senderInfo.name;
+      const preview = messageText.trim().length > 50 ? messageText.trim().slice(0, 50) + "..." : messageText.trim();
+      sendLocalNotification(`${senderName}: ${preview}`, { body: messageText.trim() });
+    }
+
     setMessageText("");
   };
 
   const handleNewConversation = () => {
     if (!newMsgMemberId || !newMsgText.trim()) return;
     const existing = conversations.find(c => c.participants.includes(newMsgMemberId));
-    const msg = { id: crypto.randomUUID(), senderId: "coach", text: newMsgText.trim(), timestamp: new Date().toISOString(), read: true };
+    const msg = { id: crypto.randomUUID(), senderId: myId, text: newMsgText.trim(), timestamp: new Date().toISOString(), read: true };
     if (existing) {
       setConversations(prev => prev.map(c =>
         c.id === existing.id
@@ -201,9 +215,12 @@ export default function MessagingView() {
     bubbleSystem: { alignSelf: "center", background: B.border + "44", color: B.dim, borderRadius: 12, padding: "6px 14px", fontSize: 11, fontStyle: "italic" },
     bubbleTime: { fontSize: 10, color: B.dim, marginTop: 4 },
     bubbleTimeCoach: { fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 4, textAlign: "right" },
-    inputBar: { display: "flex", gap: 10, padding: "12px 20px", borderTop: "1px solid " + B.border, background: B.dark },
-    msgInput: { flex: 1, background: B.darker, border: "1px solid " + B.border, borderRadius: 8, padding: "10px 14px", color: B.text, fontSize: 14, outline: "none", boxSizing: "border-box" },
-    sendBtn: { background: B.accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" },
+    inputBar: { display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", borderTop: "1px solid " + B.border, background: B.dark },
+    inputActions: { display: "flex", gap: 2, alignItems: "center" },
+    inputActionBtn: { background: "none", border: "none", fontSize: 20, cursor: "pointer", padding: "6px", borderRadius: 8, color: B.accent, lineHeight: 1, transition: "background 0.15s" },
+    msgInput: { flex: 1, background: B.darker, border: "1px solid " + B.border, borderRadius: 20, padding: "10px 16px", color: B.text, fontSize: 14, outline: "none", boxSizing: "border-box" },
+    sendBtn: { background: B.accent, color: "#fff", border: "none", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", flexShrink: 0, transition: "opacity 0.15s" },
+    quickLikeBtn: { background: "none", border: "none", fontSize: 26, cursor: "pointer", padding: 4, color: B.accent, lineHeight: 1 },
     emptyChat: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: B.dim, fontSize: 14 },
     overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
     modal: { background: B.dark, borderRadius: 14, border: "1px solid " + B.border, padding: 28, width: 420, maxWidth: "92vw" },
@@ -236,7 +253,7 @@ export default function MessagingView() {
           filteredConversations.map(c => {
             const info = getMemberInfo(c.participants[0]);
             const lastMsg = c.messages[c.messages.length - 1];
-            const unread = c.messages.filter(m => !m.read && m.senderId !== "coach").length;
+            const unread = c.messages.filter(m => !m.read && m.senderId !== myId).length;
             const color = statusColors[info.status] || B.muted;
             return (
               <div key={c.id} style={s.convItem(activeConvId === c.id)} onClick={() => handleSelectConv(c.id)}
@@ -251,7 +268,7 @@ export default function MessagingView() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
                     <span style={s.convPreview}>
-                      {lastMsg?.senderId === "coach" ? "You: " : ""}{lastMsg?.senderId === "system" ? lastMsg.text : (lastMsg?.text || "")}
+                      {lastMsg?.senderId === myId ? "You: " : ""}{lastMsg?.senderId === "system" ? lastMsg.text : (lastMsg?.text || "")}
                     </span>
                     {unread > 0 && <span style={s.unreadBadge}>{unread}</span>}
                   </div>
@@ -301,13 +318,13 @@ export default function MessagingView() {
                 <div key={msg.id} style={s.bubbleSystem}>{msg.text}</div>
               );
             }
-            const isCoach = msg.senderId === "coach";
+            const isMe = msg.senderId === myId;
             return (
-              <div key={msg.id} style={{ alignSelf: isCoach ? "flex-end" : "flex-start", maxWidth: "70%" }}>
-                <div style={isCoach ? s.bubbleCoach : s.bubbleMember}>{msg.text}</div>
-                <div style={isCoach ? s.bubbleTimeCoach : s.bubbleTime}>
+              <div key={msg.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "70%" }}>
+                <div style={isMe ? s.bubbleCoach : s.bubbleMember}>{msg.text}</div>
+                <div style={isMe ? s.bubbleTimeCoach : s.bubbleTime}>
                   {formatTime(msg.timestamp)}
-                  {isCoach && msg.read && <span style={{ marginLeft: 6 }}>&#10003;&#10003;</span>}
+                  {isMe && msg.read && <span style={{ marginLeft: 6 }}>&#10003;&#10003;</span>}
                 </div>
               </div>
             );
@@ -315,16 +332,47 @@ export default function MessagingView() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
+        {/* Input bar — modern chat style */}
         <div style={s.inputBar}>
+          <div style={s.inputActions}>
+            <button style={s.inputActionBtn} title="Voice note" onClick={() => showToast && showToast("Voice notes coming soon")}>
+              {"\uD83C\uDF99\uFE0F"}
+            </button>
+            <button style={s.inputActionBtn} title="Send image" onClick={() => {
+              const url = prompt("Image URL:");
+              if (url) { setMessageText(prev => prev + ` [img:${url}]`); }
+            }}>
+              {"\uD83D\uDDBC\uFE0F"}
+            </button>
+            <button style={s.inputActionBtn} title="Send GIF" onClick={() => showToast && showToast("GIF picker coming soon")}>
+              GIF
+            </button>
+          </div>
           <input
             style={s.msgInput}
-            placeholder="Type a message..."
+            placeholder="Aa"
             value={messageText}
             onChange={e => setMessageText(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
           />
-          <button style={s.sendBtn} onClick={handleSendMessage}>Send</button>
+          <button style={s.inputActionBtn} title="Emoji" onClick={() => {
+            const emojis = ["\uD83D\uDCAA", "\uD83D\uDD25", "\u2B50", "\uD83C\uDFC6", "\u2764\uFE0F", "\uD83D\uDE4C", "\uD83D\uDE0E", "\u26A1"];
+            setMessageText(prev => prev + emojis[Math.floor(Math.random() * emojis.length)]);
+          }}>
+            {"\uD83D\uDE0A"}
+          </button>
+          {messageText.trim() ? (
+            <button style={s.sendBtn} onClick={handleSendMessage}>
+              {"\u27A4"}
+            </button>
+          ) : (
+            <button style={s.quickLikeBtn} title="Quick like" onClick={() => {
+              setMessageText("\uD83D\uDC4D");
+              setTimeout(() => handleSendMessage(), 50);
+            }}>
+              {"\uD83D\uDC4D"}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -355,7 +403,7 @@ export default function MessagingView() {
             </div>
             <div style={s.modalActions}>
               <button style={s.cancelBtn} onClick={() => setNewMsgModal(false)}>Cancel</button>
-              <button style={s.sendBtn} onClick={handleNewConversation}>Send</button>
+              <button style={{ background: B.accent, color: "#fff", border: "none", borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer" }} onClick={handleNewConversation}>Send</button>
             </div>
           </div>
         </div>
@@ -366,5 +414,11 @@ export default function MessagingView() {
 
 export function useUnreadCount() {
   const [conversations] = useLocalStorage("hf_messages", []);
-  return conversations.reduce((sum, c) => sum + c.messages.filter(m => !m.read && m.senderId !== "coach").length, 0);
+  const { currentUser, isClient } = useAuth();
+  const id = isClient ? currentUser?.memberId : "coach";
+  if (!Array.isArray(conversations)) return 0;
+  return conversations.reduce((sum, c) => {
+    if (!c.messages || !Array.isArray(c.messages)) return sum;
+    return sum + c.messages.filter(m => !m.read && m.senderId !== id).length;
+  }, 0);
 }

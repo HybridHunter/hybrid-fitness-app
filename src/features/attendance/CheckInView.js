@@ -3,6 +3,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
+import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -152,6 +153,13 @@ export default function CheckInView() {
       setAttendance(prev => [...prev, record]);
       setCheckedInMember(member);
       setCheckedInClass(detectedClass);
+
+      // Send notification
+      if (getNotificationPrefs().checkin !== false) {
+        sendLocalNotification(`Welcome back, ${member.firstName}!`, {
+          body: detectedClass ? `Checked in for: ${detectedClass.name}` : "Open gym check-in",
+        });
+      }
 
       // Update gamification stats
       const g = member.gamification || { level: 1, xp: 0, totalWorkouts: 0, totalWeightLifted: 0, badges: [], currentStreak: 0, longestStreak: 0 };

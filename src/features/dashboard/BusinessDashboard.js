@@ -282,7 +282,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
               </div>
               {noshowAlerts.map(a => (
                 <AlertCard key={a.alertKey} member={a.member} reason={a.reason} severity={a.severity} planName={a.planName} B={B}
-                  onSendMessage={() => navigate("/messages")} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(`/members/${a.member.id}`)} />
+                  onSendMessage={() => navigate(_gp("messages"))} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(_gp(`members/${a.member.id}`))} />
               ))}
             </div>
           )}
@@ -297,7 +297,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
               </div>
               {unusedAlerts.map(a => (
                 <AlertCard key={a.alertKey} member={a.member} reason={a.reason} severity={a.severity} planName={a.planName} B={B}
-                  onSendMessage={() => navigate("/messages")} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(`/members/${a.member.id}`)} />
+                  onSendMessage={() => navigate(_gp("messages"))} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(_gp(`members/${a.member.id}`))} />
               ))}
             </div>
           )}
@@ -792,6 +792,7 @@ function FunnelDataEntryModal({ stages, allFunnelData, period, cashCollected, on
 export default function BusinessDashboard() {
   const B = useTheme();
   const navigate = useNavigate();
+  const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
   const { members } = useMembers();
   const { events: membershipEvents } = useMembershipEvents();
   const [attendance] = useLocalStorage("hf_attendance", []);
@@ -2160,7 +2161,7 @@ export default function BusinessDashboard() {
             gap: 10,
           }}>
             {/* Row 1 */}
-            <MiniKpi label="Ad Spend" B={B} editable value={effectiveAdSpend} prefix="$" onChange={updateAdSpend} />
+            <MiniKpi label="Ad Spend" B={B} value={effectiveAdSpend} prefix="$" calculated note="from funnel data" />
             <MiniKpi label="Cost Per Lead" B={B} value={costPerLead} prefix="$" calculated note={totalLeads === 0 ? "needs leads" : ""} onClick={() => setDrillDown({ type: "funnel_total_leads" })} />
             <MiniKpi label="Total Leads" B={B} value={totalLeads} calculated note={hasManualFunnelData ? "manual" : (crmNote || "from CRM")} onClick={() => setDrillDown({ type: "funnel_total_leads" })} />
             <MiniKpi label="Total Strat Sessions" B={B} value={totalStratSessions} calculated note={hasManualFunnelData ? "manual" : (crmNote || "from CRM")} onClick={() => setDrillDown({ type: "funnel_strat_sessions" })} />
@@ -2190,7 +2191,7 @@ export default function BusinessDashboard() {
             })}
           </div>
           <div style={{ fontSize: 9, color: B.dim, marginTop: 10, textAlign: "center" }}>
-            {hasManualFunnelData ? "Funnel numbers from manual entry" : "Only Ad Spend is manual -- everything else is auto-calculated"}
+            {hasManualFunnelData ? "Funnel numbers from manual entry" : "All data is auto-calculated. Enter funnel data to populate."}
           </div>
         </Card>
       </div>
@@ -2236,7 +2237,7 @@ export default function BusinessDashboard() {
       {/* ============ Quick Actions ============ */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
         {quickActions.map((qa) => (
-          <button key={qa.path} onClick={() => navigate(qa.path)}
+          <button key={qa.path} onClick={() => navigate(_gp(qa.path.replace(/^\//, "")))}
             style={{
               flex: 1, minWidth: 140, padding: "14px 16px", borderRadius: 10,
               border: "1px solid " + B.border, background: B.card, cursor: "pointer",

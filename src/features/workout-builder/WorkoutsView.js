@@ -56,9 +56,9 @@ export default function WorkoutsView({workouts,setWorkouts,exercises,onLoad}){
 
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
       <div style={{fontSize:18,fontWeight:700}}>Saved Workouts <span style={{color:B.muted,fontSize:13}}>({workouts.length})</span></div>
-      <button onClick={()=>navigate("/build")} style={{padding:"8px 20px",borderRadius:8,border:"none",background:B.accent,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:700}}>+ Create Workout</button>
+      <button onClick={()=>navigate(`/gym/${localStorage.getItem("hf_gym_id") || "default"}/build`)} style={{padding:"8px 20px",borderRadius:8,border:"none",background:B.accent,color:"#fff",fontSize:12,cursor:"pointer",fontWeight:700}}>+ Create Workout</button>
     </div>
-    {workouts.length===0?(<div style={{textAlign:"center",padding:60,color:B.dim}}><div style={{fontSize:42,marginBottom:12}}>&#127947;&#65039;</div><div style={{fontSize:15,fontWeight:600}}>No saved workouts yet</div><button onClick={()=>navigate("/build")} style={{marginTop:16,padding:"10px 24px",borderRadius:8,border:"none",background:B.accent,color:"#fff",fontSize:13,cursor:"pointer",fontWeight:700}}>Create Your First Workout</button></div>):(
+    {workouts.length===0?(<div style={{textAlign:"center",padding:60,color:B.dim}}><div style={{fontSize:42,marginBottom:12}}>&#127947;&#65039;</div><div style={{fontSize:15,fontWeight:600}}>No saved workouts yet</div><button onClick={()=>navigate(`/gym/${localStorage.getItem("hf_gym_id") || "default"}/build`)} style={{marginTop:16,padding:"10px 24px",borderRadius:8,border:"none",background:B.accent,color:"#fff",fontSize:13,cursor:"pointer",fontWeight:700}}>Create Your First Workout</button></div>):(
     <div style={{display:"grid",gap:12}}>{workouts.map(w=>(
       <div key={w.id} style={{background:B.card,borderRadius:12,border:"1px solid "+B.border,padding:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>

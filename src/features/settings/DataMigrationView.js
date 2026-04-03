@@ -1131,19 +1131,19 @@ export default function DataMigrationView() {
 
               <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
                 <button
-                  onClick={() => window.location.href = "/members"}
+                  onClick={() => window.location.href = `/gym/${localStorage.getItem("hf_gym_id") || "default"}/members`}
                   style={sBtn(true)}
                 >
                   View Clients
                 </button>
                 <button
-                  onClick={() => window.location.href = "/billing"}
+                  onClick={() => window.location.href = `/gym/${localStorage.getItem("hf_gym_id") || "default"}/billing`}
                   style={sBtn(false)}
                 >
                   View Billing
                 </button>
                 <button
-                  onClick={() => window.location.href = "/schedule"}
+                  onClick={() => window.location.href = `/gym/${localStorage.getItem("hf_gym_id") || "default"}/schedule`}
                   style={sBtn(false)}
                 >
                   View Schedule

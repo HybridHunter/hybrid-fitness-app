@@ -54,7 +54,7 @@ export default function OnboardingWizard() {
   // Check if already completed
   useEffect(() => {
     const completed = localStorage.getItem("hf_onboarding_complete");
-    if (completed === "true") navigate("/dashboard");
+    if (completed === "true") navigate(`/gym/${localStorage.getItem("hf_gym_id") || "default"}/`);
   }, [navigate]);
 
   const handleFinish = async () => {
@@ -85,7 +85,7 @@ export default function OnboardingWizard() {
     // Mark complete
     localStorage.setItem("hf_onboarding_complete", "true");
     await supabaseUpsert(gymId, "hf_onboarding_complete", true);
-    navigate("/dashboard");
+    navigate(`/gym/${localStorage.getItem("hf_gym_id") || "default"}/`);
   };
 
   /* ===================== STYLES ===================== */
@@ -219,7 +219,7 @@ export default function OnboardingWizard() {
             <p style={{ ...subStyle, textAlign: "center", maxWidth: 460, margin: "0 auto 24px" }}>
               Use the Workout Builder to create your first WOD, strength session, or custom workout. You can do this now or come back to it later.
             </p>
-            <button style={btnPrimary} onClick={() => { localStorage.setItem("hf_onboarding_complete", "true"); navigate("/workout-builder"); }}>
+            <button style={btnPrimary} onClick={() => { localStorage.setItem("hf_onboarding_complete", "true"); navigate(`/gym/${localStorage.getItem("hf_gym_id") || "default"}/build`); }}>
               Open Workout Builder
             </button>
             <div style={{ marginTop: 16 }}>

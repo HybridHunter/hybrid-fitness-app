@@ -48,6 +48,7 @@ function getScoreColor(val) {
 export default function AssessmentView() {
   const B = useTheme();
   const navigate = useNavigate();
+  const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
   const { members, updateMember, getMember } = useMembers();
   const [assessments, setAssessments] = useLocalStorage("hf_assessments", []);
 
@@ -376,7 +377,7 @@ export default function AssessmentView() {
           <button style={s.btnPrimary(false)} onClick={handleReset}>
             Assess Another Client
           </button>
-          <button style={s.btnSecondary} onClick={() => navigate("/members/" + selectedMemberId)}>
+          <button style={s.btnSecondary} onClick={() => navigate(_gp("members/" + selectedMemberId))}>
             View Client Profile
           </button>
         </div>

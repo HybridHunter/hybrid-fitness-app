@@ -4,6 +4,7 @@ import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
+import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const HOURS = Array.from({length:15},(_,i)=>i+6); // 6AM-8PM
@@ -127,14 +128,25 @@ export default function ScheduleView() {
 
   const handleBookMember = useCallback((classId, memberId) => {
     if (!memberId) return;
+    const cls = classes.find(c => c.id === classId);
+    const m = getMember(memberId);
     setClasses(prev => prev.map(c => {
       if (c.id !== classId) return c;
       if (c.bookings.includes(memberId) || c.waitlist.includes(memberId)) return c;
       if (c.bookings.length < c.capacity) return { ...c, bookings: [...c.bookings, memberId] };
       return { ...c, waitlist: [...c.waitlist, memberId] };
     }));
+
+    // Send notification
+    if (getNotificationPrefs().booking !== false && m && cls) {
+      const name = `${m.firstName} ${m.lastName}`;
+      sendLocalNotification(`${name} booked ${cls.name}`, {
+        body: `${DAYS[cls.dayOfWeek]} ${fmtTime(cls.startTime)} - ${fmtTime(cls.endTime)}`,
+      });
+    }
+
     setBookingMemberId("");
-  }, [setClasses]);
+  }, [setClasses, classes, getMember]);
 
   const handleRemoveMember = useCallback((classId, memberId) => {
     setClasses(prev => prev.map(c => {

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import PlanAccessPicker, { PlanLockBadge } from "../../components/ui/PlanAccessPicker";
 
 /* ---- helpers ---- */
 const uuid = () => crypto.randomUUID();
@@ -24,12 +25,12 @@ function generateDemoEvents() {
     return dt.toISOString().slice(0, 10);
   };
   return [
-    { id: uuid(), title: "Community Workout", description: "Join us for a full-body workout anyone can do. All fitness levels welcome! We'll break into groups and scale appropriately. Bring water and a towel.", date: d(3), startTime: "09:00", endTime: "10:00", locationType: "in-person", locationUrl: "123 Fitness Ave, Suite 200", coverImage: "", recurring: { frequency: "weekly", dayOfWeek: new Date(now.getTime() + 3 * 86400000).getDay() }, rsvps: ["m1", "m2", "m3", "m4", "m5", "m6", "m7"], createdBy: "coach", createdAt: new Date(now.getTime() - 7 * 86400000).toISOString() },
-    { id: uuid(), title: "Nutrition Workshop", description: "Learn practical meal-prep strategies and macro-friendly recipes. We'll cover grocery shopping tips, easy high-protein meals, and how to stay consistent with nutrition.", date: d(7), startTime: "18:00", endTime: "19:30", locationType: "virtual", locationUrl: "https://zoom.us/j/example123", coverImage: "", recurring: null, rsvps: ["m1", "m3", "m5", "m8", "m9"], createdBy: "coach", createdAt: new Date(now.getTime() - 5 * 86400000).toISOString() },
-    { id: uuid(), title: "Monthly Challenge Kickoff", description: "Kick off the new monthly challenge! This month: 30-day consistency challenge. Show up every day, log your workouts, and earn points. Prizes for top 3 finishers.", date: d(1), startTime: "12:00", endTime: "12:45", locationType: "virtual", locationUrl: "https://meet.google.com/abc-defg-hij", coverImage: "", recurring: { frequency: "monthly", dayOfWeek: new Date(now.getTime() + 1 * 86400000).getDay() }, rsvps: ["m2", "m4", "m6", "m7", "m8", "m9", "m10", "m11"], createdBy: "coach", createdAt: new Date(now.getTime() - 3 * 86400000).toISOString() },
-    { id: uuid(), title: "Q&A with Coach", description: "Open Q&A session. Bring your questions about training, nutrition, recovery, or anything fitness-related. No question is too basic!", date: d(10), startTime: "17:00", endTime: "18:00", locationType: "virtual", locationUrl: "https://zoom.us/j/example456", coverImage: "", recurring: null, rsvps: ["m1", "m2", "m3"], createdBy: "coach", createdAt: new Date(now.getTime() - 2 * 86400000).toISOString() },
-    { id: uuid(), title: "Recovery & Mobility Session", description: "Guided mobility and recovery session. We'll work through foam rolling, stretching, and breathwork. Perfect for rest days or as a complement to your training.", date: d(-10), startTime: "08:00", endTime: "09:00", locationType: "in-person", locationUrl: "123 Fitness Ave, Suite 200", coverImage: "", recurring: null, rsvps: ["m1", "m5", "m6", "m9", "m10"], createdBy: "coach", createdAt: new Date(now.getTime() - 20 * 86400000).toISOString() },
-    { id: uuid(), title: "Saturday Morning Bootcamp", description: "High-energy Saturday bootcamp! Expect circuits, partner work, and a great sweat. All levels welcome - every exercise has a modification.", date: d(-3), startTime: "07:30", endTime: "08:30", locationType: "in-person", locationUrl: "City Park - North Entrance", coverImage: "", recurring: { frequency: "weekly", dayOfWeek: 6 }, rsvps: ["m2", "m3", "m4", "m7", "m8", "m11", "m12"], createdBy: "coach", createdAt: new Date(now.getTime() - 14 * 86400000).toISOString() },
+    { id: uuid(), title: "Community Workout", description: "Join us for a full-body workout anyone can do. All fitness levels welcome! We'll break into groups and scale appropriately. Bring water and a towel.", date: d(3), startTime: "09:00", endTime: "10:00", locationType: "in-person", locationUrl: "123 Fitness Ave, Suite 200", coverImage: "", recurring: { frequency: "weekly", dayOfWeek: new Date(now.getTime() + 3 * 86400000).getDay() }, rsvps: ["m1", "m2", "m3", "m4", "m5", "m6", "m7"], createdBy: "coach", createdAt: new Date(now.getTime() - 7 * 86400000).toISOString(), allowedPlanIds: [] },
+    { id: uuid(), title: "Nutrition Workshop", description: "Learn practical meal-prep strategies and macro-friendly recipes. We'll cover grocery shopping tips, easy high-protein meals, and how to stay consistent with nutrition.", date: d(7), startTime: "18:00", endTime: "19:30", locationType: "virtual", locationUrl: "https://zoom.us/j/example123", coverImage: "", recurring: null, rsvps: ["m1", "m3", "m5", "m8", "m9"], createdBy: "coach", createdAt: new Date(now.getTime() - 5 * 86400000).toISOString(), allowedPlanIds: [] },
+    { id: uuid(), title: "Monthly Challenge Kickoff", description: "Kick off the new monthly challenge! This month: 30-day consistency challenge. Show up every day, log your workouts, and earn points. Prizes for top 3 finishers.", date: d(1), startTime: "12:00", endTime: "12:45", locationType: "virtual", locationUrl: "https://meet.google.com/abc-defg-hij", coverImage: "", recurring: { frequency: "monthly", dayOfWeek: new Date(now.getTime() + 1 * 86400000).getDay() }, rsvps: ["m2", "m4", "m6", "m7", "m8", "m9", "m10", "m11"], createdBy: "coach", createdAt: new Date(now.getTime() - 3 * 86400000).toISOString(), allowedPlanIds: [] },
+    { id: uuid(), title: "Q&A with Coach", description: "Open Q&A session. Bring your questions about training, nutrition, recovery, or anything fitness-related. No question is too basic!", date: d(10), startTime: "17:00", endTime: "18:00", locationType: "virtual", locationUrl: "https://zoom.us/j/example456", coverImage: "", recurring: null, rsvps: ["m1", "m2", "m3"], createdBy: "coach", createdAt: new Date(now.getTime() - 2 * 86400000).toISOString(), allowedPlanIds: [] },
+    { id: uuid(), title: "Recovery & Mobility Session", description: "Guided mobility and recovery session. We'll work through foam rolling, stretching, and breathwork. Perfect for rest days or as a complement to your training.", date: d(-10), startTime: "08:00", endTime: "09:00", locationType: "in-person", locationUrl: "123 Fitness Ave, Suite 200", coverImage: "", recurring: null, rsvps: ["m1", "m5", "m6", "m9", "m10"], createdBy: "coach", createdAt: new Date(now.getTime() - 20 * 86400000).toISOString(), allowedPlanIds: [] },
+    { id: uuid(), title: "Saturday Morning Bootcamp", description: "High-energy Saturday bootcamp! Expect circuits, partner work, and a great sweat. All levels welcome - every exercise has a modification.", date: d(-3), startTime: "07:30", endTime: "08:30", locationType: "in-person", locationUrl: "City Park - North Entrance", coverImage: "", recurring: { frequency: "weekly", dayOfWeek: 6 }, rsvps: ["m2", "m3", "m4", "m7", "m8", "m11", "m12"], createdBy: "coach", createdAt: new Date(now.getTime() - 14 * 86400000).toISOString(), allowedPlanIds: [] },
   ];
 }
 
@@ -137,6 +138,7 @@ function EventCard({ ev, B, onRsvp, onClick }) {
           {isGoing && (
             <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: `${B.accent}22`, color: B.accent, fontWeight: 600 }}>You're going!</span>
           )}
+          <PlanLockBadge allowedPlanIds={ev.allowedPlanIds} B={B} />
         </div>
         <div style={{ fontSize: 12, color: B.muted, marginBottom: 8 }}>
           {fmtDate(ev.date)} &middot; {fmtTime(ev.startTime)} - {fmtTime(ev.endTime)}
@@ -257,7 +259,7 @@ function EventDetailModal({ ev, B, onClose, onRsvp }) {
 
 /* ---- New Event Form Modal ---- */
 function NewEventModal({ B, onClose, onSave }) {
-  const [form, setForm] = useState({ title: "", description: "", date: today(), startTime: "09:00", endTime: "10:00", locationType: "virtual", locationUrl: "", coverImage: "", recurringEnabled: false, recurringFreq: "weekly" });
+  const [form, setForm] = useState({ title: "", description: "", date: today(), startTime: "09:00", endTime: "10:00", locationType: "virtual", locationUrl: "", coverImage: "", recurringEnabled: false, recurringFreq: "weekly", allowedPlanIds: [] });
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const inputStyle = { width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${B.border}`, background: B.dark, color: B.text, fontSize: 13, outline: "none", boxSizing: "border-box" };
@@ -276,6 +278,7 @@ function NewEventModal({ B, onClose, onSave }) {
       locationUrl: form.locationUrl.trim(),
       coverImage: form.coverImage.trim(),
       recurring: form.recurringEnabled ? { frequency: form.recurringFreq, dayOfWeek: new Date(form.date + "T00:00:00").getDay() } : null,
+      allowedPlanIds: form.allowedPlanIds,
       rsvps: [],
       createdBy: "coach",
       createdAt: new Date().toISOString(),
@@ -341,6 +344,7 @@ function NewEventModal({ B, onClose, onSave }) {
               </select>
             )}
           </div>
+          <PlanAccessPicker allowedPlanIds={form.allowedPlanIds} onChange={(ids) => set("allowedPlanIds", ids)} B={B} labelStyle={labelStyle} />
         </div>
 
         <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
