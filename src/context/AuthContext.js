@@ -43,8 +43,10 @@ export function AuthProvider({ children }) {
     // Check local staff accounts (includes defaults for this gym)
     let user = users.find(u => u.username === username && u.password === password);
     if (user) {
-      // Set gym context if user has a gymId
-      if (user.gymId) {
+      if (user.isSuperAdmin) {
+        // Super admin operates outside any gym — use __super__ context
+        localStorage.setItem("hf_gym_id", "__super__");
+      } else if (user.gymId) {
         localStorage.setItem("hf_gym_id", user.gymId);
       }
       setCurrentUser(user);
