@@ -52,7 +52,7 @@ export default function SettingsView() {
   const [branding, setBranding] = useLocalStorage("hf_branding", DEFAULT_BRANDING);
   const [stationSettings, setStationSettings] = useLocalStorage("hf_station_settings", { showWeight: true, showReps: true, showRPE: true, showMedia: true });
   const [locations, setLocations] = useLocalStorage("hf_locations", DEFAULT_LOCATIONS);
-  const [newUser, setNewUser] = useState({ username: "", password: "", role: "coach", displayName: "" });
+  const [newUser, setNewUser] = useState({ email: "", username: "", password: "", role: "coach", displayName: "" });
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -357,7 +357,7 @@ export default function SettingsView() {
           <thead>
             <tr>
               <th style={s.th}>Display Name</th>
-              <th style={s.th}>Username</th>
+              <th style={s.th}>Email</th>
               <th style={s.th}>Role</th>
               <th style={s.th}>Actions</th>
             </tr>
@@ -366,7 +366,7 @@ export default function SettingsView() {
             {users.filter(u => u.role !== "client").map(u => (
               <tr key={u.id}>
                 <td style={s.td}>{u.displayName}</td>
-                <td style={{ ...s.td, color: B.muted }}>{u.username}</td>
+                <td style={{ ...s.td, color: B.muted }}>{u.email || u.username}</td>
                 <td style={s.td}>
                   {currentUser?.id === u.id || u.isSuperAdmin ? (
                     <span style={s.badge(u.role === "admin" ? B.purple : B.green)}>{u.role}</span>
@@ -405,8 +405,8 @@ export default function SettingsView() {
             <input style={s.input} value={newUser.displayName} onChange={e => setNewUser(p => ({ ...p, displayName: e.target.value }))} placeholder="Coach Jane" />
           </div>
           <div>
-            <label style={s.label}>Username</label>
-            <input style={s.input} value={newUser.username} onChange={e => setNewUser(p => ({ ...p, username: e.target.value }))} placeholder="jane" />
+            <label style={s.label}>Email (login)</label>
+            <input style={s.input} type="email" value={newUser.email} onChange={e => setNewUser(p => ({ ...p, email: e.target.value, username: e.target.value }))} placeholder="jane@gym.com" />
           </div>
         </div>
         <div style={s.row}>
@@ -422,10 +422,10 @@ export default function SettingsView() {
             </select>
           </div>
         </div>
-        <button style={{ ...s.btn(), opacity: (newUser.username && newUser.password && newUser.displayName) ? 1 : 0.4 }} onClick={() => {
-          if (!newUser.username || !newUser.password || !newUser.displayName) return;
-          addUser({ ...newUser });
-          setNewUser({ username: "", password: "", role: "coach", displayName: "" });
+        <button style={{ ...s.btn(), opacity: (newUser.email && newUser.password && newUser.displayName) ? 1 : 0.4 }} onClick={() => {
+          if (!newUser.email || !newUser.password || !newUser.displayName) return;
+          addUser({ ...newUser, username: newUser.email });
+          setNewUser({ email: "", username: "", password: "", role: "coach", displayName: "" });
           showToast("User added!");
         }}>Add User</button>
       </Card>

@@ -6,7 +6,7 @@ export const useAuth = () => useContext(AuthCtx);
 
 // Only superadmin is forced — everything else is user-managed
 const PROTECTED_USERS = [
-  { id: "u0", username: "superadmin", password: "gymkit2026", role: "admin", memberId: null, displayName: "GymKit Super Admin", isSuperAdmin: true },
+  { id: "u0", username: "superadmin", email: "admin@gymkit.io", password: "gymkit2026", role: "admin", memberId: null, displayName: "GymKit Super Admin", isSuperAdmin: true },
 ];
 
 const DEFAULT_USERS = [
@@ -39,9 +39,10 @@ export function AuthProvider({ children }) {
     setSession(currentUser);
   }, [currentUser, setSession]);
 
-  const login = async (username, password) => {
-    // Check local staff accounts (includes defaults for this gym)
-    let user = users.find(u => u.username === username && u.password === password);
+  const login = async (emailOrUsername, password) => {
+    // Check local staff accounts — match by email or username
+    const input = emailOrUsername.toLowerCase().trim();
+    let user = users.find(u => (u.email?.toLowerCase() === input || u.username?.toLowerCase() === input) && u.password === password);
     if (user) {
       if (user.isSuperAdmin) {
         // Super admin operates outside any gym — use __super__ context
@@ -66,7 +67,7 @@ export function AuthProvider({ children }) {
         const rows = await res.json();
         for (const row of rows) {
           const gymUsers = Array.isArray(row.value) ? row.value : [];
-          const found = gymUsers.find(u => u.username === username && u.password === password);
+          const found = gymUsers.find(u => (u.email?.toLowerCase() === input || u.username?.toLowerCase() === input) && u.password === password);
           if (found) {
             // Set gym context to this user's gym
             localStorage.setItem("hf_gym_id", row.gym_id);
@@ -84,7 +85,7 @@ export function AuthProvider({ children }) {
     // Check member accounts (email as username, PIN as password)
     try {
       const members = JSON.parse(localStorage.getItem("hf_members") || "[]");
-      const member = members.find(m => m.email === username && m.pin === password);
+      const member = members.find(m => m.email?.toLowerCase() === input && m.pin === password);
       if (member) {
         const clientUser = { id: "client_" + member.id, username: member.email, role: "client", memberId: member.id, displayName: member.firstName + " " + member.lastName };
         setCurrentUser(clientUser);

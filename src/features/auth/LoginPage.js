@@ -86,13 +86,13 @@ export default function LoginPage() {
                 letterSpacing: 0.5,
               }}
             >
-              Username / Email
+              Email
             </label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter username or email"
+              placeholder="Enter your email"
               autoFocus
               style={{
                 width: "100%",
@@ -207,7 +207,7 @@ export default function LoginPage() {
             Demo Accounts
           </p>
           {[
-            { role: "Super Admin", creds: "superadmin / gymkit2026", color: "#ef4444", note: "Super Admin Panel" },
+            { role: "Super Admin", creds: "admin@gymkit.io / gymkit2026", color: "#ef4444", note: "Super Admin Panel" },
             { role: "Client", creds: "sarah@example.com / 1234", color: ACCENT, note: "Client portal" },
           ].map((d) => (
             <div
