@@ -45,7 +45,7 @@ const INITIAL_CLASSES = [
   {id:crypto.randomUUID(),name:"6PM Advanced",instructor:"Coach Mike",dayOfWeek:5,startTime:"18:00",endTime:"19:00",capacity:10,bookings:[],waitlist:[],recurring:true,workoutId:"",_demo:true},
 ];
 
-const EMPTY_FORM = {name:"",instructor:"",dayOfWeek:0,startTime:"06:00",endTime:"06:45",capacity:8,recurring:true,workoutId:""};
+const EMPTY_FORM = {name:"",instructor:"",dayOfWeek:0,selectedDays:[],startTime:"06:00",endTime:"06:45",capacity:8,recurring:true,workoutId:""};
 
 export default function ScheduleView() {
   const B = useTheme();
@@ -99,8 +99,14 @@ export default function ScheduleView() {
 
   const handleCreateClass = () => {
     if (!form.name.trim()) return;
-    const newClass = { ...form, id: crypto.randomUUID(), capacity: Number(form.capacity) || 8, bookings: [], waitlist: [] };
-    setClasses(prev => [...prev, newClass]);
+    const days = form.selectedDays.length > 0 ? form.selectedDays : [form.dayOfWeek];
+    const newClasses = days.map(day => ({
+      ...form, id: crypto.randomUUID(), dayOfWeek: day,
+      capacity: Number(form.capacity) || 8, bookings: [], waitlist: [],
+    }));
+    // Remove selectedDays from stored class data
+    newClasses.forEach(c => delete c.selectedDays);
+    setClasses(prev => [...prev, ...newClasses]);
     setForm({...EMPTY_FORM});
     setShowNewModal(false);
   };
@@ -719,13 +725,21 @@ export default function ScheduleView() {
                   </select>
                 )}
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
-                <div>
-                  <label style={labelStyle}>Day</label>
-                  <select style={inputStyle} value={form.dayOfWeek} onChange={e=>setForm(f=>({...f,dayOfWeek:Number(e.target.value)}))}>
-                    {DAYS.map((d,i) => <option key={i} value={i}>{d}</option>)}
-                  </select>
+              <div>
+                <label style={labelStyle}>Days</label>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {DAYS.map((d,i) => {
+                    const selected = form.selectedDays.includes(i);
+                    return (
+                      <button key={i} type="button" onClick={() => setForm(f => ({...f, selectedDays: selected ? f.selectedDays.filter(x=>x!==i) : [...f.selectedDays, i]}))}
+                        style={{padding:"6px 14px",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",border:selected?`2px solid ${B.accent}`:`1px solid ${B.border}`,background:selected?B.accent+"15":"transparent",color:selected?B.accent:B.muted}}>
+                        {d}
+                      </button>
+                    );
+                  })}
                 </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 <div>
                   <label style={labelStyle}>Start Time</label>
                   <input type="time" style={inputStyle} value={form.startTime} onChange={e=>setForm(f=>({...f,startTime:e.target.value}))} />
