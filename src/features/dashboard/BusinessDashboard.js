@@ -2114,6 +2114,28 @@ export default function BusinessDashboard() {
               <ChangeIndicator current={lostMemberCount} previous={priorLostMemberCount} invert />
             </div>
           </div>
+
+          {/* Session Utilization */}
+          {(() => {
+            const cm = new Date().toISOString().slice(0, 7);
+            const tracked = members.filter(m => {
+              const plan = plans.find(p => p.id === m.membershipPlanId);
+              return plan && plan.sessionsIncluded;
+            });
+            if (tracked.length === 0) return null;
+            const avgUtil = Math.round(tracked.reduce((sum, m) => {
+              const plan = plans.find(p => p.id === m.membershipPlanId);
+              const used = attendance.filter(a => a.memberId === m.id && !a.noShow && a.checkInTime?.slice(0, 7) === cm).length;
+              return sum + (used / plan.sessionsIncluded) * 100;
+            }, 0) / tracked.length);
+            return (
+              <div style={{ padding: 16, background: "rgba(255,255,255,0.12)", borderRadius: 10 }}>
+                <div style={kpiLabelStyle}>Avg Session Utilization</div>
+                <div style={kpiValueStyle}>{avgUtil}%</div>
+                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", marginTop: 4 }}>across {tracked.length} members</div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

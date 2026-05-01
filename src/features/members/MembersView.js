@@ -33,7 +33,7 @@ function scoreColor(v) {
 }
 
 const emptyForm = () => ({
-  firstName: "", lastName: "", email: "", phone: "", pin: "", startDate: "",
+  firstName: "", lastName: "", email: "", phone: "", pin: "", startDate: "", dob: "",
   membershipStatus: "active", notes: "", tagsStr: "",
   street: "", city: "", state: "", zip: "",
   usePassword: false,
@@ -46,6 +46,7 @@ export default function MembersView() {
   const { events, logEvent, removeLatestEvent } = useMembershipEvents();
   const { log: changelog, markUndone, logChange } = useMemberChangelog();
   const [plans] = useLocalStorage("hf_plans", []);
+  const [attendance] = useLocalStorage("hf_attendance", []);
   const sc = STATUS_COLORS(B);
   const [showHistory, setShowHistory] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
@@ -54,6 +55,7 @@ export default function MembersView() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [sortBy, setSortBy] = useState("name-az"); // name-az, name-za, date-new, date-old, birthday, plan
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm());
@@ -204,7 +206,7 @@ export default function MembersView() {
     }
   };
 
-  // filtering
+  // filtering + sorting
   const filtered = members.filter((m) => {
     const q = search.toLowerCase();
     const matchesSearch = !q ||
@@ -212,6 +214,24 @@ export default function MembersView() {
       (m.email || "").toLowerCase().includes(q);
     const matchesStatus = statusFilter === "All" || getEffectiveStatus(m, plans) === statusFilter.toLowerCase();
     return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    switch (sortBy) {
+      case "name-az": return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
+      case "name-za": return `${b.firstName} ${b.lastName}`.localeCompare(`${a.firstName} ${a.lastName}`);
+      case "date-new": return (b.startDate || b.createdAt || "").localeCompare(a.startDate || a.createdAt || "");
+      case "date-old": return (a.startDate || a.createdAt || "").localeCompare(b.startDate || b.createdAt || "");
+      case "birthday": {
+        const aM = a.dob ? new Date(a.dob + "T12:00:00").getMonth() * 100 + new Date(a.dob + "T12:00:00").getDate() : 9999;
+        const bM = b.dob ? new Date(b.dob + "T12:00:00").getMonth() * 100 + new Date(b.dob + "T12:00:00").getDate() : 9999;
+        return aM - bM;
+      }
+      case "plan": {
+        const aP = plans.find(p => p.id === a.membershipPlanId)?.name || "zzz";
+        const bP = plans.find(p => p.id === b.membershipPlanId)?.name || "zzz";
+        return aP.localeCompare(bP);
+      }
+      default: return 0;
+    }
   });
 
   const openAdd = () => { setEditId(null); setForm(emptyForm()); setModalOpen(true); };
@@ -219,7 +239,7 @@ export default function MembersView() {
     setEditId(m.id);
     setForm({
       firstName: m.firstName, lastName: m.lastName, email: m.email, phone: m.phone,
-      pin: m.pin || "", startDate: m.startDate || "", membershipStatus: m.membershipStatus,
+      pin: m.pin || "", startDate: m.startDate || "", dob: m.dob || "", membershipStatus: m.membershipStatus,
       notes: m.notes || "", tagsStr: (m.tags || []).join(", "),
       street: m.address?.street || "", city: m.address?.city || "",
       state: m.address?.state || "", zip: m.address?.zip || "",
@@ -236,11 +256,13 @@ export default function MembersView() {
       phone: form.phone.trim(),
       pin: form.pin.trim(),
       startDate: form.startDate,
+      dob: form.dob,
       notes: form.notes.trim(),
       tags: form.tagsStr.split(",").map(t => t.trim()).filter(Boolean),
       address: { street: form.street.trim(), city: form.city.trim(), state: form.state.trim(), zip: form.zip.trim(), country: "US" },
     };
     if (!data.firstName || !data.lastName) return;
+    if (!editId && !data.dob) { showToast("Date of birth is required", "error"); return; }
     const fullName = data.firstName + " " + data.lastName;
     if (editId) {
       // Only include status changes for edits (frozen/unfrozen)
@@ -379,7 +401,7 @@ export default function MembersView() {
         </div>
       </div>
 
-      {/* Search + Filter */}
+      {/* Search + Filter + Sort */}
       <div style={s.searchRow}>
         <input
           style={s.searchInput}
@@ -387,6 +409,15 @@ export default function MembersView() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 13, outline: "none", cursor: "pointer" }}>
+          <option value="name-az">Name A-Z</option>
+          <option value="name-za">Name Z-A</option>
+          <option value="date-new">Newest First</option>
+          <option value="date-old">Oldest First</option>
+          <option value="birthday">Birthday</option>
+          <option value="plan">Plan</option>
+        </select>
         <div style={s.pills}>
           {STATUS_OPTIONS.map((st) => (
             <button key={st} style={s.pill(statusFilter === st)} onClick={() => setStatusFilter(st)}>{st}</button>
@@ -667,6 +698,24 @@ export default function MembersView() {
                   <span>Streak: {m.gamification?.currentStreak || 0}</span>
                 </div>
 
+                {/* Session utilization */}
+                {(() => {
+                  const plan = plans.find(p => p.id === m.membershipPlanId);
+                  if (!plan?.sessionsIncluded) return null;
+                  const cm = new Date().toISOString().slice(0, 7);
+                  const used = attendance.filter(a => a.memberId === m.id && !a.noShow && a.checkInTime?.slice(0, 7) === cm).length;
+                  const util = Math.min(Math.round((used / plan.sessionsIncluded) * 100), 100);
+                  const over = used > plan.sessionsIncluded;
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: B.dim }}>
+                      <div style={{ flex: 1, height: 5, borderRadius: 3, background: B.border + "44", overflow: "hidden" }}>
+                        <div style={{ width: Math.min(util, 100) + "%", height: "100%", borderRadius: 3, background: over ? B.red : util >= 80 ? B.orange : B.green }} />
+                      </div>
+                      <span style={{ fontWeight: 600, color: over ? B.red : util >= 80 ? B.orange : B.green, whiteSpace: "nowrap" }}>{used}/{plan.sessionsIncluded} sessions ({util}%)</span>
+                    </div>
+                  );
+                })()}
+
                 {/* Actions */}
                 <div style={s.actions}>
                   <button style={s.actionBtn(B.accent + "22", B.accent)} onClick={() => navigate(`/members/${m.id}`)}>View</button>
@@ -745,12 +794,19 @@ export default function MembersView() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: editId ? "1fr 1fr" : "1fr", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div style={s.field}>
+                <label style={s.label}>Date of Birth *</label>
+                <input style={s.input} type="date" value={form.dob} onChange={(e) => set("dob", e.target.value)} required />
+              </div>
               <div style={s.field}>
                 <label style={s.label}>Start Date</label>
                 <input style={s.input} type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />
               </div>
-              {editId && (
+            </div>
+
+            {editId && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
                 <div style={s.field}>
                   <label style={s.label}>Status</label>
                   <select style={s.select} value={form.membershipStatus} onChange={(e) => set("membershipStatus", e.target.value)}>
@@ -758,8 +814,8 @@ export default function MembersView() {
                     <option value="frozen">Frozen (Hold)</option>
                   </select>
                 </div>
-              )}
             </div>
+            )}
 
             {editId && form.membershipStatus === "frozen" && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>

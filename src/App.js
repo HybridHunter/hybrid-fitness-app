@@ -65,6 +65,7 @@ function GymRoutes() {
   const { gymId } = useParams();
   const { currentUser } = useAuth();
   const [theme, setTheme] = useLocalStorage("hf_theme", "dark");
+  const [displayScale] = useLocalStorage("hf_display_scale", 1);
   const [exercises, setExercises] = useLocalStorage("hf_ex", [...EX]);
   const [workouts, setWorkouts] = useLocalStorage("hf_w", []);
   const [programs, setPrograms] = useLocalStorage("hf_p", []);
@@ -129,7 +130,7 @@ function GymRoutes() {
   return (
     <ThemeCtx.Provider value={B}>
       <ImpersonateBanner />
-      <Shell theme={theme} onToggleTheme={() => setTheme(t => t === "dark" ? "light" : "dark")}>
+      <Shell theme={theme} onToggleTheme={() => setTheme(t => t === "dark" ? "light" : "dark")} style={displayScale !== 1 ? { fontSize: `${displayScale * 100}%` } : undefined}>
         <Routes>
           <Route path="/" element={currentUser.role === "admin" ? <BusinessDashboard /> : <CoachingDashboard />} />
           <Route path="coaching" element={<CoachingDashboard />} />

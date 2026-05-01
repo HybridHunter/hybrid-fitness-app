@@ -68,6 +68,9 @@ export default function ScheduleView() {
   const [noShowSettings, setNoShowSettings] = useLocalStorage("hf_noshow_settings", { feeEnabled: false, feeAmount: 25, cancelWindowHours: 12, penaltyEnabled: true, lateCancelFeeEnabled: false, lateCancelFeeThreshold: 3 });
   const [noShowConfirm, setNoShowConfirm] = useState(null);
   const [showNoShowSettings, setShowNoShowSettings] = useState(false);
+  const [privateSessions, setPrivateSessions] = useLocalStorage("hf_private_sessions", []);
+  const [showPrivateLog, setShowPrivateLog] = useState(false);
+  const [privateForm, setPrivateForm] = useState({ memberId: "", coachId: "", date: new Date().toISOString().slice(0, 10), startTime: "", endTime: "", notes: "" });
 
   const monday = useMemo(() => {
     const m = getMonday(new Date());
@@ -532,6 +535,82 @@ export default function ScheduleView() {
           </div>
         </div>
       )}
+
+      {/* Private Training Log */}
+      <Card style={{marginTop:20,padding:16}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}} onClick={()=>setShowPrivateLog(!showPrivateLog)}>
+          <h3 style={{fontSize:16,fontWeight:700,color:B.text,margin:0}}>Private Training Sessions</h3>
+          <span style={{color:B.dim}}>{showPrivateLog ? "\u25B2" : "\u25BC"}</span>
+        </div>
+        {showPrivateLog && (
+          <div style={{marginTop:14}}>
+            {/* Add private session form */}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14,alignItems:"flex-end"}}>
+              <div>
+                <label style={labelStyle}>Client</label>
+                <select value={privateForm.memberId} onChange={e=>setPrivateForm(p=>({...p,memberId:e.target.value}))} style={{...inputStyle,width:160}}>
+                  <option value="">Select client...</option>
+                  {members.filter(m=>!!m.membershipPlanId).map(m=><option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Coach</label>
+                <select value={privateForm.coachId} onChange={e=>setPrivateForm(p=>({...p,coachId:e.target.value}))} style={{...inputStyle,width:140}}>
+                  <option value="">Select...</option>
+                  {coaches.map(c=><option key={c.id} value={c.id}>{c.displayName||c.username}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Date</label>
+                <input type="date" value={privateForm.date} onChange={e=>setPrivateForm(p=>({...p,date:e.target.value}))} style={{...inputStyle,width:140}}/>
+              </div>
+              <div>
+                <label style={labelStyle}>Time</label>
+                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                  <input type="time" value={privateForm.startTime} onChange={e=>setPrivateForm(p=>({...p,startTime:e.target.value}))} style={{...inputStyle,width:100}}/>
+                  <span style={{color:B.dim}}>-</span>
+                  <input type="time" value={privateForm.endTime} onChange={e=>setPrivateForm(p=>({...p,endTime:e.target.value}))} style={{...inputStyle,width:100}}/>
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>Notes</label>
+                <input value={privateForm.notes} onChange={e=>setPrivateForm(p=>({...p,notes:e.target.value}))} placeholder="Optional notes" style={{...inputStyle,width:160}}/>
+              </div>
+              <button onClick={()=>{
+                if(!privateForm.memberId||!privateForm.date) return;
+                const m=getMember(privateForm.memberId);
+                const c=coaches.find(x=>x.id===privateForm.coachId);
+                setPrivateSessions(prev=>[{id:crypto.randomUUID(),memberId:privateForm.memberId,memberName:m?`${m.firstName} ${m.lastName}`:"Unknown",coachId:privateForm.coachId,coachName:c?.displayName||c?.username||"",date:privateForm.date,startTime:privateForm.startTime,endTime:privateForm.endTime,notes:privateForm.notes,createdAt:new Date().toISOString()},...prev]);
+                // Also log as attendance
+                setAttendance(prev=>[...prev,{id:crypto.randomUUID(),memberId:privateForm.memberId,checkInTime:new Date(`${privateForm.date}T${privateForm.startTime||"09:00"}`).toISOString(),method:"private",classId:null}]);
+                setPrivateForm({memberId:"",coachId:"",date:new Date().toISOString().slice(0,10),startTime:"",endTime:"",notes:""});
+              }} style={btn({background:B.accent,color:"#fff",padding:"8px 16px",fontSize:13})}>
+                Log Session
+              </button>
+            </div>
+
+            {/* Session list */}
+            {privateSessions.length === 0 ? (
+              <div style={{color:B.dim,fontSize:13,padding:"8px 0"}}>No private sessions logged yet.</div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {privateSessions.slice(0,30).map(ps=>(
+                  <div key={ps.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 12px",borderRadius:8,background:B.darker}}>
+                    <div style={{fontSize:13,fontWeight:600,color:B.text,minWidth:90}}>{new Date(ps.date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div>
+                    <div style={{flex:1}}>
+                      <span style={{fontWeight:600,color:B.text}}>{ps.memberName}</span>
+                      {ps.coachName && <span style={{color:B.muted,fontSize:12}}> with {ps.coachName}</span>}
+                    </div>
+                    {ps.startTime && <span style={{fontSize:12,color:B.dim}}>{ps.startTime}{ps.endTime ? `-${ps.endTime}` : ""}</span>}
+                    {ps.notes && <span style={{fontSize:11,color:B.dim,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ps.notes}</span>}
+                    <button onClick={()=>setPrivateSessions(prev=>prev.filter(p=>p.id!==ps.id))} style={{background:"none",border:"none",color:B.red,cursor:"pointer",fontSize:12}}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
 
       {/* Delete Recurring Confirmation */}
       {deleteConfirm && (

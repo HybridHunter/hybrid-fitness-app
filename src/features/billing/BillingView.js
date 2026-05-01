@@ -119,6 +119,12 @@ function PlanModal({ plan, onSave, onClose, B, schedule, allPlans }) {
           <div>
             <label style={labelStyle}>Sessions Included</label>
             <input style={inputStyle} type="number" min="0" value={form.sessionsIncluded ?? ""} onChange={e => set("sessionsIncluded", e.target.value === "" ? null : Number(e.target.value))} placeholder="Blank = Unlimited" />
+            {form.sessionsIncluded && (
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={!!form.allowCarryover} onChange={e => set("allowCarryover", e.target.checked)} style={{ width: 16, height: 16, accentColor: B.accent }} />
+                <span style={{ fontSize: 13, color: B.text }}>Carry over unused sessions to next cycle</span>
+              </label>
+            )}
           </div>
           <div>
             <label style={labelStyle}>Description</label>

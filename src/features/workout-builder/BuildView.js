@@ -45,7 +45,7 @@ export default function BuildView({exercises,setExercises,workouts,setWorkouts,l
   const save=()=>{const filled=sections.some(s=>s.slots.some(sl=>sl.exercise));if(!filled)return;setWorkouts(p=>[...p,{id:Date.now(),name:wName||phase+" - "+wLabel,phase,workoutLabel:wLabel,description:wDesc,sections:sections.map(s=>({...s,slots:s.slots.map(sl=>({...sl}))})),date:new Date().toISOString()}]);reset();if(onSaved)onSaved();};
   const reset=()=>{setSections(initSections());setWName("");setWDesc("");};
 
-  const inp=(val,onChange,ph,w)=>(<input value={val} onChange={e=>onChange(e.target.value)} placeholder={ph} style={{background:B.darker,border:"1px solid "+B.border,borderRadius:5,color:B.text,padding:"4px 6px",width:w,fontSize:11,textAlign:"center",outline:"none"}}/>);
+  const inp=(val,onChange,ph,w)=>(<input value={val} onChange={e=>onChange(e.target.value)} placeholder={ph} style={{background:B.darker,border:"1px solid "+B.border,borderRadius:6,color:B.text,padding:"6px 8px",width:w+12,fontSize:14,textAlign:"center",outline:"none",fontWeight:600}}/>);
 
   return(<div>
     {confirm&&<ConfirmDialog msg={confirm.msg} onOk={confirm.action} onNo={()=>setConfirm(null)}/>}

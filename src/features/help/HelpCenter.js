@@ -464,7 +464,7 @@ export function FloatingHelpButton() {
       <button
         onClick={() => setOpen(!open)}
         style={{
-          position: "fixed", bottom: 24, right: 24, zIndex: 9000,
+          position: "fixed", bottom: 24, left: 24, zIndex: 9000,
           width: 48, height: 48, borderRadius: "50%",
           background: B.green, color: "#fff", border: "none",
           fontSize: 20, fontWeight: 700, cursor: "pointer",
@@ -482,7 +482,7 @@ export function FloatingHelpButton() {
       {/* Mini panel */}
       {open && (
         <div style={{
-          position: "fixed", bottom: 80, right: 24, zIndex: 9001,
+          position: "fixed", bottom: 80, left: 24, zIndex: 9001,
           width: 320, maxHeight: 420,
           background: B.card, border: `1px solid ${B.border}`,
           borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.3)",

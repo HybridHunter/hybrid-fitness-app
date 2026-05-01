@@ -688,6 +688,24 @@ export default function MemberProfile() {
                 </div>
               )}
             </div>
+            {memberPlan.sessionsIncluded && (() => {
+              const currentMonth = new Date().toISOString().slice(0, 7);
+              const sessionsUsed = attendance.filter(a => a.memberId === member.id && !a.noShow && a.checkInTime?.slice(0, 7) === currentMonth).length;
+              const util = Math.min(Math.round((sessionsUsed / memberPlan.sessionsIncluded) * 100), 100);
+              const overUtil = sessionsUsed > memberPlan.sessionsIncluded;
+              return (
+                <div style={{ marginTop: 14, padding: 14, borderRadius: 10, background: B.darker, border: "1px solid " + B.border + "44" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: B.text, marginBottom: 10 }}>Session Usage</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: B.dim, marginBottom: 6 }}>
+                    <span>{sessionsUsed} of {memberPlan.sessionsIncluded} sessions used</span>
+                    <span style={{ fontWeight: 700, color: overUtil ? B.red : util >= 80 ? B.orange : B.green }}>{util}%</span>
+                  </div>
+                  <div style={{ width: "100%", height: 8, borderRadius: 4, background: B.border + "44" }}>
+                    <div style={{ width: Math.min(util, 100) + "%", height: "100%", borderRadius: 4, background: overUtil ? B.red : util >= 80 ? B.orange : B.green, transition: "width 0.3s" }} />
+                  </div>
+                </div>
+              );
+            })()}
             {member.cancelScheduled && (
               <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: B.red + "12", border: "1px solid " + B.red + "30", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>

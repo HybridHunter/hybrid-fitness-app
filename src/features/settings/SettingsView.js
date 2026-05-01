@@ -142,6 +142,28 @@ function EmojiPickerBtn({ value, onChange, B }) {
   );
 }
 
+function DisplayScaleSetting({ B }) {
+  const [scale, setScale] = useLocalStorage("hf_display_scale", 1);
+  const options = [
+    { value: 0.9, label: "Small" },
+    { value: 1, label: "Default" },
+    { value: 1.1, label: "Large" },
+    { value: 1.2, label: "Extra Large" },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 8 }}>
+      {options.map(o => (
+        <button key={o.value} onClick={() => setScale(o.value)} style={{
+          padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+          border: scale === o.value ? `2px solid ${B.accent}` : `1px solid ${B.border}`,
+          background: scale === o.value ? B.accent + "15" : "transparent",
+          color: scale === o.value ? B.accent : B.muted,
+        }}>{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
 export default function SettingsView() {
   const B = useTheme();
   const { currentUser, users, addUser, removeUser, updateUser } = useAuth();
@@ -317,6 +339,11 @@ export default function SettingsView() {
       >
         Restart Onboarding Tour
       </button>
+      <h3 style={s.sectionTitle}>Display Size</h3>
+      <p style={{ fontSize: 13, color: B.muted, marginBottom: 12 }}>
+        Adjust the text and interface size for better readability.
+      </p>
+      <DisplayScaleSetting B={B} />
     </Card>
   );
 
