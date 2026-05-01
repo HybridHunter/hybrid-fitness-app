@@ -104,6 +104,34 @@ export default function MessagingView() {
   const [contextMenu, setContextMenu] = useState(null); // { convId, x, y }
   const messagesEndRef = useRef(null);
   const imgInputRef = useRef(null);
+  const autoOpenProcessed = useRef(false);
+
+  // Auto-open conversation if ?to=memberId is in URL
+  useEffect(() => {
+    if (autoOpenProcessed.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const toMemberId = params.get("to");
+    if (!toMemberId || conversations.length === undefined) return;
+    autoOpenProcessed.current = true;
+
+    // Find existing conversation with this member
+    const existing = conversations.find(c => c.participants?.includes(toMemberId));
+    if (existing) {
+      setActiveConvId(existing.id);
+      setMobileShowConv(true);
+    } else {
+      // Create a new conversation
+      const m = members.find(x => x.id === toMemberId);
+      if (m) {
+        const newConv = { id: crypto.randomUUID(), participants: [toMemberId], messages: [], lastActivity: new Date().toISOString() };
+        setConversations(prev => [newConv, ...prev]);
+        setActiveConvId(newConv.id);
+        setMobileShowConv(true);
+      }
+    }
+    // Clean up URL
+    window.history.replaceState({}, "", window.location.pathname);
+  }, [conversations, members]);
 
   // Demo data initialization removed — demo data is now loaded only via Settings page
 

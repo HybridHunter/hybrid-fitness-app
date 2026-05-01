@@ -139,7 +139,7 @@ export default function ClientPortal() {
   const [clientChatText, setClientChatText] = useState("");
 
   // Data stores
-  const [classes] = useLocalStorage("hf_schedule", []);
+  const [classes, setClasses] = useLocalStorage("hf_schedule", []);
   const [attendance] = useLocalStorage("hf_attendance", []);
   const [workouts] = useLocalStorage("hf_w", []);
   const [communityPosts, setCommunityPosts] = useLocalStorage("hf_community_posts", []);
@@ -221,19 +221,36 @@ export default function ClientPortal() {
   }, [classes, member]);
 
   const todayClasses = useMemo(() => {
-    return myBookedClasses.filter(c => c.dayOfWeek === todayDow);
+    const now = new Date();
+    const currentMin = now.getHours() * 60 + now.getMinutes();
+    return myBookedClasses
+      .filter(c => c.dayOfWeek === todayDow)
+      .filter(c => {
+        // Only include sessions that haven't ended yet
+        const [eh, em] = (c.endTime || "23:59").split(":").map(Number);
+        return currentMin < eh * 60 + em;
+      })
+      .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
   }, [myBookedClasses, todayDow]);
 
   const upcomingClasses = useMemo(() => {
-    // Next 3 booked classes after today
+    const now = new Date();
+    const currentMin = now.getHours() * 60 + now.getMinutes();
     const upcoming = [];
     for (let offset = 0; offset < 7 && upcoming.length < 3; offset++) {
       const dow = (todayDow + offset) % 7;
       const dayClasses = myBookedClasses
-        .filter(c => c.dayOfWeek === dow && (offset > 0 || true))
+        .filter(c => c.dayOfWeek === dow)
         .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
       for (const c of dayClasses) {
-        if (upcoming.length < 3 && !todayClasses.includes(c)) {
+        // Skip if it's today and already ended
+        if (offset === 0) {
+          const [eh, em] = (c.endTime || "23:59").split(":").map(Number);
+          if (currentMin >= eh * 60 + em) continue;
+        }
+        // Skip if already in todayClasses (shown separately)
+        if (todayClasses.some(tc => tc.id === c.id)) continue;
+        if (upcoming.length < 3) {
           upcoming.push({ ...c, _dayLabel: offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : DAYS_FULL[dow] });
         }
       }
@@ -399,12 +416,18 @@ export default function ClientPortal() {
         </div>
 
         {/* Next Session Card */}
-        {nextSession && (
+        {nextSession && (() => {
+          const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+          const [sh, sm] = (nextSession.startTime || "0:0").split(":").map(Number);
+          const [eh, em] = (nextSession.endTime || "23:59").split(":").map(Number);
+          const isInProgress = nowMin >= sh * 60 + sm && nowMin < eh * 60 + em;
+          const isUpcoming = nowMin < sh * 60 + sm;
+          return (
           <div style={{
             ...cardStyle, padding: 0, overflow: "hidden", marginBottom: 16,
           }}>
-            <div style={{ background: B.accent, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{"\uD83D\uDCC5"} Next Session</span>
+            <div style={{ background: isInProgress ? B.green : B.accent, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{isInProgress ? "\uD83D\uDFE2 Session In Progress" : "\uD83D\uDCC5 Next Session"}</span>
               <span style={{ color: "rgba(255,255,255,0.8)", fontSize: 12 }}>Today</span>
             </div>
             <div style={{ padding: 16 }}>
@@ -416,13 +439,25 @@ export default function ClientPortal() {
                 <button onClick={() => switchTab("workouts")} style={touchBtn(B.accent, B.darker, { flex: 1, fontSize: 14 })}>
                   {"\uD83C\uDFCB\uFE0F"} View Workout
                 </button>
-                <button onClick={() => handleQuickCheckIn(nextSession)} style={touchBtn(B.text + "15", B.text, { flex: 1, fontSize: 14, border: `1px solid ${B.border}` })}>
-                  {"\u2705"} Check In
-                </button>
+                {isCheckedInForClass(nextSession.id) ? (
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 16px", borderRadius: 12, background: B.green + "15", border: `1px solid ${B.green}30` }}>
+                    <span style={{ color: B.green, fontWeight: 700, fontSize: 14 }}>{"\u2705"} Checked In</span>
+                  </div>
+                ) : (
+                  <button onClick={() => handleQuickCheckIn(nextSession)} style={touchBtn(B.text + "15", B.text, { flex: 1, fontSize: 14, border: `1px solid ${B.border}` })}>
+                    {"\u2705"} Check In
+                  </button>
+                )}
+                {isUpcoming && !isCheckedInForClass(nextSession.id) && (
+                  <button onClick={() => handleCancel(nextSession.id)} style={touchBtn(B.red + "15", B.red, { fontSize: 13, border: `1px solid ${B.red}30` })}>
+                    Cancel
+                  </button>
+                )}
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* No Session Today */}
         {!nextSession && (
@@ -445,7 +480,10 @@ export default function ClientPortal() {
                   <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{cls.name}</div>
                   <div style={{ fontSize: 12, color: B.muted }}>{fmtTime(cls.startTime)} - {fmtTime(cls.endTime)}</div>
                 </div>
-                <span style={pillBadge(B.accent + "22", B.accent)}>Booked</span>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={pillBadge(B.accent + "22", B.accent)}>Booked</span>
+                  <button onClick={() => handleCancel(cls.id)} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: B.red + "15", color: B.red, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                </div>
               </div>
             ))}
           </>
@@ -948,6 +986,57 @@ export default function ClientPortal() {
   };
 
   /* ─────────── BOOK TAB ─────────── */
+  // Cancel booking — shared between Home and Book tabs
+  const handleCancel = (classId) => {
+    if (!member) return;
+    const cls = classes.find(c => c.id === classId);
+    const nsSettings = (() => { try { return JSON.parse(localStorage.getItem("hf_noshow_settings") || "{}"); } catch { return {}; } })();
+    const cancelWindowHours = nsSettings.cancelWindowHours ?? 12;
+    const penaltyEnabled = nsSettings.penaltyEnabled !== false;
+
+    // Don't allow cancelling past sessions
+    if (cls) {
+      const now = new Date();
+      const todayDow = now.getDay() === 0 ? 6 : now.getDay() - 1;
+      if (cls.dayOfWeek === todayDow && cls.startTime) {
+        const [h, m] = cls.startTime.split(":").map(Number);
+        const sessionTime = new Date(now);
+        sessionTime.setHours(h, m, 0, 0);
+        if (now > sessionTime) { alert("This session has already started or passed."); return; }
+
+        // Check penalty window
+        const hoursUntil = (sessionTime - now) / (1000 * 60 * 60);
+        if (hoursUntil <= cancelWindowHours && penaltyEnabled) {
+          if (!window.confirm(`You are cancelling within ${cancelWindowHours} hours of your session. This will still count against your session allotment. Continue?`)) return;
+          const att = JSON.parse(localStorage.getItem("hf_attendance") || "[]");
+          att.push({ id: crypto.randomUUID(), memberId: member.id, checkInTime: new Date().toISOString(), method: "late-cancel", classId, noShow: true });
+          localStorage.setItem("hf_attendance", JSON.stringify(att));
+          if (nsSettings.lateCancelFeeEnabled && nsSettings.feeAmount) {
+            const thisMonth = new Date().toISOString().slice(0, 7);
+            const monthLateCancels = att.filter(a => a.memberId === member.id && a.method === "late-cancel" && a.checkInTime?.slice(0, 7) === thisMonth).length;
+            if (monthLateCancels >= (nsSettings.lateCancelFeeThreshold || 3)) {
+              const pays = JSON.parse(localStorage.getItem("hf_payments") || "[]");
+              pays.push({ id: "pay_" + Date.now(), member: `${member.firstName} ${member.lastName}`, memberId: member.id, amount: nsSettings.feeAmount, date: new Date().toISOString().slice(0, 10), status: "paid", method: "Late Cancel Fee", description: `Late cancel fee (${monthLateCancels} this month)` });
+              localStorage.setItem("hf_payments", JSON.stringify(pays));
+              alert(`Late cancellation fee of $${nsSettings.feeAmount} has been charged (${monthLateCancels} late cancels this month).`);
+            }
+          }
+        }
+      }
+    }
+
+    setClasses(prev => prev.map(c => {
+      if (c.id !== classId) return c;
+      let newBookings = (c.bookings || []).filter(id => id !== member.id);
+      let newWaitlist = (c.waitlist || []).filter(id => id !== member.id);
+      if (newBookings.length < c.capacity && newWaitlist.length > 0 && (c.bookings || []).includes(member.id)) {
+        newBookings = [...newBookings, newWaitlist[0]];
+        newWaitlist = newWaitlist.slice(1);
+      }
+      return { ...c, bookings: newBookings, waitlist: newWaitlist };
+    }));
+  };
+
   const renderBook = () => {
     const monday = getMonday();
     const weekDates = Array.from({ length: 7 }, (_, i) => {
@@ -958,77 +1047,17 @@ export default function ClientPortal() {
 
     const handleBook = (classId) => {
       if (!member) return;
-      // We need to update the schedule in localStorage directly
-      const stored = JSON.parse(localStorage.getItem("hf_schedule") || "[]");
-      const updated = stored.map(c => {
+      setClasses(prev => prev.map(c => {
         if (c.id !== classId) return c;
         if (c.bookings?.includes(member.id)) return c;
         if ((c.bookings?.length || 0) < c.capacity) {
           return { ...c, bookings: [...(c.bookings || []), member.id] };
         }
         return { ...c, waitlist: [...(c.waitlist || []), member.id] };
-      });
-      localStorage.setItem("hf_schedule", JSON.stringify(updated));
-      window.dispatchEvent(new Event("storage"));
-      // Force re-render
-      window.location.reload();
+      }));
     };
 
-    const handleCancel = (classId) => {
-      if (!member) return;
-      const cls = classes.find(c => c.id === classId);
-      const nsSettings = JSON.parse(localStorage.getItem("hf_noshow_settings") || "{}");
-      const cancelWindowHours = nsSettings.cancelWindowHours ?? 12;
-      const penaltyEnabled = nsSettings.penaltyEnabled !== false;
-
-      // Check if within penalty window
-      if (cls && cancelWindowHours > 0) {
-        const now = new Date();
-        const todayDow = now.getDay() === 0 ? 6 : now.getDay() - 1;
-        if (cls.dayOfWeek === todayDow && cls.startTime) {
-          const [h, m] = cls.startTime.split(":").map(Number);
-          const sessionTime = new Date(now);
-          sessionTime.setHours(h, m, 0, 0);
-          const hoursUntil = (sessionTime - now) / (1000 * 60 * 60);
-          if (hoursUntil > 0 && hoursUntil <= cancelWindowHours && penaltyEnabled) {
-            if (!window.confirm(`You are cancelling within ${cancelWindowHours} hours of your session. This will still count against your session allotment. Continue?`)) {
-              return;
-            }
-            // Log as late cancel (counts against allotment)
-            const att = JSON.parse(localStorage.getItem("hf_attendance") || "[]");
-            att.push({ id: crypto.randomUUID(), memberId: member.id, checkInTime: new Date().toISOString(), method: "late-cancel", classId, noShow: true });
-            localStorage.setItem("hf_attendance", JSON.stringify(att));
-
-            // Check if late cancel fee should be charged (repeat offender)
-            if (nsSettings.lateCancelFeeEnabled && nsSettings.feeAmount) {
-              const thisMonth = new Date().toISOString().slice(0, 7);
-              const monthLateCancels = att.filter(a => a.memberId === member.id && a.method === "late-cancel" && a.checkInTime?.slice(0, 7) === thisMonth).length;
-              if (monthLateCancels >= (nsSettings.lateCancelFeeThreshold || 3)) {
-                const pays = JSON.parse(localStorage.getItem("hf_payments") || "[]");
-                pays.push({ id: "pay_" + Date.now(), member: `${member.firstName} ${member.lastName}`, memberId: member.id, amount: nsSettings.feeAmount, date: new Date().toISOString().slice(0, 10), status: "paid", method: "Late Cancel Fee", description: `Late cancel fee (${monthLateCancels} this month)` });
-                localStorage.setItem("hf_payments", JSON.stringify(pays));
-                alert(`Late cancellation fee of $${nsSettings.feeAmount} has been charged (${monthLateCancels} late cancels this month).`);
-              }
-            }
-          }
-        }
-      }
-
-      const stored = JSON.parse(localStorage.getItem("hf_schedule") || "[]");
-      const updated = stored.map(c => {
-        if (c.id !== classId) return c;
-        let newBookings = (c.bookings || []).filter(id => id !== member.id);
-        let newWaitlist = (c.waitlist || []).filter(id => id !== member.id);
-        if (newBookings.length < c.capacity && newWaitlist.length > 0 && (c.bookings || []).includes(member.id)) {
-          newBookings = [...newBookings, newWaitlist[0]];
-          newWaitlist = newWaitlist.slice(1);
-        }
-        return { ...c, bookings: newBookings, waitlist: newWaitlist };
-      });
-      localStorage.setItem("hf_schedule", JSON.stringify(updated));
-      window.dispatchEvent(new Event("storage"));
-      window.location.reload();
-    };
+    // handleCancel is defined at component level above
 
     return (
       <div style={{ padding: "0 16px" }}>
@@ -1082,6 +1111,12 @@ export default function ClientPortal() {
               {dayClasses.map(cls => {
                 const isBooked = cls.bookings?.includes(member.id);
                 const isWaitlisted = cls.waitlist?.includes(member.id);
+                // Check if session is in the past
+                const sessionDate = weekDates[dayIdx];
+                const now = new Date();
+                const [sh, sm] = (cls.endTime || "23:59").split(":").map(Number);
+                const sessionEnd = new Date(sessionDate); sessionEnd.setHours(sh, sm, 0, 0);
+                const isPast = now > sessionEnd;
                 const isFull = (cls.bookings?.length || 0) >= cls.capacity;
                 const spotsLeft = cls.capacity - (cls.bookings?.length || 0);
 
@@ -1114,7 +1149,9 @@ export default function ClientPortal() {
                       </div>
 
                       <div style={{ marginLeft: 12 }}>
-                        {isBooked || isWaitlisted ? (
+                        {isPast ? (
+                          isBooked ? <span style={{ fontSize: 11, color: B.dim, fontWeight: 600 }}>Completed</span> : null
+                        ) : (isBooked || isWaitlisted) ? (
                           <button
                             onClick={() => handleCancel(cls.id)}
                             style={touchBtn(B.red + "15", B.red, { padding: "8px 16px", fontSize: 13, minHeight: 38 })}
@@ -2980,35 +3017,30 @@ export default function ClientPortal() {
   /* ─────────── QUICK CHECK-IN ─────────── */
   const [checkInMsg, setCheckInMsg] = useState(null);
 
+  const [clientAttendance, setClientAttendance] = useLocalStorage("hf_attendance", []);
+
+  const isCheckedInForClass = (classId) => {
+    const today = todayISO();
+    return clientAttendance.some(a => a.memberId === member?.id && (a.checkInTime || a.timestamp || a.date || "").slice(0, 10) === today && a.classId === classId && !a.noShow);
+  };
+
+  const isCheckedInToday = clientAttendance.some(a => a.memberId === member?.id && (a.checkInTime || a.timestamp || a.date || "").slice(0, 10) === todayISO() && !a.noShow);
+
   const handleQuickCheckIn = (cls) => {
-    try {
-      const stored = JSON.parse(localStorage.getItem("hf_attendance") || "[]");
-      const already = stored.find(a =>
-        a.memberId === member.id &&
-        new Date(a.date || a.timestamp).toISOString().slice(0, 10) === todayISO()
-      );
-      if (already) {
-        setCheckInMsg("You're already checked in today!");
-        setTimeout(() => setCheckInMsg(null), 2500);
-        return;
-      }
-      const record = {
-        id: crypto.randomUUID(),
-        memberId: member.id,
-        date: todayISO(),
-        timestamp: new Date().toISOString(),
-        method: "client-portal",
-        classId: cls?.id || null,
-        className: cls?.name || null,
-      };
-      stored.push(record);
-      localStorage.setItem("hf_attendance", JSON.stringify(stored));
-      setCheckInMsg("Checked in! Have a great workout!");
+    if (isCheckedInForClass(cls?.id)) {
+      setCheckInMsg("You're already checked in for this session!");
       setTimeout(() => setCheckInMsg(null), 2500);
-    } catch (e) {
-      setCheckInMsg("Check-in failed. Try again.");
-      setTimeout(() => setCheckInMsg(null), 2500);
+      return;
     }
+    setClientAttendance(prev => [...prev, {
+      id: crypto.randomUUID(),
+      memberId: member.id,
+      checkInTime: new Date().toISOString(),
+      method: "client-portal",
+      classId: cls?.id || null,
+    }]);
+    setCheckInMsg("Checked in! Have a great workout! \uD83D\uDCAA");
+    setTimeout(() => setCheckInMsg(null), 2500);
   };
 
   /* ═══════════════════════════════════════════════════════════

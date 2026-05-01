@@ -12,14 +12,14 @@ const NAV_GROUPS = [
     adminOnly: false,
     items: [
       { label: "Coaching Dashboard", path: "coaching", icon: "\uD83D\uDCCA" },
-      { label: "Build", path: "build", icon: "\uD83D\uDD28" },
-      { label: "Workouts", path: "workouts", icon: "\uD83D\uDCCB" },
-      { label: "Programs", path: "programs", icon: "\uD83D\uDCC1" },
-      { label: "Library", path: "library", icon: "\uD83D\uDCDA" },
-      { label: "Progression Engine", path: "matrix", icon: "\u2699\uFE0F" },
+      { label: "Build", path: "build", icon: "\uD83D\uDD28", feature: "workout_builder" },
+      { label: "Workouts", path: "workouts", icon: "\uD83D\uDCCB", feature: "workout_builder" },
+      { label: "Programs", path: "programs", icon: "\uD83D\uDCC1", feature: "workout_builder" },
+      { label: "Library", path: "library", icon: "\uD83D\uDCDA", feature: "workout_builder" },
+      { label: "Progression Engine", path: "matrix", icon: "\u2699\uFE0F", feature: "progression_engine" },
       { label: "Session View", path: "command", icon: "\uD83D\uDCFA" },
-      { label: "Stations", path: "stations", icon: "\uD83D\uDCF1" },
-      { label: "Remote Workouts", path: "remote-workouts", icon: "\uD83C\uDF0D" },
+      { label: "Stations", path: "stations", icon: "\uD83D\uDCF1", feature: "stations" },
+      { label: "Remote Workouts", path: "remote-workouts", icon: "\uD83C\uDF0D", feature: "workout_builder" },
     ],
   },
   {
@@ -27,10 +27,10 @@ const NAV_GROUPS = [
     icon: "\uD83D\uDC65",
     adminOnly: false,
     items: [
-      { label: "Feed", path: "community", icon: "\uD83D\uDCAC" },
-      { label: "Classroom", path: "classroom", icon: "\uD83C\uDF93" },
-      { label: "Events", path: "events", icon: "\uD83C\uDF89" },
-      { label: "Resources", path: "resources", icon: "\uD83D\uDCC2" },
+      { label: "Feed", path: "community", icon: "\uD83D\uDCAC", feature: "community" },
+      { label: "Classroom", path: "classroom", icon: "\uD83C\uDF93", feature: "community" },
+      { label: "Events", path: "events", icon: "\uD83C\uDF89", feature: "community" },
+      { label: "Resources", path: "resources", icon: "\uD83D\uDCC2", feature: "community" },
     ],
   },
   {
@@ -39,9 +39,9 @@ const NAV_GROUPS = [
     adminOnly: false,
     items: [
       { label: "Clients", path: "members", icon: "\uD83D\uDC65" },
-      { label: "Accountability", path: "accountability", icon: "\uD83D\uDCCB" },
-      { label: "Assessments", path: "assessments", icon: "\uD83D\uDCCB" },
-      { label: "Gamification", path: "gamification", icon: "\uD83C\uDFC6" },
+      { label: "Accountability", path: "accountability", icon: "\uD83D\uDCCB", feature: "accountability" },
+      { label: "Assessments", path: "assessments", icon: "\uD83D\uDCCB", feature: "assessments" },
+      { label: "Gamification", path: "gamification", icon: "\uD83C\uDFC6", feature: "gamification" },
     ],
   },
   {
@@ -51,7 +51,7 @@ const NAV_GROUPS = [
     items: [
       { label: "Schedule", path: "schedule", icon: "\uD83D\uDCC5" },
       { label: "Check-in", path: "checkin", icon: "\u2705" },
-      { label: "Waivers", path: "waivers", icon: "\uD83D\uDCDD" },
+      { label: "Waivers", path: "waivers", icon: "\uD83D\uDCDD", feature: "waivers" },
     ],
   },
   {
@@ -106,10 +106,19 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
   });
   const [editProfileOpen, setEditProfileOpen] = useState(false);
 
+  // Feature toggles — read from localStorage (managed in Settings)
+  const featureToggles = (() => {
+    try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}"); } catch { return {}; }
+  })();
+  const isFeatureEnabled = (key) => !key || featureToggles[key] !== false; // default ON
+
   if (isClient) return null;
 
   const visibleGroups = NAV_GROUPS.filter((group) => {
     if (group.adminOnly && !isAdmin) return false;
+    // Hide group if all items are disabled by feature toggles
+    const enabledItems = group.items.filter(item => isFeatureEnabled(item.feature));
+    if (enabledItems.length === 0) return false;
     return true;
   });
 
@@ -248,7 +257,7 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
                   overflow: "hidden",
                   transition: "max-height 0.2s ease",
                 }}>
-                  {group.items.map((item) => {
+                  {group.items.filter(item => isFeatureEnabled(item.feature)).map((item) => {
                     const active = location.pathname === resolvedPath(item);
                     return (
                       <button

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
@@ -7,9 +7,14 @@ import Card from "../../components/ui/Card";
 import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const HOURS = Array.from({length:15},(_,i)=>i+6); // 6AM-8PM
+// Calendar hours — made dynamic via settings
 
 const CLASS_COLORS = ["#8fbf3b","#063461","#a855f7","#f59e0b","#ef4444","#3b82f6"];
+function getSessionColor(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash) + name.charCodeAt(i);
+  return CLASS_COLORS[Math.abs(hash) % CLASS_COLORS.length];
+}
 
 function getMonday(d) {
   const date = new Date(d);
@@ -63,11 +68,15 @@ export default function ScheduleView() {
   const [showNewModal, setShowNewModal] = useState(false);
   const [form, setForm] = useState({...EMPTY_FORM});
   const [bookingMemberId, setBookingMemberId] = useState("");
+  const [bookingSearch, setBookingSearch] = useState("");
+  const [bookingDropdownOpen, setBookingDropdownOpen] = useState(false);
   const [attendance, setAttendance] = useLocalStorage("hf_attendance", []);
   const [payments, setPayments] = useLocalStorage("hf_payments", []);
-  const [noShowSettings, setNoShowSettings] = useLocalStorage("hf_noshow_settings", { feeEnabled: false, feeAmount: 25, cancelWindowHours: 12, penaltyEnabled: true, lateCancelFeeEnabled: false, lateCancelFeeThreshold: 3 });
+  const [noShowSettings, setNoShowSettings] = useLocalStorage("hf_noshow_settings", { feeEnabled: false, feeAmount: 25, cancelWindowHours: 12, penaltyEnabled: true, lateCancelFeeEnabled: false, lateCancelFeeThreshold: 3, autoCheckIn: false });
   const [noShowConfirm, setNoShowConfirm] = useState(null);
   const [showNoShowSettings, setShowNoShowSettings] = useState(false);
+  const [scheduleSettings, setScheduleSettings] = useLocalStorage("hf_schedule_settings", { startHour: 5, endHour: 21 });
+  const HOURS = Array.from({length: scheduleSettings.endHour - scheduleSettings.startHour + 1}, (_, i) => i + scheduleSettings.startHour);
   const [privateSessions, setPrivateSessions] = useLocalStorage("hf_private_sessions", []);
   const [showPrivateLog, setShowPrivateLog] = useState(false);
   const [privateForm, setPrivateForm] = useState({ memberId: "", coachId: "", date: new Date().toISOString().slice(0, 10), startTime: "", endTime: "", notes: "" });
@@ -112,6 +121,21 @@ export default function ScheduleView() {
   };
 
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [editingClassId, setEditingClassId] = useState(null);
+
+  const handleEditClass = (cls) => {
+    setForm({ name: cls.name, instructor: cls.instructor, dayOfWeek: cls.dayOfWeek, selectedDays: [], startTime: cls.startTime, endTime: cls.endTime, capacity: cls.capacity, recurring: cls.recurring, workoutId: cls.workoutId || "" });
+    setEditingClassId(cls.id);
+    setShowNewModal(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!form.name.trim()) return;
+    setClasses(prev => prev.map(c => c.id === editingClassId ? { ...c, name: form.name, instructor: form.instructor, dayOfWeek: form.selectedDays.length > 0 ? form.selectedDays[0] : form.dayOfWeek, startTime: form.startTime, endTime: form.endTime, capacity: Number(form.capacity) || 8, recurring: form.recurring, workoutId: form.workoutId } : c));
+    setEditingClassId(null);
+    setForm({...EMPTY_FORM});
+    setShowNewModal(false);
+  };
 
   const handleDeleteClass = (id) => {
     const cls = classes.find(c => c.id === id);
@@ -176,20 +200,39 @@ export default function ScheduleView() {
     }));
   }, [setClasses]);
 
+  // Auto check-in is now handled globally in useMembers hook
+
   const handleNoShow = (classId, memberId, chargeFee) => {
     const m = getMember(memberId);
     const cls = classes.find(c => c.id === classId);
     const memberName = m ? `${m.firstName} ${m.lastName}` : "Unknown";
+    const todayStr = new Date().toISOString().slice(0, 10);
 
-    // Record as no-show in attendance (counts against allotment, NOT as attended)
-    setAttendance(prev => [...prev, {
-      id: crypto.randomUUID(),
-      memberId,
-      checkInTime: new Date().toISOString(),
-      method: "no-show",
-      classId,
-      noShow: true,
-    }]);
+    if (noShowSettings.autoCheckIn) {
+      // Auto check-in mode: remove the auto check-in record, mark as no-show WITHOUT counting against allotment
+      setAttendance(prev => {
+        const withoutAutoCheckin = prev.filter(a => !(a.memberId === memberId && a.classId === classId && a.checkInTime?.slice(0, 10) === todayStr && a.method === "auto"));
+        return [...withoutAutoCheckin, {
+          id: crypto.randomUUID(),
+          memberId,
+          checkInTime: new Date().toISOString(),
+          method: "no-show",
+          classId,
+          noShow: true,
+          noAllotmentDeduction: true,
+        }];
+      });
+    } else {
+      // Standard mode: record as no-show (counts against allotment)
+      setAttendance(prev => [...prev, {
+        id: crypto.randomUUID(),
+        memberId,
+        checkInTime: new Date().toISOString(),
+        method: "no-show",
+        classId,
+        noShow: true,
+      }]);
+    }
 
     // Remove from booking
     handleRemoveMember(classId, memberId);
@@ -244,9 +287,22 @@ export default function ScheduleView() {
           <h1 style={{fontSize:24,fontWeight:800,color:B.text,margin:0}}>Schedule</h1>
           <p style={{color:B.muted,margin:"4px 0 0",fontSize:14}}>Weekly session calendar, booking, and waitlists.</p>
         </div>
-        <button onClick={()=>{setForm({...EMPTY_FORM});setShowNewModal(true)}} style={btn({background:B.accent,color:B.darker,fontSize:14,padding:"10px 20px"})}>
-          + New Session
-        </button>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:B.muted}}>
+            <select value={scheduleSettings.startHour} onChange={e=>setScheduleSettings(p=>({...p,startHour:Number(e.target.value)}))}
+              style={{padding:"4px 6px",borderRadius:6,border:"1px solid "+B.border,background:B.darker,color:B.text,fontSize:12,outline:"none"}}>
+              {Array.from({length:24},(_,i)=>i).map(h=><option key={h} value={h}>{h===0?"12 AM":h<12?`${h} AM`:h===12?"12 PM":`${h-12} PM`}</option>)}
+            </select>
+            <span>to</span>
+            <select value={scheduleSettings.endHour} onChange={e=>setScheduleSettings(p=>({...p,endHour:Number(e.target.value)}))}
+              style={{padding:"4px 6px",borderRadius:6,border:"1px solid "+B.border,background:B.darker,color:B.text,fontSize:12,outline:"none"}}>
+              {Array.from({length:24},(_,i)=>i).map(h=><option key={h} value={h}>{h===0?"12 AM":h<12?`${h} AM`:h===12?"12 PM":`${h-12} PM`}</option>)}
+            </select>
+          </div>
+          <button onClick={()=>{setForm({...EMPTY_FORM});setShowNewModal(true)}} style={btn({background:B.accent,color:B.darker,fontSize:14,padding:"10px 20px"})}>
+            + New Session
+          </button>
+        </div>
       </div>
 
       {/* Week Navigation */}
@@ -306,7 +362,7 @@ export default function ScheduleView() {
                     padding:2,position:"relative",minHeight:48
                   }}>
                     {dayClasses.map((cls, ci) => {
-                      const color = CLASS_COLORS[classes.indexOf(cls) % CLASS_COLORS.length];
+                      const color = getSessionColor(cls.name);
                       const hasWorkout = cls.workoutId && getWorkout(cls.workoutId);
                       return (
                         <div key={cls.id} onClick={()=>setSelectedClass(cls)} style={{
@@ -358,8 +414,8 @@ export default function ScheduleView() {
               </button>
             </div>
 
-            {/* Workout Template */}
-            <div style={{marginBottom:20,padding:14,borderRadius:10,background:B.darker,border:`1px solid ${B.border}`}}>
+            {/* Workout Template — hidden if workout_builder feature is off */}
+            {(() => { try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}").workout_builder !== false; } catch { return true; } })() && <div style={{marginBottom:20,padding:14,borderRadius:10,background:B.darker,border:`1px solid ${B.border}`}}>
               <h3 style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
                 <span style={{fontSize:15}}>&#x1F3CB;</span> Workout Template
               </h3>
@@ -394,7 +450,7 @@ export default function ScheduleView() {
                   </div>
                 );
               })()}
-            </div>
+            </div>}
 
             {/* Capacity bar */}
             <div style={{marginBottom:20}}>
@@ -424,6 +480,19 @@ export default function ScheduleView() {
 
               {showNoShowSettings && (
                 <div style={{padding:"12px 14px",borderRadius:10,background:B.card,border:"1px solid "+B.border,marginBottom:10,display:"flex",flexDirection:"column",gap:10}}>
+                  <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                    <input type="checkbox" checked={!!noShowSettings.autoCheckIn} onChange={e=>setNoShowSettings(prev=>({...prev,autoCheckIn:e.target.checked}))} style={{width:16,height:16,accentColor:B.accent}} />
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:B.text}}>Auto check-in</div>
+                      <div style={{fontSize:11,color:B.dim}}>Automatically check in booked members when session starts. Mark as no-show instead of removing.</div>
+                    </div>
+                  </label>
+                  {noShowSettings.autoCheckIn && (
+                    <div style={{paddingLeft:24,fontSize:12,color:B.muted,lineHeight:1.5}}>
+                      When enabled, no-shows will NOT count against session allotment since the member was auto-checked in and then marked absent.
+                    </div>
+                  )}
+                  <div style={{borderTop:"1px solid "+B.border+"44",paddingTop:10}}></div>
                   <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
                     <input type="checkbox" checked={noShowSettings.feeEnabled} onChange={e=>setNoShowSettings(prev=>({...prev,feeEnabled:e.target.checked}))} style={{width:16,height:16,accentColor:B.accent}} />
                     <span style={{fontSize:13,fontWeight:600,color:B.text}}>Charge no-show fee</span>
@@ -471,16 +540,24 @@ export default function ScheduleView() {
               )}
               {activeClass.bookings.map(mid => {
                 const m = getMember(mid);
+                const todayStr = new Date().toISOString().slice(0, 10);
+                const isAutoCheckedIn = noShowSettings.autoCheckIn && attendance.some(a => a.memberId === mid && a.classId === activeClass.id && a.checkInTime?.slice(0, 10) === todayStr && a.method === "auto");
                 return (
-                  <div key={mid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderRadius:8,background:B.darker,marginBottom:4}}>
-                    <span style={{fontSize:13,color:B.text,fontWeight:500}}>{m ? `${m.firstName} ${m.lastName}` : "Unknown Member"}</span>
+                  <div key={mid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderRadius:8,background:isAutoCheckedIn ? B.green + "12" : B.darker,marginBottom:4,border:isAutoCheckedIn ? "1px solid " + B.green + "30" : "none"}}>
+                    <span style={{fontSize:13,color:B.text,fontWeight:500}}>
+                      {isAutoCheckedIn && <span style={{color:B.green,marginRight:6}}>{"\u2713"}</span>}
+                      {m ? `${m.firstName} ${m.lastName}` : "Unknown Member"}
+                      {isAutoCheckedIn && <span style={{fontSize:10,color:B.green,marginLeft:6}}>auto checked in</span>}
+                    </span>
                     <div style={{display:"flex",gap:4}}>
                       <button onClick={()=>setNoShowConfirm({classId:activeClass.id,memberId:mid,memberName:m?`${m.firstName} ${m.lastName}`:"Unknown"})} style={btn({background:(B.orange||"#f59e0b")+"22",color:B.orange||"#f59e0b",padding:"2px 10px",fontSize:11})}>
-                        No Show
+                        {isAutoCheckedIn ? "Mark No-Show" : "No Show"}
                       </button>
-                      <button onClick={()=>handleRemoveMember(activeClass.id,mid)} style={btn({background:B.red+"22",color:B.red,padding:"2px 10px",fontSize:11})}>
-                        Remove
-                      </button>
+                      {!isAutoCheckedIn && (
+                        <button onClick={()=>handleRemoveMember(activeClass.id,mid)} style={btn({background:B.red+"22",color:B.red,padding:"2px 10px",fontSize:11})}>
+                          Remove
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -509,18 +586,37 @@ export default function ScheduleView() {
             <div style={{marginBottom:20}}>
               <h3 style={{fontSize:14,fontWeight:700,color:B.text,marginBottom:8}}>Book a Client</h3>
               <div style={{display:"flex",gap:8}}>
-                <select value={bookingMemberId} onChange={e=>setBookingMemberId(e.target.value)}
-                  style={{...inputStyle,flex:1,cursor:"pointer"}}
-                >
-                  <option value="">Select member...</option>
-                  {members
-                    .filter(m => !activeClass.bookings.includes(m.id) && !activeClass.waitlist.includes(m.id))
-                    .map(m => (
-                      <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>
-                    ))
-                  }
-                </select>
-                <button onClick={()=>handleBookMember(activeClass.id,bookingMemberId)}
+                <div style={{flex:1,position:"relative"}}>
+                  <input
+                    style={inputStyle}
+                    placeholder="Search by name..."
+                    value={bookingSearch}
+                    onChange={e=>{setBookingSearch(e.target.value);setBookingDropdownOpen(true);setBookingMemberId("");}}
+                    onFocus={()=>setBookingDropdownOpen(true)}
+                  />
+                  {bookingDropdownOpen && bookingSearch.trim() && (() => {
+                    const q = bookingSearch.toLowerCase();
+                    const results = members
+                      .filter(m => !activeClass.bookings.includes(m.id) && !activeClass.waitlist.includes(m.id))
+                      .filter(m => `${m.firstName} ${m.lastName}`.toLowerCase().includes(q))
+                      .slice(0, 8);
+                    if (results.length === 0) return null;
+                    return (
+                      <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:100,background:B.card,border:"1px solid "+B.border,borderRadius:8,marginTop:4,maxHeight:200,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.3)"}}>
+                        {results.map(m=>(
+                          <div key={m.id} onClick={()=>{setBookingMemberId(m.id);setBookingSearch(`${m.firstName} ${m.lastName}`);setBookingDropdownOpen(false);}}
+                            style={{padding:"8px 12px",cursor:"pointer",fontSize:13,color:B.text,borderBottom:"1px solid "+B.border+"33"}}
+                            onMouseEnter={e=>e.currentTarget.style.background=B.accent+"15"}
+                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                            {m.firstName} {m.lastName}
+                            <span style={{fontSize:11,color:B.dim,marginLeft:8}}>{m.email}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+                <button onClick={()=>{handleBookMember(activeClass.id,bookingMemberId);setBookingSearch("");}}
                   style={btn({background:B.accent,color:B.darker,padding:"10px 16px",opacity:bookingMemberId?"1":"0.5"})}
                   disabled={!bookingMemberId}
                 >
@@ -529,9 +625,13 @@ export default function ScheduleView() {
               </div>
             </div>
 
-            {/* Delete */}
+            {/* Edit / Delete */}
             <div style={{borderTop:`1px solid ${B.border}`,paddingTop:16,display:"flex",justifyContent:"flex-end",gap:8}}>
               {activeClass.recurring && <span style={{fontSize:11,color:B.dim,lineHeight:"32px",marginRight:8}}>This is a recurring session</span>}
+              <button onClick={()=>handleEditClass(activeClass)}
+                style={btn({background:B.accent+"22",color:B.accent,padding:"8px 20px"})}>
+                Edit
+              </button>
               <button onClick={()=>handleDeleteClass(activeClass.id)}
                 style={btn({background:B.red+"22",color:B.red,padding:"8px 20px"})}
               >
@@ -699,7 +799,7 @@ export default function ScheduleView() {
         <div style={overlay} onClick={()=>setShowNewModal(false)}>
           <div style={modal} onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <h2 style={{fontSize:20,fontWeight:800,color:B.text,margin:0}}>New Session</h2>
+              <h2 style={{fontSize:20,fontWeight:800,color:B.text,margin:0}}>{editingClassId ? "Edit Session" : "New Session"}</h2>
               <button onClick={()=>setShowNewModal(false)} style={btn({background:B.border,color:B.text,padding:"4px 10px",fontSize:16})}>
                 &times;
               </button>
@@ -753,6 +853,7 @@ export default function ScheduleView() {
                 <label style={labelStyle}>Capacity</label>
                 <input type="number" min="1" style={inputStyle} value={form.capacity} onChange={e=>setForm(f=>({...f,capacity:e.target.value}))} />
               </div>
+              {(() => { try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}").workout_builder !== false; } catch { return true; } })() && (
               <div>
                 <label style={labelStyle}>Workout Template</label>
                 <select style={{...inputStyle,cursor:"pointer"}} value={form.workoutId} onChange={e=>setForm(f=>({...f,workoutId:e.target.value}))}>
@@ -764,6 +865,7 @@ export default function ScheduleView() {
                   ))}
                 </select>
               </div>
+              )}
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",color:B.text,fontSize:13}}>
                 <input type="checkbox" checked={form.recurring} onChange={e=>setForm(f=>({...f,recurring:e.target.checked}))}
                   style={{width:16,height:16,accentColor:B.accent}}
@@ -773,9 +875,9 @@ export default function ScheduleView() {
             </div>
 
             <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:20}}>
-              <button onClick={()=>setShowNewModal(false)} style={btn({background:B.border,color:B.text})}>Cancel</button>
-              <button onClick={handleCreateClass} style={btn({background:B.accent,color:B.darker,opacity:form.name.trim()?"1":"0.5"})} disabled={!form.name.trim()}>
-                Create Session
+              <button onClick={()=>{setShowNewModal(false);setEditingClassId(null);}} style={btn({background:B.border,color:B.text})}>Cancel</button>
+              <button onClick={editingClassId ? handleSaveEdit : handleCreateClass} style={btn({background:B.accent,color:B.darker,opacity:form.name.trim()?"1":"0.5"})} disabled={!form.name.trim()}>
+                {editingClassId ? "Save Changes" : "Create Session"}
               </button>
             </div>
           </div>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
+import { useAuth } from "../../context/AuthContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
 import { useMemberChangelog } from "../../hooks/useMemberChangelog";
@@ -10,10 +11,11 @@ import PaymentModal from "../../components/shared/PaymentModal";
 import { sendEmail } from "../../utils/messaging";
 import ProgressPhotos from "./ProgressPhotos";
 import ProfileAvatar from "../../components/shared/ProfileAvatar";
+import ImageUpload from "../../components/shared/ImageUpload";
 
 const PATTERNS = ["Squat", "Hinge", "Lunge", "Push", "Pull", "Core", "Carry"];
 const SCORE_RANGE = [-3, -2, -1, 0, 1, 2, 3];
-const TABS = ["Overview", "Movement Scores", "Body Composition", "Progress Photos", "Gamification", "Billing", "History"];
+const TABS = ["Overview", "Movement Scores", "Body Composition", "Progress Photos", "Gamification", "Billing", "Notes", "History"];
 
 const STATUS_COLORS = (B) => ({ active: B.green, trial: B.orange, frozen: B.blue, inactive: B.red });
 
@@ -31,12 +33,14 @@ export default function MemberProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
+  const { currentUser } = useAuth();
   const { getMember, updateMember } = useMembers();
   const { events, logEvent, removeLatestEvent } = useMembershipEvents();
   const { logChange, markUndone, getLogForMember } = useMemberChangelog();
   const [tab, setTab] = useState("Overview");
   const [cancelModal, setCancelModal] = useState(null);
   const [planChangePrompt, setPlanChangePrompt] = useState(null);
+  const [confirmAssign, setConfirmAssign] = useState(null);
   const [plans] = useLocalStorage("hf_plans", []);
   const [payments, setPayments] = useLocalStorage("hf_payments", []);
   const [paymentMethods, setPaymentMethods] = useLocalStorage("hf_payment_methods", []);
@@ -53,6 +57,12 @@ export default function MemberProfile() {
   const [credToast, setCredToast] = useState(null);
   const [editingField, setEditingField] = useState(null);
   const [editValue, setEditValue] = useState("");
+  const [staffNotes, setStaffNotes] = useLocalStorage("hf_staff_notes", []);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [newNotePhotos, setNewNotePhotos] = useState([]);
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editNoteText, setEditNoteText] = useState("");
+  const [editNotePhotos, setEditNotePhotos] = useState([]);
 
   const showCredToast = (msg, type = "success") => {
     setCredToast({ msg, type });
@@ -99,6 +109,7 @@ export default function MemberProfile() {
   const effectiveStatus = !member.membershipPlanId ? "inactive" : memberPlanObj?.isTrial ? "trial" : member.membershipStatus === "frozen" ? "frozen" : "active";
   const statusColor = sc[effectiveStatus] || B.muted;
   const g = member.gamification || {};
+  const memberAttendance = attendance.filter(a => a.memberId === member.id && !a.noShow).sort((a, b) => b.checkInTime.localeCompare(a.checkInTime));
   const ms = member.movementScores || {};
   const xpForNext = (g.level || 1) * 200;
   const xpProgress = Math.min((g.xp || 0) / xpForNext, 1);
@@ -210,59 +221,225 @@ export default function MemberProfile() {
     );
   };
 
+  // Overview: collapsible sections
+  const [overviewSections, setOverviewSections] = useState({ info: true, movement: true, notes: true, billing: true, stats: true, body: false, history: false });
+  const toggleSection = (key) => setOverviewSections(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const SectionHeader = ({ label, sectionKey, icon }) => (
+    <div onClick={() => toggleSection(sectionKey)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", padding: "10px 0 6px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 16 }}>{icon}</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: B.text }}>{label}</span>
+      </div>
+      <span style={{ color: B.dim, fontSize: 12 }}>{overviewSections[sectionKey] ? "\u25B2" : "\u25BC"}</span>
+    </div>
+  );
+
+  const SCORE_COLORS = { "-3": "#ef4444", "-2": "#f97316", "-1": "#f59e0b", "0": "#eab308", "1": "#84cc16", "2": "#22c55e", "3": "#10b981" };
+  const memberNotesForOverview = staffNotes.filter(n => n.memberId === member.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const sessionsThisMonth = memberAttendance.filter(a => a.checkInTime?.slice(0, 7) === currentMonth).length;
+  const lastInBody = member.inbody?.history?.length > 0 ? member.inbody.history[member.inbody.history.length - 1] : null;
+
   const renderOverview = () => (
     <>
+      {/* Quick Stats Banner */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 10, marginBottom: 16 }}>
+        {[
+          { label: "Workouts", value: g.totalWorkouts || 0, color: B.accent },
+          { label: "Streak", value: g.currentStreak || 0, color: B.orange },
+          { label: "Level", value: g.level || 1, color: B.blue || "#3b82f6" },
+          { label: "This Month", value: sessionsThisMonth, color: B.green },
+          { label: "XP", value: g.xp || 0, color: "#a855f7" },
+        ].map(stat => (
+          <div key={stat.label} style={{ textAlign: "center", padding: 12, borderRadius: 10, background: B.card, border: "1px solid " + B.border }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: stat.color }}>{stat.value}</div>
+            <div style={{ fontSize: 11, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 2 }}>{stat.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Two-column layout: main content left, notes + actions right */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 16, alignItems: "start" }}>
+      {/* LEFT COLUMN */}
+      <div>
+
+      {/* Quick Actions */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <button onClick={() => { setTab("Notes"); }} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+          {"\uD83D\uDCDD"} Notes
+        </button>
+        <button onClick={() => {
+          window.dispatchEvent(new CustomEvent("open-chat", { detail: { memberId: member.id, memberName: `${member.firstName} ${member.lastName}` } }));
+        }} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+          {"\uD83D\uDCE9"} Message
+        </button>
+        <button onClick={handleSendCredentials} disabled={sendingCreds}
+          style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: sendingCreds ? 0.6 : 1 }}>
+          {sendingCreds ? "Sending..." : "Send Credentials"}
+        </button>
+      </div>
+
+      {/* Client Info */}
       <div style={s.card}>
-        <div style={s.cardTitle}>Client Info</div>
-        <EditableRow label="Email" field="email" value={member.email} type="email" />
-        <EditableRow label="Phone" field="phone" value={member.phone} type="tel" />
-        <EditableRow label="PIN" field="pin" value={member.pin} />
-        <EditableRow label="Date of Birth" field="dob" value={member.dob} type="date" />
-        <EditableRow label="Gender" field="gender" value={member.gender} />
-        <EditableRow label="Street" field="street" value={member.address?.street} />
-        <EditableRow label="City" field="city" value={member.address?.city} />
-        <EditableRow label="State" field="state" value={member.address?.state} />
-        <EditableRow label="Zip" field="zip" value={member.address?.zip} />
-        <EditableRow label="Start Date" field="startDate" value={member.startDate} type="date" />
-        <EditableRow label="Lead Source" field="source" value={member.source} />
-        <EditableRow label="Notes" field="notes" value={member.notes} type="textarea" />
-        <EditableRow label="Tags" field="tags" value={(member.tags || []).join(", ")} />
-
-        {/* Emergency Contact */}
-        <div style={{ ...s.cardTitle, marginTop: 16, fontSize: 14 }}>Emergency Contact</div>
-        <EditableRow label="Name" field="emergencyName" value={member.emergencyContact?.name} />
-        <EditableRow label="Phone" field="emergencyPhone" value={member.emergencyContact?.phone} type="tel" />
-        <EditableRow label="Relationship" field="emergencyRel" value={member.emergencyContact?.relationship} />
-
-        <div style={{ paddingTop: 12 }}>
-          <button
-            onClick={handleSendCredentials}
-            disabled={sendingCreds}
-            style={{
-              background: B.accent, color: "#fff", border: "none", borderRadius: 8,
-              padding: "8px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer",
-              opacity: sendingCreds ? 0.6 : 1,
-            }}
-          >
-            {sendingCreds ? "Sending..." : "Send Login Credentials"}
-          </button>
-        </div>
+        <SectionHeader label="Client Info" sectionKey="info" icon={"\uD83D\uDC64"} />
+        {overviewSections.info && (
+          <div>
+            <EditableRow label="Email" field="email" value={member.email} type="email" />
+            <EditableRow label="Phone" field="phone" value={member.phone} type="tel" />
+            <EditableRow label="DOB" field="dob" value={member.dob} type="date" />
+            <EditableRow label="Gender" field="gender" value={member.gender} />
+            <EditableRow label="Start Date" field="startDate" value={member.startDate} type="date" />
+            <EditableRow label="Source" field="source" value={member.source} />
+            <EditableRow label="Address" field="street" value={[member.address?.street, member.address?.city, member.address?.state, member.address?.zip].filter(Boolean).join(", ") || ""} />
+            <EditableRow label="Tags" field="tags" value={(member.tags || []).join(", ")} />
+            {member.emergencyContact?.name && (
+              <div style={{ fontSize: 12, color: B.muted, marginTop: 6, padding: "6px 0", borderTop: "1px solid " + B.border + "44" }}>
+                Emergency: <strong style={{ color: B.text }}>{member.emergencyContact.name}</strong> ({member.emergencyContact.relationship || "Contact"}) — {member.emergencyContact.phone}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      <div style={s.statsRow}>
-        <div style={s.statBox}>
-          <div style={s.statValue}>{g.totalWorkouts || 0}</div>
-          <div style={s.statLabel}>Total Workouts</div>
-        </div>
-        <div style={s.statBox}>
-          <div style={s.statValue}>{g.currentStreak || 0}</div>
-          <div style={s.statLabel}>Current Streak</div>
-        </div>
-        <div style={s.statBox}>
-          <div style={s.statValue}>{g.level || 1}</div>
-          <div style={s.statLabel}>Level</div>
-        </div>
+      {/* Movement Scores */}
+      <div style={s.card}>
+        <SectionHeader label="Movement Scores" sectionKey="movement" icon={"\uD83C\uDFCB\uFE0F"} />
+        {overviewSections.movement && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {PATTERNS.map(p => {
+              const v = ms[p] || 0;
+              const color = SCORE_COLORS[String(v)] || B.muted;
+              return (
+                <div key={p} style={{ textAlign: "center", padding: "8px 12px", borderRadius: 8, background: color + "15", border: "1px solid " + color + "30", minWidth: 60 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color }}>{v > 0 ? "+" : ""}{v}</div>
+                  <div style={{ fontSize: 10, color: B.muted, marginTop: 2 }}>{p}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Membership & Billing */}
+      <div style={s.card}>
+        <SectionHeader label="Membership" sectionKey="billing" icon={"\uD83D\uDCB3"} />
+        {overviewSections.billing && (
+          <div>
+            {/* Plan selector */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <select
+                value={member.membershipPlanId || ""}
+                onChange={e => handlePlanDropdownChange(e.target.value)}
+                style={{ flex: 1, background: B.darker, border: "1px solid " + B.border, borderRadius: 8, color: B.text, padding: "8px 12px", fontSize: 13, outline: "none" }}
+              >
+                <option value="">No Plan Assigned</option>
+                {plans.filter(p => p.active).map(p => (
+                  <option key={p.id} value={p.id}>{p.name} — ${p.price}/{p.billingCycle}</option>
+                ))}
+              </select>
+            </div>
+            {memberPlanObj && (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                {memberPlanObj.sessionsIncluded && (
+                  <span style={{ fontSize: 12, color: B.dim }}>{sessionsThisMonth}/{memberPlanObj.sessionsIncluded} sessions used</span>
+                )}
+                {member.cancelScheduled && <span style={{ fontSize: 12, color: B.red, fontWeight: 600 }}>Cancels {new Date(member.cancelScheduled).toLocaleDateString()}</span>}
+                {member.planEndDate && <span style={{ fontSize: 12, color: B.orange }}>{memberPlanObj.endBehavior === "rollover" ? "Rolls over" : "Ends"} {new Date(member.planEndDate).toLocaleDateString()}</span>}
+                {member.autoCharge && <span style={{ fontSize: 11, color: B.green }}>{"\u2713"} Auto-charge</span>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Body Composition Snapshot */}
+      <div style={s.card}>
+        <SectionHeader label="Body Composition" sectionKey="body" icon={"\uD83D\uDCCA"} />
+        {overviewSections.body && (
+          lastInBody ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))", gap: 8 }}>
+              {[
+                { label: "Weight", value: lastInBody.weight ? `${lastInBody.weight} lbs` : "---" },
+                { label: "Body Fat", value: lastInBody.bodyFatPercent ? `${lastInBody.bodyFatPercent}%` : "---" },
+                { label: "Muscle", value: lastInBody.skeletalMuscleMass ? `${lastInBody.skeletalMuscleMass} lbs` : "---" },
+                { label: "BMI", value: lastInBody.bmi || "---" },
+                { label: "Last Scan", value: lastInBody.date ? new Date(lastInBody.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "---" },
+              ].map(d => (
+                <div key={d.label} style={{ textAlign: "center", padding: 8, borderRadius: 8, background: B.darker }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: B.text }}>{d.value}</div>
+                  <div style={{ fontSize: 10, color: B.dim }}>{d.label}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: B.dim }}>No body composition data. <button onClick={() => setTab("Body Composition")} style={{ background: "none", border: "none", color: B.accent, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Add scan</button></div>
+          )
+        )}
+      </div>
+
+      {/* Recent Activity */}
+      <div style={s.card}>
+        <SectionHeader label="Recent Activity" sectionKey="history" icon={"\uD83D\uDD52"} />
+        {overviewSections.history && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {memberAttendance.slice(0, 5).map(a => {
+              const d = new Date(a.checkInTime);
+              return (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderRadius: 6, background: B.darker, fontSize: 12 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: 3, background: a.noShow ? B.red : B.green, flexShrink: 0 }} />
+                  <span style={{ color: B.text }}>{d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
+                  <span style={{ color: B.dim }}>{d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+                  {a.noShow && <span style={{ color: B.red, fontWeight: 600 }}>No-show</span>}
+                  <span style={{ color: B.dim, marginLeft: "auto" }}>{a.method}</span>
+                </div>
+              );
+            })}
+            {memberAttendance.length === 0 && <div style={{ fontSize: 12, color: B.dim }}>No check-in records.</div>}
+            {memberAttendance.length > 5 && <button onClick={() => setTab("History")} style={{ background: "none", border: "none", color: B.accent, fontSize: 12, cursor: "pointer", fontWeight: 600, textAlign: "left", padding: "4px 0" }}>View full history</button>}
+          </div>
+        )}
+      </div>
+
+      </div>{/* END LEFT COLUMN */}
+
+      {/* RIGHT COLUMN — Staff Notes */}
+      <div>
+        <div style={{ ...s.card, position: "sticky", top: 80 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: B.text, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>{"\uD83D\uDCDD"}</span> Staff Notes ({memberNotesForOverview.length})
+          </div>
+          {/* Quick add */}
+          <div style={{ marginBottom: 10 }}>
+            <input value={newNoteText} onChange={e => setNewNoteText(e.target.value)} placeholder="Add a note..."
+              onKeyDown={e => { if (e.key === "Enter" && newNoteText.trim()) { setStaffNotes(prev => [...prev, { id: crypto.randomUUID(), memberId: member.id, text: newNoteText.trim(), photos: [], author: currentUser?.displayName || "Staff", createdAt: new Date().toISOString() }]); setNewNoteText(""); } }}
+              style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+          </div>
+          {memberNotesForOverview.length === 0 ? (
+            <div style={{ fontSize: 12, color: B.dim }}>No notes yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 400, overflowY: "auto" }}>
+              {memberNotesForOverview.slice(0, 10).map(n => {
+                const d = new Date(n.createdAt);
+                return (
+                  <div key={n.id} style={{ padding: "8px 10px", borderRadius: 6, background: B.darker, fontSize: 13, color: B.text }}>
+                    <div style={{ lineHeight: 1.4 }}>{n.text}</div>
+                    {(n.photos || []).length > 0 && (
+                      <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                        {n.photos.map((p, i) => <img key={i} src={p} alt="" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 4 }} />)}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 10, color: B.dim, marginTop: 4 }}>{n.author} — {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} {d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</div>
+                  </div>
+                );
+              })}
+              {memberNotesForOverview.length > 10 && <button onClick={() => setTab("Notes")} style={{ background: "none", border: "none", color: B.accent, fontSize: 12, cursor: "pointer", fontWeight: 600, textAlign: "left", padding: 0 }}>View all {memberNotesForOverview.length} notes</button>}
+            </div>
+          )}
+        </div>
+      </div>{/* END RIGHT COLUMN */}
+
+      </div>{/* END 2-COLUMN GRID */}
     </>
   );
 
@@ -566,7 +743,6 @@ export default function MemberProfile() {
   const memberPlan = plans.find(p => p.id === member.membershipPlanId);
   const memberMethods = paymentMethods.filter(pm => pm.memberId === member.id);
   const memberPayments = payments.filter(p => p.memberId === member.id || p.member === (member.firstName + " " + member.lastName)).sort((a, b) => b.date.localeCompare(a.date));
-  const memberAttendance = attendance.filter(a => a.memberId === member.id && !a.noShow).sort((a, b) => b.checkInTime.localeCompare(a.checkInTime));
   const classById = (cid) => { const c = (schedule || []).find(x => x.id === cid); return c ? c.name : "Open Gym"; };
 
   const handleDeleteMethod = (pmId) => {
@@ -591,9 +767,9 @@ export default function MemberProfile() {
       return;
     }
 
-    // Assigning first plan
+    // Assigning first plan — confirm first
     if (!oldPlan && newPlan) {
-      executePlanAssign(planId, null, newPlan, "join");
+      setConfirmAssign({ planId, newPlan });
     }
   };
 
@@ -1013,6 +1189,124 @@ export default function MemberProfile() {
       )}
       {tab === "Gamification" && renderGamification()}
       {tab === "Billing" && renderBilling()}
+      {tab === "Notes" && (() => {
+        const memberNotes = staffNotes.filter(n => n.memberId === member.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        const noteInputStyle = { width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 14, outline: "none", resize: "vertical", minHeight: 60, fontFamily: "inherit", boxSizing: "border-box" };
+        const addNote = () => {
+          if (!newNoteText.trim() && newNotePhotos.length === 0) return;
+          setStaffNotes(prev => [...prev, {
+            id: crypto.randomUUID(),
+            memberId: member.id,
+            text: newNoteText.trim(),
+            photos: [...newNotePhotos],
+            author: currentUser?.displayName || currentUser?.username || "Staff",
+            createdAt: new Date().toISOString(),
+          }]);
+          setNewNoteText("");
+          setNewNotePhotos([]);
+        };
+        const startEdit = (n) => { setEditingNoteId(n.id); setEditNoteText(n.text); setEditNotePhotos(n.photos || []); };
+        const saveEdit = () => {
+          setStaffNotes(prev => prev.map(n => n.id === editingNoteId ? { ...n, text: editNoteText.trim(), photos: [...editNotePhotos], editedAt: new Date().toISOString(), editedBy: currentUser?.displayName || "Staff" } : n));
+          setEditingNoteId(null);
+        };
+        return (
+          <div style={s.card}>
+            <div style={s.cardTitle}>Staff Notes</div>
+            <p style={{ fontSize: 12, color: B.dim, margin: "0 0 14px" }}>Private notes visible only to coaches and admins. Not visible to clients.</p>
+
+            {/* Add note */}
+            <div style={{ marginBottom: 16 }}>
+              <textarea value={newNoteText} onChange={e => setNewNoteText(e.target.value)} placeholder="Add a note..." style={noteInputStyle} />
+              {newNotePhotos.length > 0 && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  {newNotePhotos.map((p, i) => (
+                    <div key={i} style={{ position: "relative" }}>
+                      <img src={p} alt="" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8 }} />
+                      <button onClick={() => setNewNotePhotos(prev => prev.filter((_, idx) => idx !== i))}
+                        style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: 9, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{"\u2715"}</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <ImageUpload onUpload={url => setNewNotePhotos(prev => [...prev, url])} style={{ padding: "6px 12px", fontSize: 12 }}>
+                  {"\uD83D\uDCF7"} Add Photo
+                </ImageUpload>
+                <button onClick={addNote} disabled={!newNoteText.trim() && newNotePhotos.length === 0}
+                  style={{ padding: "6px 18px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", marginLeft: "auto", opacity: (!newNoteText.trim() && newNotePhotos.length === 0) ? 0.5 : 1 }}>
+                  Add Note
+                </button>
+              </div>
+            </div>
+
+            {/* Notes list */}
+            {memberNotes.length === 0 ? (
+              <div style={{ color: B.dim, fontSize: 13, padding: "8px 0" }}>No notes yet.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {memberNotes.map(n => {
+                  const d = new Date(n.createdAt);
+                  const isEditing = editingNoteId === n.id;
+
+                  if (isEditing) {
+                    return (
+                      <div key={n.id} style={{ padding: "12px 14px", borderRadius: 10, background: B.card, border: "2px solid " + B.accent + "40" }}>
+                        <textarea value={editNoteText} onChange={e => setEditNoteText(e.target.value)} style={noteInputStyle} autoFocus />
+                        {editNotePhotos.length > 0 && (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                            {editNotePhotos.map((p, i) => (
+                              <div key={i} style={{ position: "relative" }}>
+                                <img src={p} alt="" style={{ width: 80, height: 80, objectFit: "cover", borderRadius: 8 }} />
+                                <button onClick={() => setEditNotePhotos(prev => prev.filter((_, idx) => idx !== i))}
+                                  style={{ position: "absolute", top: -4, right: -4, width: 18, height: 18, borderRadius: 9, background: "rgba(0,0,0,0.7)", color: "#fff", border: "none", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{"\u2715"}</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                          <ImageUpload onUpload={url => setEditNotePhotos(prev => [...prev, url])} style={{ padding: "5px 10px", fontSize: 11 }}>
+                            {"\uD83D\uDCF7"} Add Photo
+                          </ImageUpload>
+                          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                            <button onClick={() => setEditingNoteId(null)} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                            <button onClick={saveEdit} style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: B.accent, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div key={n.id} style={{ padding: "10px 14px", borderRadius: 8, background: B.darker, border: "1px solid " + B.border + "33" }}>
+                      <div style={{ fontSize: 14, color: B.text, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{n.text}</div>
+                      {(n.photos || []).length > 0 && (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                          {n.photos.map((p, i) => (
+                            <img key={i} src={p} alt="" style={{ width: 100, height: 100, objectFit: "cover", borderRadius: 8, cursor: "pointer" }}
+                              onClick={() => window.open(p, "_blank")} />
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                        <div style={{ fontSize: 11, color: B.dim }}>
+                          {n.author} {"\u2022"} {d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} at {d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                          {n.editedAt && <span> {"\u2022"} edited by {n.editedBy}</span>}
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => startEdit(n)} style={{ background: "none", border: "none", color: B.accent, fontSize: 11, cursor: "pointer", fontWeight: 600 }}>Edit</button>
+                          <button onClick={() => { if (window.confirm("Delete this note?")) setStaffNotes(prev => prev.filter(x => x.id !== n.id)); }}
+                            style={{ background: "none", border: "none", color: B.red, fontSize: 11, cursor: "pointer", fontWeight: 600 }}>Delete</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
       {tab === "History" && renderHistory()}
 
       {/* Toast Notification */}
@@ -1087,6 +1381,30 @@ export default function MemberProfile() {
       })()}
 
       {/* Plan Change Prompt — suggests upgrade/downgrade classification */}
+      {/* Confirm First Plan Assignment */}
+      {confirmAssign && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={() => setConfirmAssign(null)}>
+          <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 420, width: "90%" }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 12px", fontSize: 18, fontWeight: 700, color: B.text }}>Assign Membership</h3>
+            <p style={{ color: B.text, fontSize: 14, margin: "0 0 8px" }}>
+              Assign <strong>{confirmAssign.newPlan.name}</strong> to <strong>{member.firstName} {member.lastName}</strong>?
+            </p>
+            <div style={{ padding: "10px 14px", borderRadius: 8, background: B.accent + "12", border: "1px solid " + B.accent + "30", marginBottom: 16 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: B.accent }}>{confirmAssign.newPlan.name}</div>
+              <div style={{ fontSize: 13, color: B.muted }}>${confirmAssign.newPlan.price}/{confirmAssign.newPlan.billingCycle}{confirmAssign.newPlan.sessionsIncluded ? ` — ${confirmAssign.newPlan.sessionsIncluded} sessions` : " — Unlimited"}</div>
+              {confirmAssign.newPlan.isTrial && <div style={{ fontSize: 12, color: B.orange, fontWeight: 600, marginTop: 4 }}>Trial Plan — will not count as new client in analytics</div>}
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setConfirmAssign(null)} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+              <button onClick={() => { executePlanAssign(confirmAssign.planId, null, confirmAssign.newPlan, "join"); setConfirmAssign(null); }}
+                style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                Confirm Assignment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {planChangePrompt && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={() => setPlanChangePrompt(null)}>
           <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 480, width: "90%" }} onClick={e => e.stopPropagation()}>

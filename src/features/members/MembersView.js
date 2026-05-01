@@ -661,7 +661,7 @@ export default function MembersView() {
             const color = sc[effectiveStatus] || B.muted;
             return (
               <div key={m.id} style={s.card}>
-                <div style={s.cardTop}>
+                <div style={{ ...s.cardTop, cursor: "pointer" }} onClick={() => navigate(`/members/${m.id}`)}>
                   {m.photo ? (
                     <img src={m.photo} alt="" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                   ) : (
@@ -741,6 +741,9 @@ export default function MembersView() {
                     }));
                     window.location.href = `/gym/${gymId}/`;
                   }}>View as Client</button>
+                  <button style={s.actionBtn(B.accent + "18", B.accent)} onClick={() => {
+                    window.dispatchEvent(new CustomEvent("open-chat", { detail: { memberId: m.id, memberName: `${m.firstName} ${m.lastName}` } }));
+                  }}>Message</button>
                 </div>
               </div>
             );

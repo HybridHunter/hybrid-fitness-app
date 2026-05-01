@@ -8,7 +8,7 @@ import { requestPermission, getPermissionStatus, sendLocalNotification, getNotif
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 /* ========== constants ========== */
-const TABS = ["General", "Integrations", "Branding", "Locations", "Users", "Stations", "Gamification", "Data"];
+const TABS = ["General", "Features", "Integrations", "Branding", "Locations", "Users", "Stations", "Gamification", "Data"];
 const TIMEZONES = [
   "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
   "America/Phoenix", "America/Anchorage", "Pacific/Honolulu", "America/Toronto",
@@ -139,6 +139,295 @@ function EmojiPickerBtn({ value, onChange, B }) {
         </div>
       )}
     </div>
+  );
+}
+
+const FEATURE_OPTIONS = [
+  { key: "workout_builder", label: "Workout Builder", desc: "Build, Workouts, Programs, Library, Session View, Remote Workouts" },
+  { key: "progression_engine", label: "Progression Engine", desc: "Movement matrix and auto-individualization" },
+  { key: "stations", label: "Stations", desc: "iPad station display for gym floor" },
+  { key: "community", label: "Community", desc: "Feed, Classroom, Events, Resources" },
+  { key: "accountability", label: "Accountability", desc: "Coach assignment and outreach tracking" },
+  { key: "assessments", label: "Assessments", desc: "Movement assessment scoring" },
+  { key: "gamification", label: "Gamification", desc: "XP, levels, badges, leaderboards" },
+  { key: "waivers", label: "Waivers", desc: "Digital waiver signing" },
+];
+
+function FeatureToggles({ B }) {
+  const [toggles, setToggles] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}"); } catch { return {}; }
+  });
+  const update = (key, val) => {
+    const next = { ...toggles, [key]: val };
+    setToggles(next);
+    localStorage.setItem("hf_feature_toggles", JSON.stringify(next));
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+      {FEATURE_OPTIONS.map(f => {
+        const enabled = toggles[f.key] !== false;
+        return (
+          <label key={f.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker, cursor: "pointer" }}>
+            <button onClick={() => update(f.key, !enabled)} style={{
+              width: 42, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
+              background: enabled ? B.accent : B.border, position: "relative", transition: "background 0.2s", flexShrink: 0,
+            }}>
+              <div style={{ width: 16, height: 16, borderRadius: 8, background: "#fff", position: "absolute", top: 3, left: enabled ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+            </button>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{f.label}</div>
+              <div style={{ fontSize: 12, color: B.dim }}>{f.desc}</div>
+            </div>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function SchedulingSettings({ B }) {
+  const [settings, setSettings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("hf_noshow_settings") || "{}"); } catch { return {}; }
+  });
+  const update = (key, val) => {
+    const next = { ...settings, [key]: val };
+    setSettings(next);
+    localStorage.setItem("hf_noshow_settings", JSON.stringify(next));
+    // Also sync to Supabase via the hook pattern
+    try {
+      const gymId = localStorage.getItem("hf_gym_id") || "default";
+      fetch('https://qzvxnklyeadbroesccxt.supabase.co/rest/v1/data_store?on_conflict=gym_id,key', {
+        method: 'POST',
+        headers: { 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM', 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify({ gym_id: gymId, key: 'hf_noshow_settings', value: next, updated_at: new Date().toISOString() }),
+      });
+    } catch {}
+  };
+  const toggleStyle = (enabled) => ({
+    width: 42, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
+    background: enabled ? B.accent : B.border, position: "relative", transition: "background 0.2s", flexShrink: 0,
+  });
+  const dotStyle = (enabled) => ({
+    width: 16, height: 16, borderRadius: 8, background: "#fff", position: "absolute", top: 3,
+    left: enabled ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+  });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Auto Check-In */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+        <button onClick={() => update("autoCheckIn", !settings.autoCheckIn)} style={toggleStyle(settings.autoCheckIn)}>
+          <div style={dotStyle(settings.autoCheckIn)} />
+        </button>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Auto Check-In</div>
+          <div style={{ fontSize: 12, color: B.dim }}>Automatically check in booked members when their session starts. No-shows won't count against allotment.</div>
+        </div>
+      </div>
+      {/* No-Show Fee */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+        <button onClick={() => update("feeEnabled", !settings.feeEnabled)} style={toggleStyle(settings.feeEnabled)}>
+          <div style={dotStyle(settings.feeEnabled)} />
+        </button>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>No-Show Fee</div>
+          <div style={{ fontSize: 12, color: B.dim }}>Charge a fee when a member is marked as no-show</div>
+        </div>
+        {settings.feeEnabled && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 13, color: B.muted }}>$</span>
+            <input type="number" min="0" value={settings.feeAmount || 25} onChange={e => update("feeAmount", Number(e.target.value) || 0)}
+              style={{ width: 60, padding: "4px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 13, outline: "none" }} />
+          </div>
+        )}
+      </div>
+      {/* Cancel Window */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Free Cancel Window</div>
+          <div style={{ fontSize: 12, color: B.dim }}>Hours before session that clients can cancel without penalty</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <input type="number" min="0" value={settings.cancelWindowHours ?? 12} onChange={e => update("cancelWindowHours", Number(e.target.value) || 0)}
+            style={{ width: 50, padding: "4px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 13, outline: "none" }} />
+          <span style={{ fontSize: 12, color: B.muted }}>hrs</span>
+        </div>
+      </div>
+      {/* Late Cancel Penalty */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+        <button onClick={() => update("penaltyEnabled", !(settings.penaltyEnabled !== false))} style={toggleStyle(settings.penaltyEnabled !== false)}>
+          <div style={dotStyle(settings.penaltyEnabled !== false)} />
+        </button>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Late Cancel Counts Against Allotment</div>
+          <div style={{ fontSize: 12, color: B.dim }}>Cancelling within the window still deducts a session</div>
+        </div>
+      </div>
+      {/* Late Cancel Fee */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+        <button onClick={() => update("lateCancelFeeEnabled", !settings.lateCancelFeeEnabled)} style={toggleStyle(settings.lateCancelFeeEnabled)}>
+          <div style={dotStyle(settings.lateCancelFeeEnabled)} />
+        </button>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Repeat Late Cancel Fee</div>
+          <div style={{ fontSize: 12, color: B.dim }}>Charge no-show fee after too many late cancels in a month</div>
+        </div>
+        {settings.lateCancelFeeEnabled && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 12, color: B.muted }}>After</span>
+            <input type="number" min="1" value={settings.lateCancelFeeThreshold || 3} onChange={e => update("lateCancelFeeThreshold", Number(e.target.value) || 3)}
+              style={{ width: 40, padding: "4px 6px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 13, outline: "none", textAlign: "center" }} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FeaturesTab({ B, s, showToast }) {
+  // Load saved state
+  const savedToggles = (() => { try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}"); } catch { return {}; } })();
+  const savedScheduling = (() => { try { return JSON.parse(localStorage.getItem("hf_noshow_settings") || "{}"); } catch { return {}; } })();
+
+  // Draft state — changes are only local until saved
+  const [draftToggles, setDraftToggles] = useState(savedToggles);
+  const [draftScheduling, setDraftScheduling] = useState(savedScheduling);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const hasChanges = JSON.stringify(draftToggles) !== JSON.stringify(savedToggles) || JSON.stringify(draftScheduling) !== JSON.stringify(savedScheduling);
+
+  const toggleFeature = (key) => setDraftToggles(prev => ({ ...prev, [key]: prev[key] === false ? true : false }));
+  const updateScheduling = (key, val) => setDraftScheduling(prev => ({ ...prev, [key]: val }));
+
+  const handleSave = () => {
+    localStorage.setItem("hf_feature_toggles", JSON.stringify(draftToggles));
+    localStorage.setItem("hf_noshow_settings", JSON.stringify(draftScheduling));
+    // Sync scheduling to Supabase
+    try {
+      const gymId = localStorage.getItem("hf_gym_id") || "default";
+      const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM';
+      fetch('https://qzvxnklyeadbroesccxt.supabase.co/rest/v1/data_store?on_conflict=gym_id,key', {
+        method: 'POST',
+        headers: { 'apikey': KEY, 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify({ gym_id: gymId, key: 'hf_noshow_settings', value: draftScheduling, updated_at: new Date().toISOString() }),
+      });
+    } catch {}
+    setShowConfirm(false);
+    showToast("Settings saved! Refresh to see sidebar changes.");
+  };
+
+  const toggleBtn = (enabled) => ({
+    width: 42, height: 22, borderRadius: 11, border: "none", cursor: "pointer",
+    background: enabled ? B.accent : B.border, position: "relative", transition: "background 0.2s", flexShrink: 0,
+  });
+  const toggleDot = (enabled) => ({
+    width: 16, height: 16, borderRadius: 8, background: "#fff", position: "absolute", top: 3,
+    left: enabled ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+  });
+
+  return (
+    <Card>
+      <h3 style={s.sectionTitle}>Feature Toggles</h3>
+      <p style={{ fontSize: 13, color: B.muted, marginBottom: 16 }}>
+        Enable or disable features for your gym. Disabled features are hidden from the sidebar for all users.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
+        {FEATURE_OPTIONS.map(f => {
+          const enabled = draftToggles[f.key] !== false;
+          return (
+            <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+              <button onClick={() => toggleFeature(f.key)} style={toggleBtn(enabled)}>
+                <div style={toggleDot(enabled)} />
+              </button>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{f.label}</div>
+                <div style={{ fontSize: 12, color: B.dim }}>{f.desc}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <h3 style={s.sectionTitle}>Scheduling & Check-In</h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+          <button onClick={() => updateScheduling("autoCheckIn", !draftScheduling.autoCheckIn)} style={toggleBtn(draftScheduling.autoCheckIn)}>
+            <div style={toggleDot(draftScheduling.autoCheckIn)} />
+          </button>
+          <div><div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Auto Check-In</div><div style={{ fontSize: 12, color: B.dim }}>Automatically check in booked members when session starts</div></div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+          <button onClick={() => updateScheduling("feeEnabled", !draftScheduling.feeEnabled)} style={toggleBtn(draftScheduling.feeEnabled)}>
+            <div style={toggleDot(draftScheduling.feeEnabled)} />
+          </button>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>No-Show Fee</div><div style={{ fontSize: 12, color: B.dim }}>Charge when a member is marked no-show</div></div>
+          {draftScheduling.feeEnabled && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 13, color: B.muted }}>$</span>
+              <input type="number" min="0" value={draftScheduling.feeAmount || 25} onChange={e => updateScheduling("feeAmount", Number(e.target.value) || 0)}
+                style={{ width: 60, padding: "4px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 13, outline: "none" }} />
+            </div>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Free Cancel Window</div><div style={{ fontSize: 12, color: B.dim }}>Hours before session for penalty-free cancellation</div></div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <input type="number" min="0" value={draftScheduling.cancelWindowHours ?? 12} onChange={e => updateScheduling("cancelWindowHours", Number(e.target.value) || 0)}
+              style={{ width: 50, padding: "4px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 13, outline: "none" }} />
+            <span style={{ fontSize: 12, color: B.muted }}>hrs</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+          <button onClick={() => updateScheduling("penaltyEnabled", !(draftScheduling.penaltyEnabled !== false))} style={toggleBtn(draftScheduling.penaltyEnabled !== false)}>
+            <div style={toggleDot(draftScheduling.penaltyEnabled !== false)} />
+          </button>
+          <div><div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Late Cancel Counts Against Allotment</div><div style={{ fontSize: 12, color: B.dim }}>Cancelling within the window deducts a session</div></div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 8, background: B.darker }}>
+          <button onClick={() => updateScheduling("lateCancelFeeEnabled", !draftScheduling.lateCancelFeeEnabled)} style={toggleBtn(draftScheduling.lateCancelFeeEnabled)}>
+            <div style={toggleDot(draftScheduling.lateCancelFeeEnabled)} />
+          </button>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Repeat Late Cancel Fee</div><div style={{ fontSize: 12, color: B.dim }}>Charge fee after too many late cancels/month</div></div>
+          {draftScheduling.lateCancelFeeEnabled && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 12, color: B.muted }}>After</span>
+              <input type="number" min="1" value={draftScheduling.lateCancelFeeThreshold || 3} onChange={e => updateScheduling("lateCancelFeeThreshold", Number(e.target.value) || 3)}
+                style={{ width: 40, padding: "4px 6px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 13, outline: "none", textAlign: "center" }} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, paddingTop: 16, borderTop: "1px solid " + B.border }}>
+        {hasChanges && <span style={{ fontSize: 12, color: B.orange, fontWeight: 600 }}>You have unsaved changes</span>}
+        <button onClick={() => hasChanges ? setShowConfirm(true) : null} disabled={!hasChanges}
+          style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: hasChanges ? B.accent : B.border, color: hasChanges ? "#fff" : B.dim, fontSize: 14, fontWeight: 700, cursor: hasChanges ? "pointer" : "not-allowed" }}>
+          Save Changes
+        </button>
+      </div>
+
+      {/* Confirm Modal */}
+      {showConfirm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }} onClick={() => setShowConfirm(false)}>
+          <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 16, padding: 28, maxWidth: 420, width: "90%" }} onClick={e => e.stopPropagation()}>
+            <h3 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 700, color: B.text }}>Save Feature Settings?</h3>
+            <p style={{ color: B.muted, fontSize: 14, margin: "0 0 8px", lineHeight: 1.5 }}>
+              These changes will take effect immediately for all users in this gym.
+            </p>
+            <div style={{ padding: "10px 14px", borderRadius: 8, background: B.orange + "12", border: "1px solid " + B.orange + "30", marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: B.orange }}>Warning</div>
+              <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>
+                Disabling features will hide them from the sidebar. Users currently on those pages will need to navigate away. Scheduling changes affect all future bookings and cancellations.
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setShowConfirm(false)} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+              <button onClick={handleSave} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Confirm & Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -1129,6 +1418,7 @@ export default function SettingsView() {
       </div>
 
       {activeTab === "General" && renderGeneral()}
+      {activeTab === "Features" && <FeaturesTab B={B} s={s} showToast={showToast} />}
       {activeTab === "Integrations" && renderIntegrations()}
       {activeTab === "Branding" && renderBranding()}
       {activeTab === "Locations" && renderLocations()}

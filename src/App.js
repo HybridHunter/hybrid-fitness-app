@@ -56,6 +56,7 @@ import GymBillingView from "./features/settings/GymBillingView";
 import HelpCenter from "./features/help/HelpCenter";
 import { FloatingHelpButton } from "./features/help/HelpCenter";
 import OnboardingTour from "./features/onboarding/OnboardingTour";
+import FloatingChat from "./components/shared/FloatingChat";
 
 // Public routes that don't need auth
 const PUBLIC_PATHS = ["/landing", "/register", "/terms", "/privacy"];
@@ -182,6 +183,7 @@ function GymRoutes() {
         </Routes>
       </Shell>
       <FloatingHelpButton />
+      <FloatingChat />
       {showTour && currentUser.role === "admin" && (
         <OnboardingTour onComplete={() => setShowTour(false)} />
       )}

@@ -2,6 +2,9 @@
   command = "npm run build"
   publish = "build"
 
+[functions]
+  directory = "netlify/functions"
+
 # Handle client-side routing — all routes serve index.html
 [[redirects]]
   from = "/*"

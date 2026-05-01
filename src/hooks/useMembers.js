@@ -85,5 +85,7 @@ export function useMembers() {
     if (changed) setMembers(updated);
   }, [members, setMembers, plans]);
 
+  // Auto check-in is handled by Netlify scheduled function (cron every 5 min)
+
   return { members, setMembers, addMember, updateMember, deleteMember, getMember, membersLoaded };
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
@@ -179,7 +180,7 @@ function injectPulseKeyframes() {
 }
 
 /* ---------- Client Workout Card ---------- */
-function ClientWorkoutCard({ member, individualizedSlots, B, onAdjust, checkedIn }) {
+function ClientWorkoutCard({ member, individualizedSlots, B, onAdjust, checkedIn, workoutEnabled = true, progressionEnabled = true, classId, onCheckIn, onUndoCheckIn, onNoShow }) {
   const ms = member.movementScores || {};
 
   return (
@@ -195,22 +196,22 @@ function ClientWorkoutCard({ member, individualizedSlots, B, onAdjust, checkedIn
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontWeight: 700, fontSize: 14, color: B.text }}>{member.firstName} {member.lastName}</span>
-            {checkedIn && (
-              <span style={{
-                display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px",
-                borderRadius: 6, fontSize: 10, fontWeight: 700,
-                background: "#4caf5022", color: "#4caf50",
-              }}>
-                &#10003; Checked In
-              </span>
-            )}
+            {checkedIn ? (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: "#4caf5022", color: "#4caf50" }}>{"\u2713"} Checked In</span>
+                {onUndoCheckIn && <button onClick={() => onUndoCheckIn(member.id, classId)} style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 9, cursor: "pointer" }}>Undo</button>}
+                {onNoShow && <button onClick={() => onNoShow(member.id, classId)} style={{ padding: "2px 6px", borderRadius: 4, border: "none", background: "#f59e0b22", color: "#f59e0b", fontSize: 9, fontWeight: 700, cursor: "pointer" }}>No Show</button>}
+              </div>
+            ) : onCheckIn ? (
+              <button onClick={() => onCheckIn(member.id, classId)} style={{ padding: "2px 10px", borderRadius: 6, border: "none", background: "#4caf50", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Check In</button>
+            ) : null}
           </div>
           <div style={{ fontSize: 11, color: B.muted }}>{member.membershipStatus === "active" ? "" : "(" + member.membershipStatus + ")"}</div>
         </div>
       </div>
 
-      {/* movement score badges */}
-      <div style={{ padding: "10px 16px", display: "flex", flexWrap: "wrap", gap: 4, borderBottom: "1px solid " + B.border }}>
+      {/* movement score badges — only show if progression engine enabled */}
+      {progressionEnabled && <div style={{ padding: "10px 16px", display: "flex", flexWrap: "wrap", gap: 4, borderBottom: "1px solid " + B.border }}>
         {PATS.filter((p) => p !== "All").map((pat) => {
           const s = ms[pat] ?? 0;
           return (
@@ -222,10 +223,15 @@ function ClientWorkoutCard({ member, individualizedSlots, B, onAdjust, checkedIn
             </span>
           );
         })}
-      </div>
+      </div>}
 
-      {/* exercises */}
-      <div style={{ padding: "8px 0" }}>
+      {/* exercises — only show if workout builder enabled */}
+      {!workoutEnabled && (
+        <div style={{ padding: "16px", color: B.dim, fontSize: 13, textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: B.muted }}>{member.notes || "No notes"}</div>
+        </div>
+      )}
+      {workoutEnabled && <div style={{ padding: "8px 0" }}>
         {individualizedSlots.map((slot, i) => {
           if (!slot.exercise) return null;
           const ex = slot.exercise; // already an object { n, p, ... }
@@ -268,8 +274,8 @@ function ClientWorkoutCard({ member, individualizedSlots, B, onAdjust, checkedIn
                 </div>
               </div>
 
-              {/* quick adjust */}
-              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+              {/* quick adjust — only if progression engine enabled */}
+              {progressionEnabled && onAdjust && <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                 <button onClick={() => onAdjust(member.id, pattern, -1)}
                   style={{
                     width: 26, height: 26, borderRadius: 6, border: "1px solid " + B.border, background: B.darker,
@@ -280,7 +286,7 @@ function ClientWorkoutCard({ member, individualizedSlots, B, onAdjust, checkedIn
                     width: 26, height: 26, borderRadius: 6, border: "1px solid " + B.border, background: B.darker,
                     color: B.green, fontWeight: 900, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
                   }}>+</button>
-              </div>
+              </div>}
             </div>
           );
         })}
@@ -288,7 +294,7 @@ function ClientWorkoutCard({ member, individualizedSlots, B, onAdjust, checkedIn
         {individualizedSlots.every((s) => !s.exercise) && (
           <div style={{ padding: "24px 16px", textAlign: "center", color: B.dim, fontSize: 13 }}>No exercises in selected template</div>
         )}
-      </div>
+      </div>}
     </Card>
   );
 }
@@ -345,12 +351,18 @@ function SessionStatsBar({ B, checkedInCount, totalBooked, className, classTime,
 /* ---------- Main CommandView ---------- */
 export default function CommandView() {
   const B = useTheme();
+  const navigate = useNavigate();
+  const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
+  const featureToggles = (() => { try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}"); } catch { return {}; } })();
+  const workoutEnabled = featureToggles.workout_builder !== false;
+  const progressionEnabled = featureToggles.progression_engine !== false;
+
   const { members, updateMember } = useMembers();
   const [schedule] = useLocalStorage("hf_schedule", []);
   const [workouts] = useLocalStorage("hf_w", []);
   const [matrix] = useLocalStorage("hf_matrix", DEFAULT_MATRIX);
   const [exercises] = useLocalStorage("hf_ex", EX);
-  const [attendance] = useLocalStorage("hf_attendance", []);
+  const [attendance, setAttendance] = useLocalStorage("hf_attendance", []);
 
   const [sessionMode, setSessionMode] = useState("custom"); // class id or "custom"
   const [customSelected, setCustomSelected] = useState([]);
@@ -400,14 +412,17 @@ export default function CommandView() {
   // today's attendance lookup: Set of member IDs who checked in today
   const todayCheckedInIds = useMemo(() => {
     const iso = todayISO();
+    const classId = sessionMode !== "custom" ? sessionMode : null;
     const ids = new Set();
     attendance.forEach((a) => {
-      if (a.checkInTime && a.checkInTime.slice(0, 10) === iso) {
-        ids.add(a.memberId);
+      if (a.checkInTime && a.checkInTime.slice(0, 10) === iso && !a.noShow) {
+        if (classId ? a.classId === classId : true) {
+          ids.add(a.memberId);
+        }
       }
     });
     return ids;
-  }, [attendance]);
+  }, [attendance, sessionMode]);
 
   // selected members
   const sessionMembers = useMemo(() => {
@@ -503,6 +518,9 @@ export default function CommandView() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* HEADER */}
       <div style={{ marginBottom: 20 }}>
+        <button onClick={() => navigate(_gp("coaching"))} style={{ background: "transparent", border: "1px solid " + B.border, borderRadius: 8, padding: "5px 12px", color: B.muted, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
+          {"\u2190"} Back to Dashboard
+        </button>
         <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: 0 }}>Session View</h1>
         <p style={{ color: B.muted, fontSize: 13, margin: "4px 0 0" }}>See every client's individualized workout in one session view.</p>
       </div>
@@ -524,8 +542,8 @@ export default function CommandView() {
           </select>
         </div>
 
-        {/* workout template selector */}
-        <div style={{ flex: 1, minWidth: 200 }}>
+        {/* workout template selector — hidden if workout builder disabled */}
+        {workoutEnabled && <div style={{ flex: 1, minWidth: 200 }}>
           <label style={{ fontSize: 11, fontWeight: 700, color: B.muted, display: "block", marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>Workout Template</label>
           <select value={selectedWorkoutIdx} onChange={(e) => setSelectedWorkoutIdx(Number(e.target.value))}
             style={{
@@ -537,7 +555,7 @@ export default function CommandView() {
               <option key={i} value={i}>{w.name || w.title || `Workout ${i + 1}`}</option>
             ))}
           </select>
-        </div>
+        </div>}
 
         {/* checked-in filter toggle */}
         {sessionMode !== "custom" && (
@@ -636,10 +654,16 @@ export default function CommandView() {
               <ClientWorkoutCard
                 key={m.id}
                 member={m}
-                individualizedSlots={memberIndividualizedSlots[m.id] || allSlots}
+                individualizedSlots={workoutEnabled ? (memberIndividualizedSlots[m.id] || allSlots) : []}
                 B={B}
-                onAdjust={handleAdjust}
+                onAdjust={progressionEnabled ? handleAdjust : null}
                 checkedIn={todayCheckedInIds.has(m.id)}
+                workoutEnabled={workoutEnabled}
+                progressionEnabled={progressionEnabled}
+                classId={sessionMode !== "custom" ? sessionMode : null}
+                onCheckIn={(memberId, classId) => { setAttendance(prev => [...prev, { id: crypto.randomUUID(), memberId, checkInTime: new Date().toISOString(), method: "coach", classId }]); }}
+                onUndoCheckIn={(memberId, classId) => { const todayStr = new Date().toISOString().slice(0,10); setAttendance(prev => prev.filter(a => !(a.memberId === memberId && a.classId === classId && a.checkInTime?.slice(0,10) === todayStr))); }}
+                onNoShow={(memberId, classId) => { const todayStr = new Date().toISOString().slice(0,10); setAttendance(prev => { const without = prev.filter(a => !(a.memberId === memberId && a.classId === classId && a.checkInTime?.slice(0,10) === todayStr)); return [...without, { id: crypto.randomUUID(), memberId, checkInTime: new Date().toISOString(), method: "no-show", classId, noShow: true }]; }); }}
               />
             ))}
           </div>

@@ -771,6 +771,13 @@ export default function BillingView() {
                                 setCancelModal({ memberId: m.id, memberName, oldPlan });
                                 return;
                               }
+                              // First plan assignment — simple confirm
+                              if (!oldPlan && newPlan) {
+                                if (window.confirm(`Assign ${newPlan.name} ($${newPlan.price}/${newPlan.billingCycle}) to ${memberName}?`)) {
+                                  assignPlan(m.id, newPlanId);
+                                }
+                                return;
+                              }
                               const oldName = oldPlan ? oldPlan.name + " ($" + oldPlan.price + ")" : "No plan";
                               const newName = newPlan ? newPlan.name + " ($" + newPlan.price + ")" : "No plan";
                               setPendingPlanChange({ memberId: m.id, memberName, planId: newPlanId, oldName, newName });

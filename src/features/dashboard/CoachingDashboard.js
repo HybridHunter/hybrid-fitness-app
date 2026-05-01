@@ -411,7 +411,7 @@ export default function CoachingDashboard() {
                       {(cls.bookings || []).map(memberId => {
                         const m = getMember(memberId);
                         if (!m) return null;
-                        const checkedIn = todayCheckins.some(a => a.memberId === memberId);
+                        const checkedIn = todayCheckins.some(a => a.memberId === memberId && a.classId === cls.id);
                         const canQuickCheckIn = (isActive || (isNext && startMin - currentMinutes <= 30)) && !checkedIn;
                         return (
                           <div key={memberId} style={{
@@ -427,11 +427,20 @@ export default function CoachingDashboard() {
                             }}>
                               {getInitials(m.firstName, m.lastName)}
                             </div>
-                            <span style={{ fontSize: 13, color: B.text, flex: 1 }}>
+                            <span onClick={(e) => { e.stopPropagation(); navigate(_gp(`members/${memberId}`)); }}
+                              style={{ fontSize: 13, color: B.text, flex: 1, cursor: "pointer", borderBottom: "1px dashed transparent" }}
+                              onMouseEnter={e => e.currentTarget.style.borderBottomColor = B.accent}
+                              onMouseLeave={e => e.currentTarget.style.borderBottomColor = "transparent"}>
                               {m.firstName} {m.lastName?.[0]}.
                             </span>
                             {checkedIn ? (
-                              <span style={{ fontSize: 16, color: B.green, flexShrink: 0 }} title="Checked in">&#10003;</span>
+                              <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
+                                <span style={{ fontSize: 14, color: B.green }} title="Checked in">{"\u2713"}</span>
+                                <button onClick={(e) => { e.stopPropagation(); setAttendance(prev => prev.filter(a => !(a.memberId === memberId && a.classId === cls.id && a.checkInTime?.slice(0,10) === new Date().toISOString().slice(0,10)))); }}
+                                  style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 10, cursor: "pointer" }} title="Undo check-in">Undo</button>
+                                <button onClick={(e) => { e.stopPropagation(); setAttendance(prev => { const without = prev.filter(a => !(a.memberId === memberId && a.classId === cls.id && a.checkInTime?.slice(0,10) === new Date().toISOString().slice(0,10))); return [...without, { id: crypto.randomUUID(), memberId, checkInTime: new Date().toISOString(), method: "no-show", classId: cls.id, noShow: true }]; }); }}
+                                  style={{ padding: "2px 6px", borderRadius: 4, border: "none", background: (B.orange || "#f59e0b") + "22", color: B.orange || "#f59e0b", fontSize: 10, fontWeight: 700, cursor: "pointer" }} title="Mark as no-show">No Show</button>
+                              </div>
                             ) : canQuickCheckIn ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleQuickCheckIn(memberId, cls.id); }}
