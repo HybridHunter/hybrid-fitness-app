@@ -75,6 +75,8 @@ export default function ScheduleView() {
   const [noShowSettings, setNoShowSettings] = useLocalStorage("hf_noshow_settings", { feeEnabled: false, feeAmount: 25, cancelWindowHours: 12, penaltyEnabled: true, lateCancelFeeEnabled: false, lateCancelFeeThreshold: 3, autoCheckIn: false });
   const [noShowConfirm, setNoShowConfirm] = useState(null);
   const [showNoShowSettings, setShowNoShowSettings] = useState(false);
+  const [featureToggles] = useLocalStorage("hf_feature_toggles", {});
+  const workoutBuilderEnabled = featureToggles.workout_builder !== false;
   const [scheduleSettings, setScheduleSettings] = useLocalStorage("hf_schedule_settings", { startHour: 5, endHour: 21 });
   const HOURS = Array.from({length: scheduleSettings.endHour - scheduleSettings.startHour + 1}, (_, i) => i + scheduleSettings.startHour);
   const [privateSessions, setPrivateSessions] = useLocalStorage("hf_private_sessions", []);
@@ -170,9 +172,11 @@ export default function ScheduleView() {
     const m = getMember(memberId);
     setClasses(prev => prev.map(c => {
       if (c.id !== classId) return c;
-      if (c.bookings.includes(memberId) || c.waitlist.includes(memberId)) return c;
-      if (c.bookings.length < c.capacity) return { ...c, bookings: [...c.bookings, memberId] };
-      return { ...c, waitlist: [...c.waitlist, memberId] };
+      const bookings = c.bookings || [];
+      const waitlist = c.waitlist || [];
+      if (bookings.includes(memberId) || waitlist.includes(memberId)) return c;
+      if (bookings.length < c.capacity) return { ...c, bookings: [...bookings, memberId] };
+      return { ...c, waitlist: [...waitlist, memberId] };
     }));
 
     // Send notification
@@ -189,10 +193,12 @@ export default function ScheduleView() {
   const handleRemoveMember = useCallback((classId, memberId) => {
     setClasses(prev => prev.map(c => {
       if (c.id !== classId) return c;
-      let newBookings = c.bookings.filter(id => id !== memberId);
-      let newWaitlist = c.waitlist.filter(id => id !== memberId);
+      const bookings = c.bookings || [];
+      const waitlist = c.waitlist || [];
+      let newBookings = bookings.filter(id => id !== memberId);
+      let newWaitlist = waitlist.filter(id => id !== memberId);
       // Promote from waitlist if a booking spot opened
-      if (newBookings.length < c.capacity && newWaitlist.length > 0 && c.bookings.includes(memberId)) {
+      if (newBookings.length < c.capacity && newWaitlist.length > 0 && bookings.includes(memberId)) {
         newBookings = [...newBookings, newWaitlist[0]];
         newWaitlist = newWaitlist.slice(1);
       }
@@ -364,11 +370,14 @@ export default function ScheduleView() {
                     {dayClasses.map((cls, ci) => {
                       const color = getSessionColor(cls.name);
                       const hasWorkout = cls.workoutId && getWorkout(cls.workoutId);
+                      const minuteOffset = timeToMinutes(cls.startTime) - hour * 60;
+                      const topPx = (minuteOffset / 60) * 48;
                       return (
                         <div key={cls.id} onClick={()=>setSelectedClass(cls)} style={{
                           background:color+"22",border:`1px solid ${color}55`,borderLeft:`3px solid ${color}`,
                           borderRadius:6,padding:"4px 6px",marginBottom:2,cursor:"pointer",
                           transition:"transform 0.1s",
+                          position:"absolute",top:topPx,left:2,right:2,
                         }}
                         onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
                         onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
@@ -384,8 +393,8 @@ export default function ScheduleView() {
                           </div>
                           <div style={{fontSize:9,color:B.muted}}>{fmtTime(cls.startTime)}-{fmtTime(cls.endTime)}</div>
                           <div style={{fontSize:9,color:B.muted}}>{cls.instructor}</div>
-                          <div style={{fontSize:9,fontWeight:600,color:cls.bookings.length>=cls.capacity?B.orange:color}}>
-                            {cls.bookings.length}/{cls.capacity} booked
+                          <div style={{fontSize:9,fontWeight:600,color:(cls.bookings?.length || 0)>=cls.capacity?B.orange:color}}>
+                            {cls.bookings?.length || 0}/{cls.capacity} booked
                           </div>
                         </div>
                       );
@@ -415,7 +424,7 @@ export default function ScheduleView() {
             </div>
 
             {/* Workout Template — hidden if workout_builder feature is off */}
-            {(() => { try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}").workout_builder !== false; } catch { return true; } })() && <div style={{marginBottom:20,padding:14,borderRadius:10,background:B.darker,border:`1px solid ${B.border}`}}>
+            {workoutBuilderEnabled && <div style={{marginBottom:20,padding:14,borderRadius:10,background:B.darker,border:`1px solid ${B.border}`}}>
               <h3 style={{fontSize:13,fontWeight:700,color:B.text,marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
                 <span style={{fontSize:15}}>&#x1F3CB;</span> Workout Template
               </h3>
@@ -456,15 +465,15 @@ export default function ScheduleView() {
             <div style={{marginBottom:20}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:B.muted,marginBottom:4}}>
                 <span>Capacity</span>
-                <span style={{fontWeight:700,color:activeClass.bookings.length>=activeClass.capacity?B.orange:B.accent}}>
-                  {activeClass.bookings.length}/{activeClass.capacity}
+                <span style={{fontWeight:700,color:(activeClass.bookings?.length || 0)>=activeClass.capacity?B.orange:B.accent}}>
+                  {activeClass.bookings?.length || 0}/{activeClass.capacity}
                 </span>
               </div>
               <div style={{height:6,background:B.border,borderRadius:3,overflow:"hidden"}}>
                 <div style={{
                   height:"100%",borderRadius:3,transition:"width 0.3s",
-                  width:`${Math.min(100,(activeClass.bookings.length/activeClass.capacity)*100)}%`,
-                  background:activeClass.bookings.length>=activeClass.capacity?B.orange:B.accent
+                  width:`${Math.min(100,((activeClass.bookings?.length || 0)/activeClass.capacity)*100)}%`,
+                  background:(activeClass.bookings?.length || 0)>=activeClass.capacity?B.orange:B.accent
                 }}/>
               </div>
             </div>
@@ -472,7 +481,7 @@ export default function ScheduleView() {
             {/* Booked Members */}
             <div style={{marginBottom:20}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                <h3 style={{fontSize:14,fontWeight:700,color:B.text,margin:0}}>Booked Members ({activeClass.bookings.length})</h3>
+                <h3 style={{fontSize:14,fontWeight:700,color:B.text,margin:0}}>Booked Members ({activeClass.bookings?.length || 0})</h3>
                 <button onClick={()=>setShowNoShowSettings(!showNoShowSettings)} style={btn({background:"transparent",color:B.muted,padding:"2px 8px",fontSize:11,border:"1px solid "+B.border})}>
                   {"\u2699\uFE0F"} No-Show Settings
                 </button>
@@ -535,10 +544,10 @@ export default function ScheduleView() {
                 </div>
               )}
 
-              {activeClass.bookings.length === 0 && (
+              {(activeClass.bookings?.length || 0) === 0 && (
                 <p style={{color:B.dim,fontSize:13,fontStyle:"italic"}}>No members booked yet.</p>
               )}
-              {activeClass.bookings.map(mid => {
+              {(activeClass.bookings || []).map(mid => {
                 const m = getMember(mid);
                 const todayStr = new Date().toISOString().slice(0, 10);
                 const isAutoCheckedIn = noShowSettings.autoCheckIn && attendance.some(a => a.memberId === mid && a.classId === activeClass.id && a.checkInTime?.slice(0, 10) === todayStr && a.method === "auto");
@@ -565,10 +574,10 @@ export default function ScheduleView() {
             </div>
 
             {/* Waitlist */}
-            {activeClass.waitlist.length > 0 && (
+            {(activeClass.waitlist?.length || 0) > 0 && (
               <div style={{marginBottom:20}}>
-                <h3 style={{fontSize:14,fontWeight:700,color:B.orange,marginBottom:8}}>Waitlist ({activeClass.waitlist.length})</h3>
-                {activeClass.waitlist.map((mid,i) => {
+                <h3 style={{fontSize:14,fontWeight:700,color:B.orange,marginBottom:8}}>Waitlist ({activeClass.waitlist?.length || 0})</h3>
+                {(activeClass.waitlist || []).map((mid,i) => {
                   const m = getMember(mid);
                   return (
                     <div key={mid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderRadius:8,background:B.darker,marginBottom:4}}>
@@ -853,7 +862,7 @@ export default function ScheduleView() {
                 <label style={labelStyle}>Capacity</label>
                 <input type="number" min="1" style={inputStyle} value={form.capacity} onChange={e=>setForm(f=>({...f,capacity:e.target.value}))} />
               </div>
-              {(() => { try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}").workout_builder !== false; } catch { return true; } })() && (
+              {workoutBuilderEnabled && (
               <div>
                 <label style={labelStyle}>Workout Template</label>
                 <select style={{...inputStyle,cursor:"pointer"}} value={form.workoutId} onChange={e=>setForm(f=>({...f,workoutId:e.target.value}))}>

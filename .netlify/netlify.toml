@@ -1,16 +1,15 @@
+functionsDirectory = "/Users/huntergrindle/Desktop/Workout Builder/workout-builder/netlify/functions"
+functionsDirectoryOrigin = "config"
 redirectsOrigin = "config"
 plugins = []
 headers = []
-
-[functions]
-
-[functions."*"]
 
 [build]
 publish = "/Users/huntergrindle/Desktop/Workout Builder/workout-builder/build"
 publishOrigin = "config"
 commandOrigin = "config"
 command = "npm run build"
+functions = "/Users/huntergrindle/Desktop/Workout Builder/workout-builder/netlify/functions"
 
 [build.environment]
 
@@ -25,6 +24,10 @@ command = "npm run build"
 [build.processing.js]
 
 [build.services]
+
+[functions]
+
+[functions."*"]
 
 [[redirects]]
 from = "/*"

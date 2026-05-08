@@ -2139,6 +2139,13 @@ export default function BusinessDashboard() {
         </div>
       </div>
 
+      {/* ============ Coach Shift Reports ============ */}
+      {shiftLogs.length > 0 && (
+        <Card style={{ padding: 20, marginBottom: sectionGap, border: "2px solid " + B.accent + "30" }}>
+          <CoachShiftSubmissions B={B} shiftLogs={shiftLogs} members={members} plans={plans} onCreateWinsPost={handleCreateWinsPost} />
+        </Card>
+      )}
+
       {/* ============ SECTION 3: Membership Movement (all auto-calculated) ============ */}
       <div style={{
         display: "grid",
@@ -2352,11 +2359,6 @@ export default function BusinessDashboard() {
 
       {/* ============ Member Engagement Alerts ============ */}
       <MemberEngagementAlerts members={members} attendance={attendance} plans={plans} B={B} navigate={navigate} />
-
-      {/* ============ Coach Shift Submissions ============ */}
-      <Card style={{ padding: 20, marginBottom: sectionGap }}>
-        <CoachShiftSubmissions B={B} shiftLogs={shiftLogs} members={members} plans={plans} onCreateWinsPost={handleCreateWinsPost} />
-      </Card>
 
       {/* ============ Quick Actions ============ */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>

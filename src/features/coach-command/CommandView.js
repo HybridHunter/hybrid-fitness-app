@@ -353,7 +353,7 @@ export default function CommandView() {
   const B = useTheme();
   const navigate = useNavigate();
   const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
-  const featureToggles = (() => { try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}"); } catch { return {}; } })();
+  const [featureToggles] = useLocalStorage("hf_feature_toggles", {});
   const workoutEnabled = featureToggles.workout_builder !== false;
   const progressionEnabled = featureToggles.progression_engine !== false;
 

@@ -162,17 +162,7 @@ export default function CoachingDashboard() {
       ...(classId ? { classId } : {}),
     };
     setAttendance(prev => [...prev, record]);
-
-    // Update gamification stats
-    const g = member.gamification || { level: 1, xp: 0, totalWorkouts: 0, totalWeightLifted: 0, badges: [], currentStreak: 0, longestStreak: 0 };
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const alreadyToday = attendance.some(a => a.memberId === memberId && a.checkInTime.slice(0, 10) === todayStr);
-    const newTotalWorkouts = (g.totalWorkouts || 0) + 1;
-    const newCurrentStreak = alreadyToday ? (g.currentStreak || 0) : (g.currentStreak || 0) + 1;
-    const newLongestStreak = Math.max(newCurrentStreak, g.longestStreak || 0);
-    updateMember(memberId, {
-      gamification: { ...g, totalWorkouts: newTotalWorkouts, currentStreak: newCurrentStreak, longestStreak: newLongestStreak },
-    });
+    // Gamification stats are now derived from attendance records, not stored counters
   };
 
   // Pending shift check-ins — today + any missed days

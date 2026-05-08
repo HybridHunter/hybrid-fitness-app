@@ -151,6 +151,7 @@ const FEATURE_OPTIONS = [
   { key: "assessments", label: "Assessments", desc: "Movement assessment scoring" },
   { key: "gamification", label: "Gamification", desc: "XP, levels, badges, leaderboards" },
   { key: "waivers", label: "Waivers", desc: "Digital waiver signing" },
+  { key: "checkin_pinpad", label: "Check-In Pin Pad", desc: "PIN-based self-service check-in kiosk" },
 ];
 
 function FeatureToggles({ B }) {
@@ -284,14 +285,18 @@ function SchedulingSettings({ B }) {
 }
 
 function FeaturesTab({ B, s, showToast }) {
-  // Load saved state
-  const savedToggles = (() => { try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}"); } catch { return {}; } })();
-  const savedScheduling = (() => { try { return JSON.parse(localStorage.getItem("hf_noshow_settings") || "{}"); } catch { return {}; } })();
+  // Synced via Supabase through useLocalStorage
+  const [savedToggles, setSavedToggles] = useLocalStorage("hf_feature_toggles", {});
+  const [savedScheduling, setSavedScheduling] = useLocalStorage("hf_noshow_settings", {});
 
   // Draft state — changes are only local until saved
   const [draftToggles, setDraftToggles] = useState(savedToggles);
   const [draftScheduling, setDraftScheduling] = useState(savedScheduling);
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // Sync draft when saved values load from Supabase
+  useEffect(() => { setDraftToggles(savedToggles); }, [JSON.stringify(savedToggles)]);
+  useEffect(() => { setDraftScheduling(savedScheduling); }, [JSON.stringify(savedScheduling)]);
 
   const hasChanges = JSON.stringify(draftToggles) !== JSON.stringify(savedToggles) || JSON.stringify(draftScheduling) !== JSON.stringify(savedScheduling);
 
@@ -299,20 +304,10 @@ function FeaturesTab({ B, s, showToast }) {
   const updateScheduling = (key, val) => setDraftScheduling(prev => ({ ...prev, [key]: val }));
 
   const handleSave = () => {
-    localStorage.setItem("hf_feature_toggles", JSON.stringify(draftToggles));
-    localStorage.setItem("hf_noshow_settings", JSON.stringify(draftScheduling));
-    // Sync scheduling to Supabase
-    try {
-      const gymId = localStorage.getItem("hf_gym_id") || "default";
-      const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM';
-      fetch('https://qzvxnklyeadbroesccxt.supabase.co/rest/v1/data_store?on_conflict=gym_id,key', {
-        method: 'POST',
-        headers: { 'apikey': KEY, 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-        body: JSON.stringify({ gym_id: gymId, key: 'hf_noshow_settings', value: draftScheduling, updated_at: new Date().toISOString() }),
-      });
-    } catch {}
+    setSavedToggles(draftToggles);
+    setSavedScheduling(draftScheduling);
     setShowConfirm(false);
-    showToast("Settings saved! Refresh to see sidebar changes.");
+    showToast("Settings saved! Changes synced to all users.");
   };
 
   const toggleBtn = (enabled) => ({
@@ -475,6 +470,8 @@ export default function SettingsView() {
   const [stationSettings, setStationSettings] = useLocalStorage("hf_station_settings", { showWeight: true, showReps: true, showRPE: true, showMedia: true });
   const [locations, setLocations] = useLocalStorage("hf_locations", DEFAULT_LOCATIONS);
   const [newUser, setNewUser] = useState({ email: "", username: "", password: "", role: "coach", displayName: "" });
+  const [editingUserId, setEditingUserId] = useState(null);
+  const [editForm, setEditForm] = useState({ displayName: "", email: "", phone: "", role: "" });
   const [gamificationSettings, setGamificationSettings] = useLocalStorage("hf_gamification_settings", DEFAULT_GAMIFICATION_SETTINGS);
 
   const [collapsedSections, setCollapsedSections] = useState({});
@@ -1090,15 +1087,40 @@ export default function SettingsView() {
             <tr>
               <th style={s.th}>Display Name</th>
               <th style={s.th}>Email</th>
+              <th style={s.th}>Phone</th>
               <th style={s.th}>Role</th>
               <th style={s.th}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {users.filter(u => u.role !== "client").map(u => (
+              editingUserId === u.id ? (
+                <tr key={u.id} style={{ background: `${B.green}08` }}>
+                  <td style={s.td}><input style={{ ...s.input, margin: 0, padding: "4px 8px", fontSize: 12 }} value={editForm.displayName} onChange={e => setEditForm(f => ({ ...f, displayName: e.target.value }))} /></td>
+                  <td style={s.td}><input style={{ ...s.input, margin: 0, padding: "4px 8px", fontSize: 12 }} value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} /></td>
+                  <td style={s.td}><input style={{ ...s.input, margin: 0, padding: "4px 8px", fontSize: 12 }} value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="Phone" /></td>
+                  <td style={s.td}>
+                    <select value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 12, fontWeight: 600, cursor: "pointer", outline: "none" }}>
+                      <option value="admin">Admin</option>
+                      <option value="coach">Coach</option>
+                    </select>
+                  </td>
+                  <td style={s.td}>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button style={s.btnSm(B.green + "22", B.green)} onClick={() => {
+                        updateUser(u.id, { displayName: editForm.displayName, email: editForm.email, username: editForm.email, phone: editForm.phone, role: editForm.role });
+                        setEditingUserId(null);
+                        showToast(`${editForm.displayName} updated.`);
+                      }}>Save</button>
+                      <button style={s.btnSm(B.border, B.muted)} onClick={() => setEditingUserId(null)}>Cancel</button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
               <tr key={u.id}>
                 <td style={s.td}>{u.displayName}</td>
                 <td style={{ ...s.td, color: B.muted }}>{u.email || u.username}</td>
+                <td style={{ ...s.td, color: B.muted }}>{u.phone || "—"}</td>
                 <td style={s.td}>
                   {currentUser?.id === u.id || u.isSuperAdmin ? (
                     <span style={s.badge(u.role === "admin" ? B.purple : B.green)}>{u.role}</span>
@@ -1115,15 +1137,24 @@ export default function SettingsView() {
                   )}
                 </td>
                 <td style={s.td}>
+                  <div style={{ display: "flex", gap: 4 }}>
                   {currentUser?.id === u.id ? (
                     <span style={{ fontSize: 12, color: B.muted }}>Current user</span>
                   ) : u.isSuperAdmin ? (
                     <span style={{ fontSize: 12, color: B.muted }}>Super Admin</span>
                   ) : (
-                    <button style={s.btnSm(B.red + "22", B.red)} onClick={() => { if (window.confirm(`Delete ${u.displayName}?`)) { removeUser(u.id); showToast("User removed."); } }}>Delete</button>
+                    <>
+                      <button style={s.btnSm(B.blue + "22", B.blue || B.accent)} onClick={() => {
+                        setEditingUserId(u.id);
+                        setEditForm({ displayName: u.displayName || "", email: u.email || u.username || "", phone: u.phone || "", role: u.role || "coach" });
+                      }}>Edit</button>
+                      <button style={s.btnSm(B.red + "22", B.red)} onClick={() => { if (window.confirm(`Delete ${u.displayName}?`)) { removeUser(u.id); showToast("User removed."); } }}>Delete</button>
+                    </>
                   )}
+                  </div>
                 </td>
               </tr>
+              )
             ))}
           </tbody>
         </table>

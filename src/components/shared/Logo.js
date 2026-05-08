@@ -1,4 +1,8 @@
+import { useTheme } from "../../context/ThemeContext";
+
 export default function Logo({s=140}) {
+  const B = useTheme();
+  const isDark = B.darker === "#080c12";
   let logoUrl = null;
   let primaryColor = "#8fbf3b";
   let gymName = null;
@@ -13,7 +17,7 @@ export default function Logo({s=140}) {
   if (logoUrl) {
     return (
       <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <img src={logoUrl} alt="Logo" style={{height:s*.28,objectFit:"contain"}} onError={e=>{e.target.style.display="none"}}/>
+        <img src={logoUrl} alt="Logo" style={{height:s*.28,objectFit:"contain",filter:isDark?"brightness(0) invert(1)":"none"}} onError={e=>{e.target.style.display="none"}}/>
       </div>
     );
   }

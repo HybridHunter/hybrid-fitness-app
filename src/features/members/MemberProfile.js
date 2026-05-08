@@ -28,6 +28,60 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function AttendanceSection({ B, s, member, memberAttendance, schedule, overviewSections, SectionHeader }) {
+  const now = new Date();
+  const days = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const attended = memberAttendance.some(a => (a.checkInTime || "").slice(0, 10) === dateStr);
+    days.push({ date: d, attended });
+  }
+  const totalAttended = days.filter(d => d.attended).length;
+  const todayDow = now.getDay() === 0 ? 6 : now.getDay() - 1;
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+  const bookedClasses = (schedule || []).filter(c => c.bookings?.includes(member.id));
+  const upcomingRes = [];
+  for (let offset = 0; offset < 7 && upcomingRes.length < 5; offset++) {
+    const dow = (todayDow + offset) % 7;
+    bookedClasses.filter(c => c.dayOfWeek === dow).sort((a, b) => (a.startTime || "").localeCompare(b.startTime || "")).forEach(c => {
+      if (offset === 0) { const [eh, em] = (c.endTime || "23:59").split(":").map(Number); if (currentMin >= eh * 60 + em) return; }
+      const d = new Date(now); d.setDate(d.getDate() + offset);
+      if (upcomingRes.length < 5) upcomingRes.push({ ...c, _date: d, _offset: offset });
+    });
+  }
+  const fmtT = (t) => { const [h,m] = (t||"0:0").split(":").map(Number); return `${h > 12 ? h-12 : h || 12}:${String(m).padStart(2,"0")} ${h >= 12 ? "PM" : "AM"}`; };
+  return (
+    <div style={s.card}>
+      <SectionHeader label="Attendance (Last 30 Days)" sectionKey="stats" icon={"\uD83D\uDCC5"} />
+      {overviewSections.stats && (
+        <div>
+          <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginBottom: 10 }}>
+            {days.map((d, i) => (
+              <div key={i} title={`${d.date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}${d.attended ? " — Attended" : ""}`}
+                style={{ width: 14, height: 14, borderRadius: 3, background: d.attended ? B.green : B.border + "66" }} />
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: B.muted, marginBottom: 12 }}>{totalAttended} session{totalAttended !== 1 ? "s" : ""} in last 30 days</div>
+          {upcomingRes.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Upcoming Reservations</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {upcomingRes.map((r, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 8px", borderRadius: 6, background: B.darker, fontSize: 12 }}>
+                    <span style={{ fontWeight: 600, color: B.text }}>{r.name}</span>
+                    <span style={{ color: B.muted }}>{r._offset === 0 ? "Today" : r._offset === 1 ? "Tomorrow" : r._date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · {fmtT(r.startTime)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MemberProfile() {
   const B = useTheme();
   const { id } = useParams();
@@ -63,6 +117,10 @@ export default function MemberProfile() {
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editNoteText, setEditNoteText] = useState("");
   const [editNotePhotos, setEditNotePhotos] = useState([]);
+  // Must be before any early returns to avoid hook ordering issues
+  const [overviewSections, setOverviewSections] = useState({ info: true, movement: true, notes: true, billing: true, stats: true, body: false, history: false });
+
+  const member = getMember(id);
 
   const showCredToast = (msg, type = "success") => {
     setCredToast({ msg, type });
@@ -70,7 +128,7 @@ export default function MemberProfile() {
   };
 
   const handleSendCredentials = async () => {
-    if (!member.email) {
+    if (!member?.email) {
       showCredToast("No email address on file", "error");
       return;
     }
@@ -94,7 +152,6 @@ export default function MemberProfile() {
     }
   };
 
-  const member = getMember(id);
   if (!member) {
     return (
       <div style={{ padding: 48, textAlign: "center" }}>
@@ -221,8 +278,7 @@ export default function MemberProfile() {
     );
   };
 
-  // Overview: collapsible sections
-  const [overviewSections, setOverviewSections] = useState({ info: true, movement: true, notes: true, billing: true, stats: true, body: false, history: false });
+  // Overview: collapsible sections (useState moved above early return to avoid hook ordering issues)
   const toggleSection = (key) => setOverviewSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   const SectionHeader = ({ label, sectionKey, icon }) => (
@@ -260,7 +316,7 @@ export default function MemberProfile() {
       </div>
 
       {/* Two-column layout: main content left, notes + actions right */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: typeof window !== "undefined" && window.innerWidth < 900 ? "1fr" : "1fr 340px", gap: 16, alignItems: "start" }}>
       {/* LEFT COLUMN */}
       <div>
 
@@ -378,7 +434,10 @@ export default function MemberProfile() {
         )}
       </div>
 
-      {/* Recent Activity */}
+      {/* Attendance Visual (last 30 days) + Upcoming Reservations */}
+      <AttendanceSection B={B} s={s} member={member} memberAttendance={memberAttendance} schedule={schedule} overviewSections={overviewSections} toggleSection={toggleSection} SectionHeader={SectionHeader} />
+
+      {/* Recent Check-in History */}
       <div style={s.card}>
         <SectionHeader label="Recent Activity" sectionKey="history" icon={"\uD83D\uDD52"} />
         {overviewSections.history && (

@@ -1645,7 +1645,9 @@ function ChallengeFeedCard({ challenge, onClick, B }) {
 export default function CommunityFeed() {
   const B = useTheme();
   const { members } = useMembers();
-  const { isStaff } = useAuth();
+  const { isStaff, currentUser } = useAuth();
+  const staffName = currentUser?.displayName || currentUser?.username || "Coach";
+  const staffId = currentUser?.id || "coach";
   const [posts, setPosts] = useLocalStorage("hf_community_posts", []);
   const [categories] = useLocalStorage("hf_community_categories", DEFAULT_CATEGORIES);
   const [challengesRaw, setChallenges] = useLocalStorage("hf_challenges", []);
@@ -1781,8 +1783,8 @@ export default function CommunityFeed() {
     if (!composeText.trim() && composeMediaType !== "poll") return;
     const newPost = {
       id: uuid(),
-      authorId: "coach",
-      authorName: "Coach",
+      authorId: staffId,
+      authorName: staffName,
       category: composeCategory,
       content: composeText.trim(),
       mediaType: composeMediaType,
@@ -1851,7 +1853,7 @@ export default function CommunityFeed() {
           ...p,
           comments: [
             ...p.comments,
-            { id: uuid(), authorId: "coach", authorName: "Coach", text, likes: [], timestamp: new Date().toISOString(), replies: [] }
+            { id: uuid(), authorId: staffId, authorName: staffName, text, likes: [], timestamp: new Date().toISOString(), replies: [] }
           ]
         };
       })
@@ -1871,7 +1873,7 @@ export default function CommunityFeed() {
               ...c,
               replies: [
                 ...(c.replies || []),
-                { id: uuid(), authorId: "coach", authorName: "Coach", text, likes: [], timestamp: new Date().toISOString() }
+                { id: uuid(), authorId: staffId, authorName: staffName, text, likes: [], timestamp: new Date().toISOString() }
               ]
             };
           })
@@ -2233,8 +2235,8 @@ export default function CommunityFeed() {
 
                 {/* Media: Image */}
                 {post.mediaType === "image" && post.mediaUrl && (
-                  <img src={post.mediaUrl} alt="Post media"
-                    style={{ width: "100%", borderRadius: 10, marginBottom: 10, display: "block" }} />
+                  <img src={post.mediaUrl} alt="Post media" loading="lazy"
+                    style={{ width: "100%", maxHeight: 400, objectFit: "cover", borderRadius: 10, marginBottom: 10, display: "block" }} />
                 )}
 
                 {/* Media: Poll */}

@@ -4,6 +4,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useUnreadCount } from "../../features/messaging/MessagingView";
 import EditProfileModal from "../../features/auth/EditProfileModal";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 
 const NAV_GROUPS = [
   {
@@ -50,7 +51,7 @@ const NAV_GROUPS = [
     adminOnly: false,
     items: [
       { label: "Schedule", path: "schedule", icon: "\uD83D\uDCC5" },
-      { label: "Check-in", path: "checkin", icon: "\u2705" },
+      { label: "Check-in", path: "checkin", icon: "\u2705", feature: "checkin_pinpad" },
       { label: "Waivers", path: "waivers", icon: "\uD83D\uDCDD", feature: "waivers" },
     ],
   },
@@ -106,10 +107,8 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
   });
   const [editProfileOpen, setEditProfileOpen] = useState(false);
 
-  // Feature toggles — read from localStorage (managed in Settings)
-  const featureToggles = (() => {
-    try { return JSON.parse(localStorage.getItem("hf_feature_toggles") || "{}"); } catch { return {}; }
-  })();
+  // Feature toggles — synced via Supabase
+  const [featureToggles] = useLocalStorage("hf_feature_toggles", {});
   const isFeatureEnabled = (key) => !key || featureToggles[key] !== false; // default ON
 
   if (isClient) return null;

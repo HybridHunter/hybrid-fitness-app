@@ -251,7 +251,10 @@ export default function ClientPortal() {
         // Skip if already in todayClasses (shown separately)
         if (todayClasses.some(tc => tc.id === c.id)) continue;
         if (upcoming.length < 3) {
-          upcoming.push({ ...c, _dayLabel: offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : DAYS_FULL[dow] });
+          const sessionDate = new Date(now);
+          sessionDate.setDate(sessionDate.getDate() + offset);
+          const dateStr = offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : `${DAYS_FULL[dow]}, ${MONTHS[sessionDate.getMonth()]} ${sessionDate.getDate()}`;
+          upcoming.push({ ...c, _dayLabel: dateStr });
         }
       }
     }
@@ -409,7 +412,7 @@ export default function ClientPortal() {
             <div style={{ fontSize: 22, fontWeight: 800, color: B.accent }}>{gam.longestStreak || 0}</div>
             <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\u2B50"} Best</div>
           </div>
-          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px", cursor: unreadMsgCount > 0 ? "pointer" : "default" }} onClick={() => { if (unreadMsgCount > 0) setClientChatOpen(myConvs[0]?.id); }}>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px", cursor: "pointer" }} onClick={() => switchTab("community")}>
             <div style={{ fontSize: 22, fontWeight: 800, color: unreadMsgCount > 0 ? B.red || "#ef4444" : B.dim }}>{unreadMsgCount}</div>
             <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83D\uDCE9"} Messages</div>
           </div>
@@ -561,6 +564,16 @@ export default function ClientPortal() {
           </>
         )}
 
+        {/* Message Your Coach */}
+        <div style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 12, cursor: "pointer", marginBottom: 12 }} onClick={() => switchTab("community")}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: B.accent + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{"\uD83D\uDCE9"}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: B.text }}>Message Your Coach</div>
+            <div style={{ fontSize: 12, color: B.muted }}>Questions? Need help? Reach out anytime.</div>
+          </div>
+          <span style={{ color: B.accent, fontSize: 18 }}>{"\u203A"}</span>
+        </div>
+
         {/* Unread Messages */}
         {unreadCount > 0 && (
           <div style={{
@@ -611,6 +624,12 @@ export default function ClientPortal() {
                 <p style={{ fontSize: 14, color: B.text, margin: 0, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                   {post.content}
                 </p>
+                {post.mediaType === "image" && post.mediaUrl && (
+                  <img src={post.mediaUrl} alt="" loading="lazy" style={{ width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 8, marginTop: 8 }} />
+                )}
+                {post.mediaType === "video" && post.mediaUrl && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: B.accent, fontWeight: 600 }}>{"\uD83C\uDFA5"} Video attached — tap to view</div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 10 }}>
                   <span style={{ fontSize: 13, color: B.muted }}>&#x2764;&#xFE0F; {post.likes?.length || 0}</span>
                   <span style={{ fontSize: 13, color: B.muted }}>&#x1F4AC; {post.comments?.length || 0}</span>
@@ -1076,19 +1095,21 @@ export default function ClientPortal() {
           {weekDates.map((d, i) => {
             const isToday = d.toISOString().slice(0, 10) === todayISO();
             const dayClasses = classes.filter(c => c.dayOfWeek === i);
+            const isDayPast = d.toISOString().slice(0, 10) < todayISO();
             return (
               <div key={i} style={{
                 textAlign: "center", padding: "10px 14px", borderRadius: 14,
                 background: isToday ? B.accent + "20" : B.card,
                 border: isToday ? `2px solid ${B.accent}` : `1px solid ${B.border}`,
                 minWidth: 52, flexShrink: 0,
+                opacity: isDayPast ? 0.4 : 1,
               }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? B.accent : B.muted }}>{DAYS_SHORT[i]}</div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: isToday ? B.accent : B.text, marginTop: 2 }}>{d.getDate()}</div>
                 {dayClasses.length > 0 && (
                   <div style={{
                     width: 6, height: 6, borderRadius: 3,
-                    background: B.accent, margin: "4px auto 0",
+                    background: isDayPast ? B.muted : B.accent, margin: "4px auto 0",
                   }} />
                 )}
               </div>
@@ -1123,19 +1144,23 @@ export default function ClientPortal() {
                 return (
                   <div key={cls.id} style={{
                     ...cardStyle,
-                    border: isBooked ? `2px solid ${B.accent}` : isWaitlisted ? `2px solid ${B.orange}` : `1px solid ${B.border}`,
-                    background: isBooked ? B.accent + "08" : B.card,
+                    border: isPast ? `1px solid ${B.border}` : isBooked ? `2px solid ${B.accent}` : isWaitlisted ? `2px solid ${B.orange}` : `1px solid ${B.border}`,
+                    background: isPast ? B.card : isBooked ? B.accent + "08" : B.card,
+                    opacity: isPast ? 0.45 : 1,
                   }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontSize: 16, fontWeight: 700, color: B.text }}>{cls.name}</span>
-                          {isBooked && <span style={pillBadge(B.accent + "22", B.accent)}>Booked</span>}
-                          {isWaitlisted && <span style={pillBadge(B.orange + "22", B.orange)}>Waitlist</span>}
+                          <span style={{ fontSize: 16, fontWeight: 700, color: isPast ? B.muted : B.text }}>{cls.name}</span>
+                          {isPast && isBooked && <span style={pillBadge(B.dim + "22", B.muted)}>Completed</span>}
+                          {isPast && !isBooked && <span style={pillBadge(B.dim + "22", B.muted)}>Past</span>}
+                          {!isPast && isBooked && <span style={pillBadge(B.accent + "22", B.accent)}>Booked</span>}
+                          {!isPast && isWaitlisted && <span style={pillBadge(B.orange + "22", B.orange)}>Waitlist</span>}
                         </div>
                         <div style={{ ...mutedText, marginTop: 4 }}>
                           {fmtTime(cls.startTime)} - {fmtTime(cls.endTime)} &middot; {cls.instructor}
                         </div>
+                        {!isPast && (
                         <div style={{
                           fontSize: 12, fontWeight: 600, marginTop: 6,
                           color: isFull ? B.orange : B.accent,
@@ -1146,11 +1171,12 @@ export default function ClientPortal() {
                             <>&#x1F7E2; {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left</>
                           )}
                         </div>
+                        )}
                       </div>
 
                       <div style={{ marginLeft: 12 }}>
                         {isPast ? (
-                          isBooked ? <span style={{ fontSize: 11, color: B.dim, fontWeight: 600 }}>Completed</span> : null
+                          null
                         ) : (isBooked || isWaitlisted) ? (
                           <button
                             onClick={() => handleCancel(cls.id)}
@@ -1321,6 +1347,18 @@ export default function ClientPortal() {
                 <p style={{ fontSize: 14, color: B.text, margin: "0 0 12px", lineHeight: 1.6 }}>
                   {post.content}
                 </p>
+                {post.mediaType === "image" && post.mediaUrl && (
+                  <img src={post.mediaUrl} alt="" loading="lazy" style={{ width: "100%", maxHeight: 300, objectFit: "cover", borderRadius: 8, marginBottom: 12 }} />
+                )}
+                {post.mediaType === "video" && post.mediaUrl && (() => {
+                  const ytMatch = post.mediaUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
+                  if (ytMatch) return (
+                    <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
+                      <iframe src={`https://www.youtube.com/embed/${ytMatch[1]}`} title="Video" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" }} allowFullScreen />
+                    </div>
+                  );
+                  return null;
+                })()}
 
                 {/* Like + Comment buttons */}
                 <div style={{ display: "flex", alignItems: "center", gap: 16, paddingTop: 8, borderTop: `1px solid ${B.border}30` }}>

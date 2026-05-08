@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import Card from "../../components/ui/Card";
 
@@ -446,6 +446,40 @@ export default function HelpCenter() {
 export function FloatingHelpButton() {
   const B = useTheme();
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ x: 24, y: 24 });
+  const [dragging, setDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const didDrag = useRef(false);
+
+  const handlePointerDown = useCallback((e) => {
+    e.preventDefault();
+    setDragging(true);
+    didDrag.current = false;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    dragOffset.current = { x: clientX - pos.x, y: (window.innerHeight - clientY) - pos.y };
+  }, [pos]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const handleMove = (e) => {
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      didDrag.current = true;
+      setPos({ x: clientX - dragOffset.current.x, y: (window.innerHeight - clientY) - dragOffset.current.y });
+    };
+    const handleUp = () => setDragging(false);
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    window.addEventListener("touchmove", handleMove);
+    window.addEventListener("touchend", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleUp);
+    };
+  }, [dragging]);
 
   // Determine current route segment
   const path = window.location.pathname;
@@ -462,9 +496,11 @@ export function FloatingHelpButton() {
     <>
       {/* Floating button */}
       <button
-        onClick={() => setOpen(!open)}
+        onMouseDown={handlePointerDown}
+        onTouchStart={handlePointerDown}
+        onClick={() => { if (!didDrag.current) setOpen(!open); }}
         style={{
-          position: "fixed", bottom: 24, left: 24, zIndex: 9000,
+          position: "fixed", bottom: pos.y, left: pos.x, zIndex: 9000,
           width: 48, height: 48, borderRadius: "50%",
           background: B.green, color: "#fff", border: "none",
           fontSize: 20, fontWeight: 700, cursor: "pointer",
@@ -482,7 +518,7 @@ export function FloatingHelpButton() {
       {/* Mini panel */}
       {open && (
         <div style={{
-          position: "fixed", bottom: 80, left: 24, zIndex: 9001,
+          position: "fixed", bottom: pos.y + 56, left: pos.x, zIndex: 9001,
           width: 320, maxHeight: 420,
           background: B.card, border: `1px solid ${B.border}`,
           borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.3)",

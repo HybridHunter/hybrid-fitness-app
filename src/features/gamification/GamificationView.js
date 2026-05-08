@@ -85,7 +85,21 @@ export default function GamificationView() {
     );
   }
 
-  const activeMembers = members.filter((m) => !!m.membershipPlanId);
+  // Compute real workout counts from attendance
+  const realWorkoutCounts = {};
+  attendance.forEach(a => {
+    if (!a.noShow && a.memberId) {
+      realWorkoutCounts[a.memberId] = (realWorkoutCounts[a.memberId] || 0) + 1;
+    }
+  });
+
+  const activeMembers = members.filter((m) => !!m.membershipPlanId).map(m => ({
+    ...m,
+    gamification: {
+      ...(m.gamification || {}),
+      totalWorkouts: realWorkoutCounts[m.id] || 0,
+    },
+  }));
   const safeActiveTab = LEADERBOARD_TABS.find((t) => t.key === activeTab) ? activeTab : LEADERBOARD_TABS[0]?.key || "xp";
   const tab = LEADERBOARD_TABS.find((t) => t.key === safeActiveTab) || ALL_LEADERBOARD_TABS[0];
 
@@ -108,7 +122,7 @@ export default function GamificationView() {
   });
 
   // Global stats
-  const totalWorkoutsAll = members.reduce((s, m) => s + (m.gamification?.totalWorkouts || 0), 0);
+  const totalWorkoutsAll = Object.values(realWorkoutCounts).reduce((s, v) => s + v, 0);
   const avgLevel = members.length ? (members.reduce((s, m) => s + (m.gamification?.level || 1), 0) / members.length).toFixed(1) : 0;
   const badgeFreq = {};
   members.forEach((m) => (m.gamification?.badges || []).forEach((b) => { badgeFreq[b] = (badgeFreq[b] || 0) + 1; }));

@@ -167,7 +167,7 @@ export default function AccountabilityView() {
     });
 
     return results.sort((a, b) => b.priority - a.priority);
-  }, [visibleMembers, attendance, plans, accountabilityLog]);
+  }, [alertMembers, attendance, plans, accountabilityLog]);
 
   // Complete a task
   const completeTask = (memberId, trigger, notes) => {
@@ -366,14 +366,15 @@ export default function AccountabilityView() {
       {(() => {
         const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
+        const parseDob = (d) => { const dt = new Date(d); return isNaN(dt) ? null : dt; };
         const birthdays = members
           .filter(m => {
             if (!m.dob) return false;
-            const dob = new Date(m.dob + "T12:00:00");
-            return dob.getMonth() === bdayMonth;
+            const dob = parseDob(m.dob);
+            return dob && dob.getMonth() === bdayMonth;
           })
           .map(m => {
-            const dob = new Date(m.dob + "T12:00:00");
+            const dob = parseDob(m.dob);
             const age = bdayYear - dob.getFullYear();
             return { ...m, bdayDay: dob.getDate(), age };
           })

@@ -16,7 +16,7 @@ function useIsMobile(breakpoint = 768) {
   return isMobile;
 }
 
-export default function Shell({ theme, onToggleTheme, children }) {
+export default function Shell({ theme, onToggleTheme, children, style }) {
   const B = useTheme();
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
@@ -36,6 +36,7 @@ export default function Shell({ theme, onToggleTheme, children }) {
         flexDirection: "column",
         height: "100vh",
         background: B.darker,
+        ...style,
         color: B.text,
       }}
     >

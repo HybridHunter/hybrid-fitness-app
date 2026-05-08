@@ -397,6 +397,17 @@ export default function MembersView() {
               Merge Duplicates ({duplicateGroups.length})
             </button>
           )}
+          <button style={{ ...s.addBtn, background: "transparent", border: "1px solid " + B.border, color: B.muted }} onClick={() => {
+            const headers = ["First Name","Last Name","Email","Phone","DOB","Gender","Address","City","State","Zip","Start Date","Status","Plan","Notes","Tags"];
+            const rows = members.map(m => {
+              const plan = plans.find(p => p.id === m.membershipPlanId);
+              return [m.firstName, m.lastName, m.email, m.phone, m.dob, m.gender, m.address?.street, m.address?.city, m.address?.state, m.address?.zip, m.startDate, getEffectiveStatus(m, plans), plan?.name || "", m.notes, (m.tags || []).join(";")].map(v => `"${(v || "").replace(/"/g, '""')}"`).join(",");
+            });
+            const csv = [headers.join(","), ...rows].join("\n");
+            const blob = new Blob([csv], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a"); a.href = url; a.download = "members_export.csv"; a.click(); URL.revokeObjectURL(url);
+          }}>Export CSV</button>
           <button style={s.addBtn} onClick={openAdd}>+ Add Client</button>
         </div>
       </div>
