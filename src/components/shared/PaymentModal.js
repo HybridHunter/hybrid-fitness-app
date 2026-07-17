@@ -3,10 +3,16 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useTheme } from '../../context/ThemeContext';
 
-const API_BASE = 'http://localhost:3002';
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3002';
 
 function getStripeKey() {
-  return localStorage.getItem('hf_stripe_pk') || 'pk_test_placeholder';
+  // Settings stores the key in the hf_integrations blob (localStorage read cache).
+  // SettingsView writes { stripe: { publishableKey } }; older IntegrationsView wrote a flat shape — read both.
+  try {
+    let integrations = JSON.parse(localStorage.getItem('hf_integrations') || '{}');
+    if (typeof integrations === 'string') { try { integrations = JSON.parse(integrations); } catch { integrations = {}; } }
+    return integrations?.stripe?.publishableKey || integrations?.stripePublishableKey || null;
+  } catch { return null; }
 }
 
 /* ── Saved Payment Methods helpers ── */
@@ -26,31 +32,8 @@ function addSavedMethod(method) {
   } catch { /* ignore */ }
 }
 
-/* ── Saved Methods Quick-Select Bar ── */
-function SavedMethodsBar({ savedMethods, onSelect, isDark }) {
-  if (!savedMethods || savedMethods.length === 0) return null;
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: isDark ? '#888' : '#999', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
-        Saved Payment Methods
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {savedMethods.map(m => (
-          <button key={m.id} onClick={() => onSelect(m)}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: `1px solid ${isDark ? '#333' : '#ddd'}`, background: isDark ? '#1e1e2f' : '#f8f9fa', color: isDark ? '#f0f0f0' : '#1a1a2e', cursor: 'pointer', fontSize: 13, fontWeight: 600, textAlign: 'left', width: '100%' }}>
-            <span style={{ fontSize: 18 }}>{m.type === 'card' ? '\u{1F4B3}' : '\u{1F3E6}'}</span>
-            <span style={{ flex: 1 }}>{m.label}</span>
-            {m.isDefault && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: isDark ? '#818cf822' : '#4f46e522', color: isDark ? '#818cf8' : '#4f46e5' }}>DEFAULT</span>}
-            <span style={{ fontSize: 12, color: isDark ? '#666' : '#aaa' }}>Use</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ── Card Payment Form ── */
-function CardPaymentForm({ amount, memberName, memberEmail, description, onSuccess, onClose, memberId, savedMethods }) {
+function CardPaymentForm({ amount, memberName, memberEmail, description, onSuccess, onClose }) {
   const stripe = useStripe();
   const elements = useElements();
   const B = useTheme();
@@ -58,19 +41,12 @@ function CardPaymentForm({ amount, memberName, memberEmail, description, onSucce
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  const [saveCard, setSaveCard] = useState(false);
-  const [usingSaved, setUsingSaved] = useState(null);
 
   const cardStyle = { style: { base: { color: isDark ? '#f0f0f0' : '#1a1a2e', fontFamily: '"Inter", system-ui, sans-serif', fontSize: '16px', '::placeholder': { color: isDark ? '#888' : '#aaa' } }, invalid: { color: '#e74c3c' } } };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (usingSaved) {
-      setSuccess(true);
-      if (onSuccess) onSuccess({ method: 'card', savedMethodId: usingSaved.id, amount, status: 'succeeded', label: usingSaved.label });
-      return;
-    }
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || !(amount > 0)) return;
     setLoading(true); setError(null);
     try {
       const res = await fetch(`${API_BASE}/api/create-payment-intent`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount, memberEmail, memberName, description }) });
@@ -78,15 +54,6 @@ function CardPaymentForm({ amount, memberName, memberEmail, description, onSucce
       if (data.error) throw new Error(data.error);
       const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(data.clientSecret, { payment_method: { card: elements.getElement(CardElement) } });
       if (stripeError) throw new Error(stripeError.message);
-      if (saveCard && memberId) {
-        const brands = ['Visa', 'Mastercard', 'Amex', 'Discover'];
-        const brand = brands[Math.floor(Math.random() * brands.length)];
-        const last4 = String(Math.floor(1000 + Math.random() * 9000));
-        const expMonth = String(Math.floor(1 + Math.random() * 12)).padStart(2, '0');
-        const expYear = String(new Date().getFullYear() + Math.floor(1 + Math.random() * 4));
-        const existing = getSavedMethods(memberId);
-        addSavedMethod({ id: 'pm_' + Date.now(), memberId, type: 'card', label: `${brand} \u2022\u2022\u2022\u2022 ${last4}`, brand, last4, expiry: `${expMonth}/${expYear}`, bankName: null, isDefault: existing.length === 0, createdAt: new Date().toISOString() });
-      }
       setSuccess(true);
       if (onSuccess) onSuccess({ method: 'card', paymentIntentId: paymentIntent.id, amount, status: paymentIntent.status });
     } catch (err) { setError(err.message); } finally { setLoading(false); }
@@ -96,43 +63,22 @@ function CardPaymentForm({ amount, memberName, memberEmail, description, onSucce
     <div style={{ textAlign: 'center', padding: '24px 0' }}>
       <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#16a34a22', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 28, color: '#4ade80' }}>&#10003;</div>
       <h3 style={{ margin: '0 0 8px', color: '#4ade80' }}>Payment Successful</h3>
-      <p style={{ color: isDark ? '#ccc' : '#555', margin: 0 }}>${amount.toFixed(2)} charged{usingSaved ? ` to ${usingSaved.label}` : ' to card'}.</p>
-      {saveCard && <p style={{ color: '#818cf8', fontSize: 12, marginTop: 8 }}>Card saved for future payments.</p>}
+      <p style={{ color: isDark ? '#ccc' : '#555', margin: 0 }}>${amount.toFixed(2)} charged to card.</p>
       <button onClick={onClose} style={btnStyle(isDark, false)}>Close</button>
     </div>
   );
 
-  const cardSavedMethods = (savedMethods || []).filter(m => m.type === 'card');
   return (
     <form onSubmit={handleSubmit}>
-      {cardSavedMethods.length > 0 && <SavedMethodsBar savedMethods={cardSavedMethods} onSelect={setUsingSaved} isDark={isDark} />}
-      {usingSaved ? (
-        <div style={{ background: isDark ? '#1e1e2f' : '#f5f5f5', borderRadius: 8, padding: 16, marginBottom: 16, border: `1px solid ${isDark ? '#818cf8' : '#4f46e5'}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 20 }}>{'\u{1F4B3}'}</span>
-            <div><div style={{ fontWeight: 600, color: isDark ? '#f0f0f0' : '#1a1a2e', fontSize: 14 }}>{usingSaved.label}</div>{usingSaved.expiry && <div style={{ fontSize: 12, color: '#888' }}>Expires {usingSaved.expiry}</div>}</div>
-          </div>
-          <button type="button" onClick={() => setUsingSaved(null)} style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Change</button>
-        </div>
-      ) : (
-        <>
-          <div style={{ background: isDark ? '#1e1e2f' : '#f5f5f5', borderRadius: 8, padding: 16, marginBottom: 12, border: `1px solid ${isDark ? '#333' : '#ddd'}` }}><CardElement options={cardStyle} /></div>
-          {memberId && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer', fontSize: 13, color: isDark ? '#aaa' : '#666' }}>
-              <input type="checkbox" checked={saveCard} onChange={e => setSaveCard(e.target.checked)} style={{ width: 16, height: 16, accentColor: '#818cf8', cursor: 'pointer' }} />
-              Save card for future payments
-            </label>
-          )}
-        </>
-      )}
+      <div style={{ background: isDark ? '#1e1e2f' : '#f5f5f5', borderRadius: 8, padding: 16, marginBottom: 12, border: `1px solid ${isDark ? '#333' : '#ddd'}` }}><CardElement options={cardStyle} /></div>
       {error && <p style={{ color: '#e74c3c', fontSize: 14, margin: '0 0 12px' }}>{error}</p>}
-      <button type="submit" disabled={(!stripe && !usingSaved) || loading} style={btnStyle(isDark, loading)}>{loading ? 'Processing...' : `Pay $${amount.toFixed(2)}`}</button>
+      <button type="submit" disabled={!stripe || loading || !(amount > 0)} style={btnStyle(isDark, loading || !(amount > 0))}>{loading ? 'Processing...' : `Pay $${amount.toFixed(2)}`}</button>
     </form>
   );
 }
 
 /* ── ACH / Bank Account via Stripe Financial Connections ── */
-function AchPaymentForm({ amount, memberName, memberEmail, description, onSuccess, onClose, memberId, savedMethods }) {
+function AchPaymentForm({ amount, memberName, memberEmail, description, onSuccess, onClose, memberId }) {
   const B = useTheme();
   const isDark = B.darker === '#080c12';
   const [loading, setLoading] = useState(false);
@@ -143,7 +89,6 @@ function AchPaymentForm({ amount, memberName, memberEmail, description, onSucces
   const [customerId, setCustomerId] = useState(null);
   const [paymentMethodId, setPaymentMethodId] = useState(null);
   const [saveBank, setSaveBank] = useState(false);
-  const [usingSaved, setUsingSaved] = useState(null);
 
   // Step 1: Open Stripe Financial Connections (bank login)
   const handleConnectBank = async () => {
@@ -202,15 +147,9 @@ function AchPaymentForm({ amount, memberName, memberEmail, description, onSucces
 
   // Step 2: Process ACH payment
   const handleAchPayment = async () => {
+    if (!(amount > 0)) return;
     setLoading(true); setError(null);
     try {
-      if (usingSaved) {
-        // Mock payment for saved method
-        setSuccess(true);
-        if (onSuccess) onSuccess({ method: 'ach', bankName: usingSaved.bankName || usingSaved.label, amount, status: 'processing' });
-        return;
-      }
-
       // Real payment via server
       const res = await fetch(`${API_BASE}/api/create-ach-payment-intent`, {
         method: 'POST',
@@ -229,6 +168,7 @@ function AchPaymentForm({ amount, memberName, memberEmail, description, onSucces
           id: 'pm_' + Date.now(), memberId, type: 'ach',
           label: bankLabel, brand: null, last4, expiry: null,
           bankName: bName, isDefault: existing.length === 0,
+          stripeCustomerId: customerId, stripePaymentMethodId: paymentMethodId,
           createdAt: new Date().toISOString(),
         });
       }
@@ -243,13 +183,11 @@ function AchPaymentForm({ amount, memberName, memberEmail, description, onSucces
     <div style={{ textAlign: 'center', padding: '24px 0' }}>
       <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#16a34a22', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 28, color: '#4ade80' }}>&#10003;</div>
       <h3 style={{ margin: '0 0 8px', color: '#4ade80' }}>ACH Payment Initiated</h3>
-      <p style={{ color: isDark ? '#ccc' : '#555', margin: 0 }}>${amount.toFixed(2)} will be debited from {usingSaved ? usingSaved.label : bankLabel}. ACH transfers typically take 2-3 business days.</p>
+      <p style={{ color: isDark ? '#ccc' : '#555', margin: 0 }}>${amount.toFixed(2)} will be debited from {bankLabel}. ACH transfers typically take 2-3 business days.</p>
       {saveBank && <p style={{ color: '#818cf8', fontSize: 12, marginTop: 8 }}>Bank account saved for recurring payments.</p>}
       <button onClick={onClose} style={btnStyle(isDark, false)}>Close</button>
     </div>
   );
-
-  const achSavedMethods = (savedMethods || []).filter(m => m.type === 'ach');
 
   return (
     <div>
@@ -259,23 +197,7 @@ function AchPaymentForm({ amount, memberName, memberEmail, description, onSucces
         <span style={{ fontSize: 13, color: isDark ? '#aaa' : '#555' }}>Connect your bank account securely. You'll log in to your online banking to verify instantly — no micro-deposits needed.</span>
       </div>
 
-      {/* Saved methods */}
-      {achSavedMethods.length > 0 && !usingSaved && !bankConnected && (
-        <SavedMethodsBar savedMethods={achSavedMethods} onSelect={(m) => { setUsingSaved(m); setBankLabel(m.label); }} isDark={isDark} />
-      )}
-
-      {usingSaved ? (
-        <div>
-          <div style={{ background: isDark ? '#1e1e2f' : '#f5f5f5', borderRadius: 8, padding: 16, marginBottom: 16, border: `1px solid ${isDark ? '#818cf8' : '#4f46e5'}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 20 }}>{'\u{1F3E6}'}</span>
-              <div><div style={{ fontWeight: 600, color: isDark ? '#f0f0f0' : '#1a1a2e', fontSize: 14 }}>{usingSaved.label}</div><div style={{ fontSize: 12, color: '#888' }}>Saved bank account</div></div>
-            </div>
-            <button type="button" onClick={() => { setUsingSaved(null); setBankLabel(''); }} style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Change</button>
-          </div>
-          <button onClick={handleAchPayment} disabled={loading} style={btnStyle(isDark, loading)}>{loading ? 'Processing...' : `Pay $${amount.toFixed(2)} via ACH`}</button>
-        </div>
-      ) : !bankConnected ? (
+      {!bankConnected ? (
         <button onClick={handleConnectBank} disabled={loading} style={btnStyle(isDark, loading)}>
           {loading ? 'Connecting to your bank...' : 'Connect Bank Account'}
         </button>
@@ -294,7 +216,7 @@ function AchPaymentForm({ amount, memberName, memberEmail, description, onSucces
               Save for recurring payments
             </label>
           )}
-          <button onClick={handleAchPayment} disabled={loading} style={btnStyle(isDark, loading)}>{loading ? 'Processing...' : `Pay $${amount.toFixed(2)} via ACH`}</button>
+          <button onClick={handleAchPayment} disabled={loading || !(amount > 0)} style={btnStyle(isDark, loading || !(amount > 0))}>{loading ? 'Processing...' : `Pay $${amount.toFixed(2)} via ACH`}</button>
         </div>
       )}
       {error && <p style={{ color: '#e74c3c', fontSize: 14, marginTop: 12 }}>{error}</p>}
@@ -394,15 +316,21 @@ function calcDiscount(amount, methodKey) {
   return { rule, discount: Math.round(discount * 100) / 100, adjusted: Math.round((amount - discount) * 100) / 100 };
 }
 
-export default function PaymentModal({ isOpen, onClose, onSuccess, amount = 0, memberName = '', memberEmail = '', description = '', memberId = null, savedMethods = null }) {
+export default function PaymentModal({ isOpen, onClose, onSuccess, amount = 0, memberName = '', memberEmail = '', description = '', memberId = null }) {
   const B = useTheme();
   const isDark = B.darker === '#080c12';
   const [tab, setTab] = useState('card');
   const [isFEO, setIsFEO] = useState(false);
-  const stripePromise = useMemo(() => loadStripe(getStripeKey()), []);
-  const resolvedSavedMethods = savedMethods || (memberId ? getSavedMethods(memberId) : []);
+  const [amountInput, setAmountInput] = useState(amount > 0 ? amount.toFixed(2) : '');
+  const stripeKey = getStripeKey();
+  const stripeConfigured = !!stripeKey;
+  const stripePromise = useMemo(() => (stripeKey ? loadStripe(stripeKey) : null), [stripeKey]);
 
   if (!isOpen) return null;
+
+  const baseAmount = Math.round((parseFloat(amountInput) || 0) * 100) / 100;
+  const disc = calcDiscount(baseAmount, tab);
+  const chargeAmount = disc ? disc.adjusted : baseAmount;
 
   const tabs = [
     { key: 'card', label: 'Card', icon: '\u{1F4B3}' },
@@ -421,27 +349,21 @@ export default function PaymentModal({ isOpen, onClose, onSuccess, amount = 0, m
         </div>
 
         {/* Amount */}
-        {(() => {
-          const disc = calcDiscount(amount, tab);
-          return (
-            <div style={{ background: isDark ? '#16162a' : '#eef2ff', borderRadius: 10, padding: 16, marginBottom: 20, textAlign: 'center' }}>
-              {disc ? (
-                <>
-                  <p style={{ margin: 0, fontSize: 16, color: isDark ? '#888' : '#999', textDecoration: 'line-through' }}>${amount.toFixed(2)}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: 28, fontWeight: 700, color: '#4ade80' }}>${disc.adjusted.toFixed(2)}</p>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 600, color: '#4ade80' }}>
-                    {disc.rule.discountType === 'Percentage' ? `${disc.rule.value}% ${disc.rule.method} discount` : `$${disc.rule.value} ${disc.rule.method} discount`}
-                    {' '}&mdash; saving ${disc.discount.toFixed(2)}
-                  </p>
-                </>
-              ) : (
-                <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: isDark ? '#818cf8' : '#4f46e5' }}>${amount.toFixed(2)}</p>
-              )}
-              {memberName && <p style={{ margin: '4px 0 0', fontSize: 14, color: isDark ? '#aaa' : '#666' }}>{memberName}</p>}
-              {description && <p style={{ margin: '2px 0 0', fontSize: 13, color: isDark ? '#888' : '#999' }}>{description}</p>}
-            </div>
-          );
-        })()}
+        <div style={{ background: isDark ? '#16162a' : '#eef2ff', borderRadius: 10, padding: 16, marginBottom: 20, textAlign: 'center' }}>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: isDark ? '#888' : '#999', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Amount ($)</label>
+          <input
+            type="number" min="0" step="0.01" value={amountInput} onChange={e => setAmountInput(e.target.value)} placeholder="0.00"
+            style={{ width: 160, padding: '8px 12px', borderRadius: 8, border: `1px solid ${isDark ? '#333' : '#c7d2fe'}`, background: isDark ? '#1e1e2f' : '#fff', color: isDark ? '#818cf8' : '#4f46e5', fontSize: 24, fontWeight: 700, textAlign: 'center', outline: 'none', boxSizing: 'border-box' }}
+          />
+          {disc && (
+            <p style={{ margin: '8px 0 0', fontSize: 12, fontWeight: 600, color: '#4ade80' }}>
+              {disc.rule.discountType === 'Percentage' ? `${disc.rule.value}% ${disc.rule.method} discount` : `$${disc.rule.value} ${disc.rule.method} discount`}
+              {' '}&mdash; saving ${disc.discount.toFixed(2)}, charging ${disc.adjusted.toFixed(2)}
+            </p>
+          )}
+          {memberName && <p style={{ margin: '4px 0 0', fontSize: 14, color: isDark ? '#aaa' : '#666' }}>{memberName}</p>}
+          {description && <p style={{ margin: '2px 0 0', fontSize: 13, color: isDark ? '#888' : '#999' }}>{description}</p>}
+        </div>
 
         {/* FEO toggle */}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer', fontSize: 13, color: isDark ? '#aaa' : '#666', padding: '8px 12px', borderRadius: 8, background: isFEO ? (isDark ? '#16a34a18' : '#f0fdf4') : 'transparent', border: isFEO ? '1px solid #16a34a40' : '1px solid transparent', transition: 'all 0.15s' }}>
@@ -464,11 +386,20 @@ export default function PaymentModal({ isOpen, onClose, onSuccess, amount = 0, m
         {/* Content */}
         {(() => {
           const wrappedSuccess = onSuccess ? (data) => onSuccess({ ...data, isFEO }) : undefined;
+          const stripeNotConfigured = (
+            <div style={{ padding: '18px 16px', borderRadius: 8, background: isDark ? '#1e1e2f' : '#fef2f2', border: `1px solid ${isDark ? '#333' : '#fecaca'}`, color: isDark ? '#fca5a5' : '#b91c1c', fontSize: 13, fontWeight: 600, textAlign: 'center' }}>
+              Stripe is not configured. Add your Stripe publishable key in Settings &rarr; Integrations to accept card and bank payments. Cash and check payments can still be recorded.
+            </div>
+          );
           return <>
-            {tab === 'card' && <Elements stripe={stripePromise}><CardPaymentForm amount={amount} memberName={memberName} memberEmail={memberEmail} description={description} onSuccess={wrappedSuccess} onClose={onClose} memberId={memberId} savedMethods={resolvedSavedMethods} /></Elements>}
-            {tab === 'ach' && <AchPaymentForm amount={amount} memberName={memberName} memberEmail={memberEmail} description={description} onSuccess={wrappedSuccess} onClose={onClose} memberId={memberId} savedMethods={resolvedSavedMethods} />}
-            {tab === 'cash' && <CashPaymentForm amount={amount} onSuccess={wrappedSuccess} onClose={onClose} />}
-            {tab === 'check' && <CheckPaymentForm amount={amount} onSuccess={wrappedSuccess} onClose={onClose} />}
+            {tab === 'card' && (stripeConfigured
+              ? <Elements stripe={stripePromise}><CardPaymentForm amount={chargeAmount} memberName={memberName} memberEmail={memberEmail} description={description} onSuccess={wrappedSuccess} onClose={onClose} /></Elements>
+              : stripeNotConfigured)}
+            {tab === 'ach' && (stripeConfigured
+              ? <AchPaymentForm amount={chargeAmount} memberName={memberName} memberEmail={memberEmail} description={description} onSuccess={wrappedSuccess} onClose={onClose} memberId={memberId} />
+              : stripeNotConfigured)}
+            {tab === 'cash' && <CashPaymentForm amount={chargeAmount} onSuccess={wrappedSuccess} onClose={onClose} />}
+            {tab === 'check' && <CheckPaymentForm amount={chargeAmount} onSuccess={wrappedSuccess} onClose={onClose} />}
           </>;
         })()}
       </div>

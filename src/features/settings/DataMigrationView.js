@@ -251,8 +251,9 @@ function downloadTemplate() {
 /* ── Main Component ─────────────────────────────────────────── */
 export default function DataMigrationView() {
   const B = useTheme();
-  const { addMember } = useMembers();
+  const { addMember, updateMember } = useMembers();
   const [migrationHistory, setMigrationHistory] = useLocalStorage("hf_migration_history", []);
+  const [plans] = useLocalStorage("hf_plans", []);
 
   // Wizard state
   const [step, setStep] = useState(1);
@@ -380,6 +381,10 @@ export default function DataMigrationView() {
   };
 
   const handleFileRead = (file) => {
+    if (/\.xlsx?$/i.test(file.name)) {
+      alert("Excel files (.xlsx/.xls) can't be read directly. Please open the file in Excel and save it as CSV (File > Save As > CSV), then upload the .csv file.");
+      return;
+    }
     setUploadedFile(file);
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -510,8 +515,8 @@ export default function DataMigrationView() {
               else if (gkField === "pull") { member.movementScores = member.movementScores || {}; member.movementScores.Pull = Number(val) || 0; }
               else if (gkField === "core") { member.movementScores = member.movementScores || {}; member.movementScores.Core = Number(val) || 0; }
               else if (gkField === "carry") { member.movementScores = member.movementScores || {}; member.movementScores.Carry = Number(val) || 0; }
-              else if (gkField === "weight") { member.inbody = { lastScan: member.startDate || new Date().toISOString().slice(0,10), history: [{ id: crypto.randomUUID(), date: member.startDate || new Date().toISOString().slice(0,10), weight: Number(val) || 0 }] }; }
-              else if (gkField === "bodyFatPercent") { if (!member.inbody) member.inbody = { history: [{ id: crypto.randomUUID(), date: member.startDate || new Date().toISOString().slice(0,10) }] }; member.inbody.history[0].bodyFatPercent = Number(val) || 0; }
+              else if (gkField === "weight") { if (!member.inbody) member.inbody = { lastScan: member.startDate || new Date().toISOString().slice(0,10), history: [{ id: crypto.randomUUID(), date: member.startDate || new Date().toISOString().slice(0,10) }] }; member.inbody.history[0].weight = Number(val) || 0; }
+              else if (gkField === "bodyFatPercent") { if (!member.inbody) member.inbody = { lastScan: member.startDate || new Date().toISOString().slice(0,10), history: [{ id: crypto.randomUUID(), date: member.startDate || new Date().toISOString().slice(0,10) }] }; member.inbody.history[0].bodyFatPercent = Number(val) || 0; }
               else if (gkField === "totalWorkouts") { member.gamification = member.gamification || {}; member.gamification.totalWorkouts = Number(val) || 0; }
               else if (gkField === "autoCharge") member.autoCharge = ["yes","true","1"].includes(val.toLowerCase());
               else if (gkField === "age") {
@@ -570,13 +575,17 @@ export default function DataMigrationView() {
         } else if (selectedPlatform === "manual") {
           manualEntries.forEach(entry => {
             if (entry.firstName && entry.lastName) {
+              // Resolve the typed plan name to a real plan id; keep unmatched text as a note
+              const planText = (entry.plan || "").trim();
+              const matchedPlan = planText ? plans.find(p => (p.name || "").toLowerCase() === planText.toLowerCase()) : null;
               addMember({
                 firstName: entry.firstName,
                 lastName: entry.lastName,
                 email: entry.email,
                 phone: entry.phone,
                 notes: entry.notes,
-                membershipPlanId: entry.plan,
+                membershipPlanId: matchedPlan ? matchedPlan.id : "",
+                ...(planText && !matchedPlan ? { membershipPlanNote: planText } : {}),
               });
               imported++;
             }
@@ -930,7 +939,7 @@ export default function DataMigrationView() {
                     </div>
                     <div style={{ color: B.muted, fontSize: 13 }}>Or click to browse files</div>
                     <div style={{ color: B.dim, fontSize: 11, marginTop: 8 }}>
-                      Accepted: .csv, .xlsx, .json
+                      Accepted: .csv, .json (.xlsx: export as CSV first)
                     </div>
                   </div>
                   {uploadedFile && (

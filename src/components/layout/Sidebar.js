@@ -52,7 +52,7 @@ const NAV_GROUPS = [
     items: [
       { label: "Schedule", path: "schedule", icon: "\uD83D\uDCC5" },
       { label: "Check-in", path: "checkin", icon: "\u2705", feature: "checkin_pinpad" },
-      { label: "Waivers", path: "waivers", icon: "\uD83D\uDCDD", feature: "waivers" },
+      { label: "Documents", path: "waivers", icon: "\uD83D\uDCDD", feature: "waivers" },
     ],
   },
   {
@@ -61,6 +61,7 @@ const NAV_GROUPS = [
     adminOnly: false,
     items: [
       { label: "Messages", path: "messages", icon: "\uD83D\uDCE9" },
+      { label: "Email Campaigns", path: "email", icon: "\uD83D\uDCE7" },
     ],
   },
   {

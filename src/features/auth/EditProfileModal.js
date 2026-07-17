@@ -62,22 +62,29 @@ export default function EditProfileModal({ isOpen, onClose }) {
     // Validate password change if attempted
     if (newPassword || confirmPassword || currentPassword) {
       if (!currentPassword) {
-        showToast("Enter your current password", "error");
+        showToast(isClient ? "Enter your current PIN" : "Enter your current password", "error");
         setSaving(false);
         return;
       }
-      if (currentPassword !== currentUser.password) {
-        showToast("Current password is incorrect", "error");
+      // P3: client sessions have no `password` — their credential is the member's PIN
+      const currentSecret = isClient ? (member?.pin || "") : currentUser.password;
+      if (currentPassword !== currentSecret) {
+        showToast(isClient ? "Current PIN is incorrect" : "Current password is incorrect", "error");
         setSaving(false);
         return;
       }
-      if (newPassword.length < 4) {
+      if (isClient && !/^\d{4}$/.test(newPassword)) {
+        showToast("New PIN must be exactly 4 digits", "error");
+        setSaving(false);
+        return;
+      }
+      if (!isClient && newPassword.length < 4) {
         showToast("New password must be at least 4 characters", "error");
         setSaving(false);
         return;
       }
       if (newPassword !== confirmPassword) {
-        showToast("New passwords do not match", "error");
+        showToast(isClient ? "New PINs do not match" : "New passwords do not match", "error");
         setSaving(false);
         return;
       }
@@ -95,7 +102,8 @@ export default function EditProfileModal({ isOpen, onClose }) {
     if (displayName && displayName !== currentUser.displayName) userUpdates.displayName = displayName;
     if (!isClient && email !== (currentUser.email || "")) userUpdates.email = email;
     if (!isClient && phone !== (currentUser.phone || "")) userUpdates.phone = phone;
-    if (newPassword) userUpdates.password = newPassword;
+    // P3: client credentials live on the member record (pin), not in hf_users
+    if (newPassword && !isClient) userUpdates.password = newPassword;
     if (Object.keys(userUpdates).length > 0) {
       updateUser(currentUser.id, userUpdates);
     }
@@ -106,6 +114,7 @@ export default function EditProfileModal({ isOpen, onClose }) {
       if (phone !== (member.phone || "")) memberUpdates.phone = phone;
       if (email !== (member.email || "")) memberUpdates.email = email;
       if (pin !== (member.pin || "")) memberUpdates.pin = pin;
+      if (newPassword) memberUpdates.pin = newPassword; // P3: PIN change via the password fields
       if (notes !== (member.notes || "")) memberUpdates.notes = notes;
       if (displayName && displayName !== `${member.firstName} ${member.lastName}`) {
         const parts = displayName.trim().split(/\s+/);
@@ -285,19 +294,19 @@ export default function EditProfileModal({ isOpen, onClose }) {
           </>
         )}
 
-        {/* Password Change */}
-        <div style={sectionLabel}>Change Password</div>
+        {/* Password / PIN Change */}
+        <div style={sectionLabel}>{isClient ? "Change PIN" : "Change Password"}</div>
         <div style={fieldWrap}>
-          <label style={labelStyle}>Current Password</label>
-          <input style={inputStyle} type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder="Enter current password" />
+          <label style={labelStyle}>{isClient ? "Current PIN" : "Current Password"}</label>
+          <input style={inputStyle} type="password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} placeholder={isClient ? "Enter current PIN" : "Enter current password"} />
         </div>
         <div style={fieldWrap}>
-          <label style={labelStyle}>New Password</label>
-          <input style={inputStyle} type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Enter new password" />
+          <label style={labelStyle}>{isClient ? "New PIN (4-digit)" : "New Password"}</label>
+          <input style={inputStyle} type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder={isClient ? "Enter new 4-digit PIN" : "Enter new password"} />
         </div>
         <div style={fieldWrap}>
-          <label style={labelStyle}>Confirm New Password</label>
-          <input style={inputStyle} type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="Confirm new password" />
+          <label style={labelStyle}>{isClient ? "Confirm New PIN" : "Confirm New Password"}</label>
+          <input style={inputStyle} type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder={isClient ? "Confirm new PIN" : "Confirm new password"} />
         </div>
 
         {/* Toast */}

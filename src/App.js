@@ -37,6 +37,7 @@ import GamificationView from "./features/gamification/GamificationView";
 import ContentLibraryView from "./features/content/ContentLibraryView";
 import ShopView from "./features/shop/ShopView";
 import MessagingView from "./features/messaging/MessagingView";
+import EmailBuilder from "./features/messaging/EmailBuilder";
 import CommunityFeed from "./features/community/CommunityFeed";
 import ClassroomView from "./features/classroom/ClassroomView";
 import EventsView from "./features/events/EventsView";
@@ -95,7 +96,8 @@ function GymRoutes() {
     const backupGym = localStorage.getItem("hf_gym_id_backup");
     const backupSession = localStorage.getItem("hf_session_backup");
     if (backupGym) localStorage.setItem("hf_gym_id", backupGym);
-    if (backupSession) localStorage.setItem("hf_session", backupSession);
+    // E6: restore even when the backup is an empty string — only skip if absent
+    if (backupSession !== null) localStorage.setItem("hf_session", backupSession);
     localStorage.removeItem("hf_gym_id_backup");
     localStorage.removeItem("hf_session_backup");
     localStorage.removeItem("hf_impersonating");
@@ -167,6 +169,7 @@ function GymRoutes() {
           <Route path="content" element={<ContentLibraryView />} />
           <Route path="shop" element={<ShopView />} />
           <Route path="messages" element={<MessagingView />} />
+          <Route path="email" element={<EmailBuilder />} />
           <Route path="community" element={<CommunityFeed />} />
           <Route path="classroom" element={<ClassroomView />} />
           <Route path="events" element={<EventsView />} />
@@ -218,8 +221,8 @@ function AuthGate() {
     );
   }
 
-  // Super admin — stays at root level
-  if (location.pathname === "/super-admin") {
+  // Super admin — stays at root level (N5: tolerate trailing slash)
+  if (location.pathname === "/super-admin" || location.pathname === "/super-admin/") {
     if (!currentUser) return <LoginPage />;
     return (
       <Routes>

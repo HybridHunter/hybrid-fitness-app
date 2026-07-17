@@ -375,16 +375,24 @@ export default function CommandView() {
     schedule.filter((c) => c.dayOfWeek === todaySchedIdx()),
   [schedule]);
 
-  // --- Auto-select current/upcoming class on mount ---
+  // --- Auto-select: URL param first, then current/upcoming class ---
   useEffect(() => {
     if (autoSelectDone || todayClasses.length === 0) return;
     setAutoSelectDone(true);
+
+    // Check URL param from coaching dashboard "Open Session View" button
+    const params = new URLSearchParams(window.location.search);
+    const sessionParam = params.get("session");
+    if (sessionParam && todayClasses.find(c => c.id === sessionParam)) {
+      setSessionMode(sessionParam);
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+
     const now = nowMinutes();
-    // Find a class currently in session
     let best = todayClasses.find(c =>
       timeToMinutes(c.startTime) <= now && timeToMinutes(c.endTime) > now
     );
-    // Or starting within the next 30 minutes
     if (!best) {
       best = todayClasses
         .filter(c => {
@@ -403,7 +411,7 @@ export default function CommandView() {
     if (sessionMode === "custom") return;
     const cls = schedule.find((c) => c.id === sessionMode);
     if (!cls || !cls.workoutId) return;
-    const idx = workouts.findIndex((w) => w.id === cls.workoutId);
+    const idx = workouts.findIndex((w) => String(w.id) === String(cls.workoutId));
     if (idx >= 0) {
       setSelectedWorkoutIdx(idx);
     }
@@ -479,6 +487,7 @@ export default function CommandView() {
     const result = {};
     sessionMembers.forEach(m => {
       if (!hydratedWorkout) { result[m.id] = []; return; }
+      if (!progressionEnabled) { result[m.id] = allSlots; return; }
       const individualized = autoIndividualize(hydratedWorkout, m.movementScores || {}, matrix, exercises);
       if (individualized && individualized.sections) {
         result[m.id] = individualized.sections.flatMap(sec => sec.slots || []);
@@ -487,7 +496,7 @@ export default function CommandView() {
       }
     });
     return result;
-  }, [sessionMembers, hydratedWorkout, matrix, exercises, allSlots]);
+  }, [sessionMembers, hydratedWorkout, matrix, exercises, allSlots, progressionEnabled]);
 
   // adjust score handler
   const handleAdjust = useCallback((memberId, pattern, delta) => {
@@ -503,7 +512,7 @@ export default function CommandView() {
     setCustomSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   };
 
-  const activeMembers = members.filter((m) => !!m.membershipPlanId);
+  const activeMembers = members.filter((m) => m.membershipStatus !== "inactive");
 
   // Format class time for display
   const fmtTime = (t) => {

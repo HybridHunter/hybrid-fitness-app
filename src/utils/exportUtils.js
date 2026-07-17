@@ -96,28 +96,30 @@ export function exportAnalyticsSummary(data) {
 
 /**
  * Print-friendly PDF export using window.print().
- * Temporarily isolates the given element for printing.
+ * Opens the content in a separate window so the app's DOM (and any
+ * pending state/writes) are left untouched — no reload required.
  */
 export function exportToPDF(element) {
   if (!element) return;
 
-  const printContents = element.innerHTML;
-  const originalContents = document.body.innerHTML;
-  const originalTitle = document.title;
+  const printWindow = window.open("", "_blank", "width=900,height=700");
+  if (!printWindow) return;
 
-  document.body.innerHTML = `
-    <div style="padding: 24px; font-family: system-ui, -apple-system, sans-serif; color: #111;">
-      ${printContents}
-    </div>
-  `;
-
-  window.print();
-
-  document.body.innerHTML = originalContents;
-  document.title = originalTitle;
-
-  // Re-trigger React re-mount (the app root should pick it back up)
-  window.location.reload();
+  printWindow.document.write(`
+    <html>
+      <head><title>${document.title}</title></head>
+      <body style="padding: 24px; font-family: system-ui, -apple-system, sans-serif; color: #111;">
+        ${element.innerHTML}
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  // Give the new window a moment to render before printing
+  setTimeout(() => {
+    printWindow.print();
+    printWindow.close();
+  }, 250);
 }
 
 /* ── Internal helpers ──────────────────────────────────────── */

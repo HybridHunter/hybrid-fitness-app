@@ -1,0 +1,14 @@
+{
+  "name": "gymkit-simulation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-role user simulation platform for GymKit — mocks the Supabase data_store and payments API, then drives the real app as super-admin, gym admin, coach, client, and station personas to detect bugs.",
+  "scripts": {
+    "sim": "playwright test",
+    "sim:headed": "playwright test --headed",
+    "report": "node lib/report.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}

@@ -14,13 +14,67 @@ function getGymId() {
 }
 
 // Keys that are local-only (never stored in Supabase per-gym)
-const LOCAL_ONLY_KEYS = new Set(["hf_theme", "hf_gym_id"]);
+const LOCAL_ONLY_KEYS = new Set(["hf_theme", "hf_gym_id", "hf_session"]);
 
 // Keys that live in __super__ context
-const SUPER_KEYS = new Set(["hf_gyms_registry", "hf_master_exercises", "hf_users", "hf_feedback", "hf_session"]);
+const SUPER_KEYS = new Set(["hf_gyms_registry", "hf_master_exercises", "hf_users", "hf_feedback"]);
 
 function resolveDefault(defaultValue) {
   return typeof defaultValue === 'function' ? defaultValue() : defaultValue;
+}
+
+// A1: some legacy writers double-stringified values into the JSONB column.
+// If a cloud value is a string that parses to an object/array, heal it.
+export function healValue(v) {
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {}
+  }
+  return v;
+}
+
+/* ── A3: shared poller ─────────────────────────────────────────
+   One module-level interval fetches every row for the current gym
+   in a single request and fans values out to registered hook
+   instances, so data refreshes after mount (chat, bookings,
+   stations, feature toggles) without a full reload. */
+const pollRegistry = new Set();
+let pollerStarted = false;
+
+async function runPoll() {
+  try {
+    if (pollRegistry.size === 0) return;
+    const gymId = getGymId();
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/data_store?select=key,value&gym_id=eq.${encodeURIComponent(gymId)}`,
+      { headers: HEADERS }
+    );
+    if (!res.ok) return;
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return;
+    const byKey = new Map(rows.map(r => [r.key, r.value]));
+    pollRegistry.forEach(entry => {
+      try {
+        if (entry.gymId !== gymId) return; // instance mounted under a different gym
+        if (!byKey.has(entry.key)) return; // keys absent from response left untouched
+        entry.receive(healValue(byKey.get(entry.key)));
+      } catch {}
+    });
+  } catch {}
+}
+
+function ensurePoller() {
+  if (pollerStarted) return;
+  pollerStarted = true;
+  setInterval(runPoll, 20000);
+  setTimeout(runPoll, 2000); // one early run shortly after first registration
+  try {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") runPoll();
+    });
+  } catch {}
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -48,6 +102,11 @@ export function useLocalStorage(key, defaultValue) {
   const dead = useRef(false);
   const gymIdRef = useRef(getGymId());
   const pendingWrite = useRef(null);
+  const dirtyRef = useRef(false);      // A2: user wrote before mount fetch resolved
+  const lastWriteAt = useRef(0);       // A3: poller skips instances that wrote recently
+  const valueRef = useRef(value);      // A3: last-known value for change comparison
+
+  useEffect(() => { valueRef.current = value; }, [value]);
 
   // Step 2: ALWAYS fetch from Supabase on mount — cloud is truth
   useEffect(() => {
@@ -77,11 +136,13 @@ export function useLocalStorage(key, defaultValue) {
           { headers: HEADERS }
         );
         if (dead.current) return;
-        if (res.ok) {
+        // A2: if the user already wrote locally, don't clobber it — the
+        // pending debounced write will push local → cloud instead.
+        if (res.ok && !dirtyRef.current) {
           const rows = await res.json();
           if (rows.length > 0 && rows[0].value !== null) {
-            // Cloud has data — this is the truth
-            const cloudVal = rows[0].value;
+            // Cloud has data — this is the truth (heal double-stringified rows)
+            const cloudVal = healValue(rows[0].value);
             setValue(cloudVal);
             try { localStorage.setItem(key, JSON.stringify(cloudVal)); } catch {}
           } else {
@@ -100,9 +161,39 @@ export function useLocalStorage(key, defaultValue) {
     return () => { dead.current = true; };
   }, [key]);
 
+  // A3: register this instance with the shared poller
+  useEffect(() => {
+    if (LOCAL_ONLY_KEYS.has(key)) return;
+    const gymId = gymIdRef.current;
+    const shouldPoll = gymId === "__super__" ? SUPER_KEYS.has(key) : !SUPER_KEYS.has(key) || key === "hf_users";
+    if (!shouldPoll) return;
+    const entry = {
+      key,
+      gymId, // mount-time gym — poller skips this entry if the active gym changed
+      receive: (cloudVal) => {
+        try {
+          if (dead.current) return;
+          if (cloudVal === null || cloudVal === undefined) return;
+          if (pendingWrite.current) return; // dirty debounced write pending
+          if (Date.now() - lastWriteAt.current < 3000) return; // wrote very recently
+          const json = JSON.stringify(cloudVal);
+          if (json === JSON.stringify(valueRef.current)) return;
+          valueRef.current = cloudVal;
+          setValue(cloudVal);
+          try { localStorage.setItem(key, json); } catch {}
+        } catch {}
+      },
+    };
+    pollRegistry.add(entry);
+    ensurePoller();
+    return () => { pollRegistry.delete(entry); };
+  }, [key]);
+
   // Step 3: Write function — writes to Supabase first, then updates local state
   const setValueAndSync = useCallback((newValOrFn) => {
     if (dead.current) return;
+    dirtyRef.current = true;
+    lastWriteAt.current = Date.now();
 
     setValue(prev => {
       const newVal = typeof newValOrFn === 'function' ? newValOrFn(prev) : newValOrFn;
@@ -120,6 +211,7 @@ export function useLocalStorage(key, defaultValue) {
       // Debounce Supabase writes
       if (pendingWrite.current) clearTimeout(pendingWrite.current);
       pendingWrite.current = setTimeout(async () => {
+        pendingWrite.current = null;
         if (dead.current) return;
         const currentGym = getGymId();
         if (currentGym !== gymId) return; // Gym changed, abort

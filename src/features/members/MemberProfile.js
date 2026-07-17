@@ -28,6 +28,33 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+// Module-level so the input keeps its identity across renders (defining it inside
+// MemberProfile remounted the input on every keystroke, losing focus).
+function EditableRow({ label, field, value, type, B, s, editingField, editValue, setEditValue, saveEdit, startEdit, cancelEdit }) {
+  const isEditing = editingField === field;
+  const inputStyle = { background: B.darker, border: "1px solid " + B.accent + "60", borderRadius: 6, color: B.text, padding: "5px 8px", fontSize: 13, outline: "none", flex: 1, maxWidth: 260 };
+  return (
+    <div style={s.infoRow}>
+      <span style={s.infoLabel}>{label}</span>
+      {isEditing ? (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {type === "textarea" ? (
+            <textarea value={editValue} onChange={e => setEditValue(e.target.value)} style={{ ...inputStyle, minHeight: 50, resize: "vertical", fontFamily: "inherit" }} autoFocus />
+          ) : (
+            <input type={type || "text"} value={editValue} onChange={e => setEditValue(e.target.value)} style={inputStyle} autoFocus onKeyDown={e => { if (e.key === "Enter") saveEdit(field); if (e.key === "Escape") cancelEdit(); }} />
+          )}
+          <button onClick={() => saveEdit(field)} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: B.accent, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Save</button>
+          <button onClick={cancelEdit} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 11, cursor: "pointer" }}>Cancel</button>
+        </div>
+      ) : (
+        <span style={{ ...s.infoValue, cursor: "pointer", borderBottom: "1px dashed " + B.border }} onClick={() => startEdit(field, value)}>
+          {value || "---"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function AttendanceSection({ B, s, member, memberAttendance, schedule, overviewSections, SectionHeader }) {
   const now = new Date();
   const days = [];
@@ -163,10 +190,10 @@ export default function MemberProfile() {
 
   const sc = STATUS_COLORS(B);
   const memberPlanObj = plans.find(p => p.id === member.membershipPlanId);
-  const effectiveStatus = !member.membershipPlanId ? "inactive" : memberPlanObj?.isTrial ? "trial" : member.membershipStatus === "frozen" ? "frozen" : "active";
+  const effectiveStatus = member.membershipStatus === "inactive" || !member.membershipPlanId ? "inactive" : memberPlanObj?.isTrial || member.membershipStatus === "trial" ? "trial" : member.membershipStatus === "frozen" ? "frozen" : "active";
   const statusColor = sc[effectiveStatus] || B.muted;
   const g = member.gamification || {};
-  const memberAttendance = attendance.filter(a => a.memberId === member.id && !a.noShow).sort((a, b) => b.checkInTime.localeCompare(a.checkInTime));
+  const memberAttendance = attendance.filter(a => a.memberId === member.id && !a.noShow).sort((a, b) => (b.checkInTime || "").localeCompare(a.checkInTime || ""));
   const ms = member.movementScores || {};
   const xpForNext = (g.level || 1) * 200;
   const xpProgress = Math.min((g.xp || 0) / xpForNext, 1);
@@ -253,30 +280,8 @@ export default function MemberProfile() {
     setEditingField(null);
   };
 
-  const EditableRow = ({ label, field, value, type }) => {
-    const isEditing = editingField === field;
-    const inputStyle = { background: B.darker, border: "1px solid " + B.accent + "60", borderRadius: 6, color: B.text, padding: "5px 8px", fontSize: 13, outline: "none", flex: 1, maxWidth: 260 };
-    return (
-      <div style={s.infoRow}>
-        <span style={s.infoLabel}>{label}</span>
-        {isEditing ? (
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            {type === "textarea" ? (
-              <textarea value={editValue} onChange={e => setEditValue(e.target.value)} style={{ ...inputStyle, minHeight: 50, resize: "vertical", fontFamily: "inherit" }} autoFocus />
-            ) : (
-              <input type={type || "text"} value={editValue} onChange={e => setEditValue(e.target.value)} style={inputStyle} autoFocus onKeyDown={e => { if (e.key === "Enter") saveEdit(field); if (e.key === "Escape") setEditingField(null); }} />
-            )}
-            <button onClick={() => saveEdit(field)} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: B.accent, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Save</button>
-            <button onClick={() => setEditingField(null)} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 11, cursor: "pointer" }}>Cancel</button>
-          </div>
-        ) : (
-          <span style={{ ...s.infoValue, cursor: "pointer", borderBottom: "1px dashed " + B.border }} onClick={() => startEdit(field, value)}>
-            {value || "---"}
-          </span>
-        )}
-      </div>
-    );
-  };
+  // Shared props for the module-level EditableRow (see definition above component)
+  const rowProps = { B, s, editingField, editValue, setEditValue, saveEdit, startEdit, cancelEdit: () => setEditingField(null) };
 
   // Overview: collapsible sections (useState moved above early return to avoid hook ordering issues)
   const toggleSection = (key) => setOverviewSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -341,14 +346,17 @@ export default function MemberProfile() {
         <SectionHeader label="Client Info" sectionKey="info" icon={"\uD83D\uDC64"} />
         {overviewSections.info && (
           <div>
-            <EditableRow label="Email" field="email" value={member.email} type="email" />
-            <EditableRow label="Phone" field="phone" value={member.phone} type="tel" />
-            <EditableRow label="DOB" field="dob" value={member.dob} type="date" />
-            <EditableRow label="Gender" field="gender" value={member.gender} />
-            <EditableRow label="Start Date" field="startDate" value={member.startDate} type="date" />
-            <EditableRow label="Source" field="source" value={member.source} />
-            <EditableRow label="Address" field="street" value={[member.address?.street, member.address?.city, member.address?.state, member.address?.zip].filter(Boolean).join(", ") || ""} />
-            <EditableRow label="Tags" field="tags" value={(member.tags || []).join(", ")} />
+            <EditableRow {...rowProps} label="Email" field="email" value={member.email} type="email" />
+            <EditableRow {...rowProps} label="Phone" field="phone" value={member.phone} type="tel" />
+            <EditableRow {...rowProps} label="DOB" field="dob" value={member.dob} type="date" />
+            <EditableRow {...rowProps} label="Gender" field="gender" value={member.gender} />
+            <EditableRow {...rowProps} label="Start Date" field="startDate" value={member.startDate} type="date" />
+            <EditableRow {...rowProps} label="Source" field="source" value={member.source} />
+            <EditableRow {...rowProps} label="Street" field="street" value={member.address?.street} />
+            <EditableRow {...rowProps} label="City" field="city" value={member.address?.city} />
+            <EditableRow {...rowProps} label="State" field="state" value={member.address?.state} />
+            <EditableRow {...rowProps} label="ZIP" field="zip" value={member.address?.zip} />
+            <EditableRow {...rowProps} label="Tags" field="tags" value={(member.tags || []).join(", ")} />
             {member.emergencyContact?.name && (
               <div style={{ fontSize: 12, color: B.muted, marginTop: 6, padding: "6px 0", borderTop: "1px solid " + B.border + "44" }}>
                 Emergency: <strong style={{ color: B.text }}>{member.emergencyContact.name}</strong> ({member.emergencyContact.relationship || "Contact"}) — {member.emergencyContact.phone}
@@ -1076,10 +1084,13 @@ export default function MemberProfile() {
   const handleUndo = (entry) => {
     if (!member) return;
     if (entry.field === "membershipPlanId") {
-      updateMember(member.id, { membershipPlanId: entry.oldValue, cancelScheduled: null });
+      updateMember(member.id, { membershipPlanId: entry.oldValue, cancelScheduled: null, planEndDate: entry.oldPlanEndDate || null });
       // Remove the corresponding event instead of creating a new one
-      if (entry.action === "plan_assigned" || entry.action === "plan_changed") {
+      if (entry.action === "plan_assigned") {
         removeLatestEvent(member.id, "join");
+      } else if (entry.action === "plan_changed") {
+        const changeEvent = [...events].reverse().find(ev => ev.memberId === member.id && ["upgrade", "downgrade", "plan_change"].includes(ev.type));
+        if (changeEvent) removeLatestEvent(member.id, changeEvent.type);
       } else if (entry.action === "plan_removed" || entry.action === "cancel_instant") {
         removeLatestEvent(member.id, "cancel");
       }

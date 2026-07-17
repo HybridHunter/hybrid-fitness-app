@@ -34,7 +34,7 @@ export default function BuildView({exercises,setExercises,workouts,setWorkouts,l
   const addSlot=(si)=>setSections(p=>{const n=p.map(s=>({...s,slots:[...s.slots]}));n[si].slots.push(emptySlot());return n;});
   const removeSlot=(si,idx)=>setSections(p=>{const n=p.map(s=>({...s,slots:[...s.slots]}));n[si].slots.splice(idx,1);return n;});
   const removeSection=(si)=>setSections(p=>p.filter((_,i)=>i!==si));
-  const addSection=()=>setSections(p=>[...p,{id:String.fromCharCode(65+p.length),name:"New Section",repRange:"",color:["#8fbf3b","#3b82f6","#22c55e","#a855f7","#f59e0b","#ef4444"][p.length%6],slots:[emptySlot()]}]);
+  const addSection=()=>setSections(p=>{const max=p.reduce((m,s)=>Math.max(m,String(s.id).charCodeAt(0)||64),64);return[...p,{id:String.fromCharCode(max+1),name:"New Section",repRange:"",color:["#8fbf3b","#3b82f6","#22c55e","#a855f7","#f59e0b","#ef4444"][p.length%6],slots:[emptySlot()]}];});
 
   const swapSlots=(si1,idx1,si2,idx2)=>setSections(p=>{const n=p.map(s=>({...s,slots:s.slots.map(sl=>({...sl}))}));const a=n[si1].slots[idx1];const b=n[si2].slots[idx2];n[si1].slots[idx1]=b;n[si2].slots[idx2]=a;return n;});
 
@@ -42,7 +42,7 @@ export default function BuildView({exercises,setExercises,workouts,setWorkouts,l
   const onDragOver=(e)=>{e.preventDefault();};
   const onDrop=(si,idx)=>(e)=>{e.preventDefault();if(!dragInfo||dragInfo.si===si&&dragInfo.idx===idx)return;swapSlots(dragInfo.si,dragInfo.idx,si,idx);setDragInfo(null);};
 
-  const save=()=>{const filled=sections.some(s=>s.slots.some(sl=>sl.exercise));if(!filled)return;setWorkouts(p=>[...p,{id:Date.now(),name:wName||phase+" - "+wLabel,phase,workoutLabel:wLabel,description:wDesc,sections:sections.map(s=>({...s,slots:s.slots.map(sl=>({...sl}))})),date:new Date().toISOString()}]);reset();if(onSaved)onSaved();};
+  const save=()=>{const filled=sections.some(s=>s.slots.some(sl=>sl.exercise));if(!filled)return;const data={name:wName||phase+" - "+wLabel,phase,workoutLabel:wLabel,description:wDesc,sections:sections.map(s=>({...s,slots:s.slots.map(sl=>({...sl}))}))};if(loadedWorkout&&loadedWorkout.id!=null){setWorkouts(p=>p.some(w=>String(w.id)===String(loadedWorkout.id))?p.map(w=>String(w.id)===String(loadedWorkout.id)?{...w,...data}:w):[...p,{id:loadedWorkout.id,...data,date:new Date().toISOString()}]);}else{setWorkouts(p=>[...p,{id:Date.now(),...data,date:new Date().toISOString()}]);}reset();if(onSaved)onSaved();};
   const reset=()=>{setSections(initSections());setWName("");setWDesc("");};
 
   const inp=(val,onChange,ph,w)=>(<input value={val} onChange={e=>onChange(e.target.value)} placeholder={ph} style={{background:B.darker,border:"1px solid "+B.border,borderRadius:6,color:B.text,padding:"6px 8px",width:w+12,fontSize:14,textAlign:"center",outline:"none",fontWeight:600}}/>);

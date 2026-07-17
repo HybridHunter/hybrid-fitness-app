@@ -42,13 +42,12 @@ export default function FeedbackForm() {
     if (!subject.trim() || !message.trim()) return;
     setSubmitting(true);
     try {
-      const gymId = localStorage.getItem("hf_gym_id") || "local";
+      const gymId = localStorage.getItem("hf_gym_id") || "default";
       let gymName = "";
       try { const b = JSON.parse(localStorage.getItem("hf_branding") || "{}"); if (b.gymName) gymName = b.gymName; } catch {}
       if (!gymName) { try { const s = JSON.parse(localStorage.getItem("hf_settings") || "{}"); if (s.gymName) gymName = s.gymName; } catch {} }
       if (!gymName) gymName = gymId;
 
-      const existing = (await supabaseGet("__super__", "hf_feedback")) || [];
       const entry = {
         id: "fb_" + Date.now(),
         gymId,
@@ -61,6 +60,8 @@ export default function FeedbackForm() {
         timestamp: new Date().toISOString(),
         status: "new",
       };
+      // Re-fetch right before appending to minimize the read-modify-write race window
+      const existing = (await supabaseGet("__super__", "hf_feedback")) || [];
       await supabaseUpsert("__super__", "hf_feedback", [...existing, entry]);
       setSuccess(true);
       setSubject("");

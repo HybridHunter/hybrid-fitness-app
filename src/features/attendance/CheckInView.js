@@ -4,10 +4,7 @@ import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
 import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { localISO } from "../../utils/dates";
 
 function fmtTime(iso) {
   const d = new Date(iso);
@@ -90,7 +87,7 @@ export default function CheckInView() {
 
   const todayRecords = useMemo(() =>
     attendance
-      .filter(a => a.checkInTime.slice(0, 10) === todayISO())
+      .filter(a => a.checkInTime && localISO(new Date(a.checkInTime)) === localISO())
       .sort((a, b) => new Date(b.checkInTime) - new Date(a.checkInTime))
   , [attendance]);
 
@@ -98,7 +95,7 @@ export default function CheckInView() {
   const todayDow = getTodayDayOfWeek();
   const todayClasses = useMemo(() =>
     schedule
-      .filter(c => c.dayOfWeek === todayDow)
+      .filter(c => c.dayOfWeek === todayDow && !(c.exceptions || []).includes(localISO()))
       .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
   , [schedule, todayDow]);
 
@@ -150,7 +147,14 @@ export default function CheckInView() {
         method: "pin",
         ...(detectedClass ? { classId: detectedClass.id } : {})
       };
-      setAttendance(prev => [...prev, record]);
+      // Skip duplicate check-ins for the same member + class + day
+      const today = localISO();
+      const isDuplicate = attendance.some(a =>
+        a.memberId === member.id &&
+        (a.classId || null) === (detectedClass?.id || null) &&
+        a.checkInTime && localISO(new Date(a.checkInTime)) === today
+      );
+      if (!isDuplicate) setAttendance(prev => [...prev, record]);
       setCheckedInMember(member);
       setCheckedInClass(detectedClass);
 
@@ -208,7 +212,7 @@ export default function CheckInView() {
   if (status === "success" && checkedInMember) {
     const g = checkedInMember.gamification || {};
     const alreadyCheckedInToday = attendance.some(
-      a => a.memberId === checkedInMember.id && a.checkInTime.slice(0, 10) === todayISO() && a.id !== attendance[attendance.length - 1]?.id
+      a => a.memberId === checkedInMember.id && a.checkInTime && localISO(new Date(a.checkInTime)) === localISO() && a.id !== attendance[attendance.length - 1]?.id
     );
     const displayWorkouts = (g.totalWorkouts || 0) + 1;
     const displayStreak = alreadyCheckedInToday ? (g.currentStreak || 0) : (g.currentStreak || 0) + 1;

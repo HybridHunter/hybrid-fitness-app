@@ -30,10 +30,10 @@ function randomChars(n) {
 }
 
 async function supabaseUpsert(gymId, key, value) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/data_store`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/data_store?on_conflict=gym_id,key`, {
     method: "POST",
     headers: { ...HEADERS, Prefer: "return=minimal,resolution=merge-duplicates" },
-    body: JSON.stringify({ gym_id: gymId, key, value: JSON.stringify(value) }),
+    body: JSON.stringify({ gym_id: gymId, key, value }),
   });
   if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
 }
@@ -104,8 +104,9 @@ export default function SignUpPage() {
         planId: plan.id, planName: plan.name, price: plan.price, status: "trialing", trialEndsAt: new Date(Date.now() + 14 * 86400000).toISOString(), createdAt: now,
       });
 
-      // Update master registry
-      let registry = (await supabaseGet("__super__", "hf_gyms_registry")) || [];
+      // Update master registry — re-fetch right before writing to avoid clobbering concurrent signups
+      let registry = await supabaseGet("__super__", "hf_gyms_registry");
+      if (!Array.isArray(registry)) registry = [];
       registry.push({ gymId, gymName, planId: plan.id, planName: plan.name, price: plan.price, adminUsername: username, adminEmail: gymEmail, status: "trial", createdAt: now });
       await supabaseUpsert("__super__", "hf_gyms_registry", registry);
 

@@ -3,6 +3,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useAuth } from "../../context/AuthContext";
+import { localISO } from "../../utils/dates";
 import Card from "../../components/ui/Card";
 import { ImageUploadZone } from "../../components/shared/ImageUpload";
 
@@ -69,9 +70,8 @@ const DEFAULT_CATEGORIES = ["Announcements", "Wins", "Questions", "Introductions
    Demo data factory (runs once via useLocalStorage default)
    ────────────────────────────────────────────── */
 
-const now = new Date("2026-04-01T09:00:00Z");
+const now = new Date();
 const ago = (h) => new Date(now.getTime() - h * 3600000).toISOString();
-const TODAY = "2026-04-01";
 
 const DEMO_POSTS = [
   {
@@ -476,14 +476,14 @@ function FlameIcon({ size = 16, color }) {
 }
 
 /* Poll sub-component */
-function PollUI({ options, postId, onVote, B }) {
+function PollUI({ options, postId, onVote, B, meId }) {
   const totalVotes = options.reduce((s, o) => s + o.votes.length, 0);
-  const coachVoted = options.some(o => o.votes.includes("coach"));
+  const coachVoted = options.some(o => o.votes.includes(meId));
   return (
     <div style={{ marginTop: 12 }}>
       {options.map((opt, i) => {
         const pct = totalVotes > 0 ? Math.round((opt.votes.length / totalVotes) * 100) : 0;
-        const voted = opt.votes.includes("coach");
+        const voted = opt.votes.includes(meId);
         return (
           <div key={i}
             onClick={() => !coachVoted && onVote(postId, i)}
@@ -511,10 +511,11 @@ function PollUI({ options, postId, onVote, B }) {
 }
 
 /* Comment component */
-function Comment({ c, depth = 0, onLikeComment, onReply, postId, B, authorPoints }) {
+function Comment({ c, depth = 0, onLikeComment, onReply, postId, B, authorPoints, meId, meName }) {
   const [showReplyInput, setShowReplyInput] = useState(false);
   const [replyText, setReplyText] = useState("");
-  const liked = c.likes.includes("coach");
+  const cLikes = c.likes || [];
+  const liked = cLikes.includes(meId);
   const lvl = communityLevel(authorPoints[c.authorId] || 0);
 
   const submitReply = () => {
@@ -532,9 +533,9 @@ function Comment({ c, depth = 0, onLikeComment, onReply, postId, B, authorPoints
           <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 600, fontSize: 13, color: B.text }}>{c.authorName}</span>
             <LevelBadge level={lvl} B={B} />
-            <span style={{ fontSize: 11, color: B.dim, marginLeft: 4 }}>{timeAgo(c.timestamp)}</span>
+            <span style={{ fontSize: 11, color: B.dim, marginLeft: 4 }}>{timeAgo(c.timestamp ?? c.createdAt)}</span>
           </div>
-          <div style={{ fontSize: 14, color: B.text, marginTop: 2, lineHeight: 1.45 }}>{c.text}</div>
+          <div style={{ fontSize: 14, color: B.text, marginTop: 2, lineHeight: 1.45 }}>{c.text ?? c.content ?? ""}</div>
           <div style={{ display: "flex", gap: 14, marginTop: 4, alignItems: "center" }}>
             <button onClick={() => onLikeComment(postId, c.id)}
               style={{
@@ -542,7 +543,7 @@ function Comment({ c, depth = 0, onLikeComment, onReply, postId, B, authorPoints
                 alignItems: "center", gap: 4, padding: 0, color: liked ? B.red : B.muted, fontSize: 12
               }}>
               <HeartIcon filled={liked} size={13} color={liked ? B.red : B.muted} />
-              {c.likes.length > 0 && c.likes.length}
+              {cLikes.length > 0 && cLikes.length}
             </button>
             {depth === 0 && (
               <button onClick={() => setShowReplyInput(!showReplyInput)}
@@ -554,7 +555,7 @@ function Comment({ c, depth = 0, onLikeComment, onReply, postId, B, authorPoints
           </div>
           {showReplyInput && (
             <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-              <Avatar name="Coach" size={24} B={B} />
+              <Avatar name={meName || "Coach"} size={24} B={B} />
               <input value={replyText} onChange={(e) => setReplyText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && submitReply()}
                 placeholder="Write a reply..."
@@ -572,7 +573,7 @@ function Comment({ c, depth = 0, onLikeComment, onReply, postId, B, authorPoints
           {(c.replies || []).map((r) => (
             <Comment key={r.id} c={{ ...r, replies: [] }} depth={1}
               onLikeComment={onLikeComment} onReply={onReply}
-              postId={postId} B={B} authorPoints={authorPoints} />
+              postId={postId} B={B} authorPoints={authorPoints} meId={meId} meName={meName} />
           ))}
         </div>
       </div>
@@ -583,7 +584,7 @@ function Comment({ c, depth = 0, onLikeComment, onReply, postId, B, authorPoints
 /* ── Challenge helper fns ── */
 function getChallengeStats(challenge, memberId) {
   const subs = (challenge.submissions[memberId] || []);
-  const today = TODAY;
+  const today = localISO();
   const startDate = challenge.startDate;
   const endDate = challenge.endDate;
   const totalDays = daysBetween(startDate, endDate) + 1;
@@ -609,7 +610,9 @@ function getChallengeStats(challenge, memberId) {
   return { totalDays, elapsedDays, currentDay, daysCompleted, streak, totalCheckins, completionRate, verifiedCount, pendingCount, checkedInToday };
 }
 
-function getMemberName(memberId) {
+function getMemberName(memberId, members = []) {
+  const m = (Array.isArray(members) ? members : []).find((x) => x.id === memberId);
+  if (m) return `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email || memberId;
   const names = {
     sarah: "Sarah Johnson",
     mike: "Mike Chen",
@@ -629,7 +632,7 @@ function ClockIcon({ size = 16, color }) {
 }
 
 /* ── Challenge Detail Modal ── */
-function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
+function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff, meId = "coach", members = [] }) {
   const [checkinComment, setCheckinComment] = useState("");
   const [checkinProof, setCheckinProof] = useState("");
   const [leaderboardSort, setLeaderboardSort] = useState("streak");
@@ -638,25 +641,25 @@ function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
   const [dailyPostText, setDailyPostText] = useState("");
   const [editingDailyPost, setEditingDailyPost] = useState(false);
 
-  const today = TODAY;
-  const stats = getChallengeStats(challenge, "coach");
-  const isParticipant = challenge.participants.includes("coach");
-  const coachCheckedInToday = isParticipant && (challenge.submissions["coach"] || []).some((s) => s.date === today);
+  const today = localISO();
+  const stats = getChallengeStats(challenge, meId);
+  const isParticipant = challenge.participants.includes(meId);
+  const coachCheckedInToday = isParticipant && (challenge.submissions[meId] || []).some((s) => s.date === today);
 
   // Daily post data
   const dailyPosts = challenge.dailyPosts || {};
   const todaysDailyPost = dailyPosts[today] || null;
 
   const handleJoin = () => {
-    const updated = { ...challenge, participants: [...challenge.participants, "coach"], submissions: { ...challenge.submissions, coach: [] } };
+    const updated = { ...challenge, participants: [...challenge.participants, meId], submissions: { ...challenge.submissions, [meId]: [] } };
     onUpdate(updated);
   };
 
   const handleLeave = () => {
     const updated = {
       ...challenge,
-      participants: challenge.participants.filter((p) => p !== "coach"),
-      submissions: Object.fromEntries(Object.entries(challenge.submissions).filter(([k]) => k !== "coach"))
+      participants: challenge.participants.filter((p) => p !== meId),
+      submissions: Object.fromEntries(Object.entries(challenge.submissions).filter(([k]) => k !== meId))
     };
     onUpdate(updated);
   };
@@ -673,8 +676,8 @@ function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
       timestamp: new Date().toISOString(),
       likes: []
     };
-    const memberSubs = [...(challenge.submissions["coach"] || []), sub];
-    const updated = { ...challenge, submissions: { ...challenge.submissions, coach: memberSubs } };
+    const memberSubs = [...(challenge.submissions[meId] || []), sub];
+    const updated = { ...challenge, submissions: { ...challenge.submissions, [meId]: memberSubs } };
     onUpdate(updated);
     setCheckinComment("");
     setCheckinProof("");
@@ -717,8 +720,8 @@ function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
     const memberSubs = (challenge.submissions[memberId] || []).map((s) => {
       if (s.id !== subId) return s;
       const likes = s.likes || [];
-      const alreadyLiked = likes.includes("coach");
-      return { ...s, likes: alreadyLiked ? likes.filter((l) => l !== "coach") : [...likes, "coach"] };
+      const alreadyLiked = likes.includes(meId);
+      return { ...s, likes: alreadyLiked ? likes.filter((l) => l !== meId) : [...likes, meId] };
     });
     const updated = { ...challenge, submissions: { ...challenge.submissions, [memberId]: memberSubs } };
     onUpdate(updated);
@@ -727,7 +730,7 @@ function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
   // Leaderboard data
   const leaderboardData = challenge.participants.map((mid) => {
     const s = getChallengeStats(challenge, mid);
-    return { memberId: mid, name: getMemberName(mid), ...s };
+    return { memberId: mid, name: getMemberName(mid, members), ...s };
   });
 
   if (leaderboardSort === "streak") leaderboardData.sort((a, b) => b.streak - a.streak);
@@ -744,7 +747,7 @@ function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
           (reviewFilter === "approved" && s.verified === true) ||
           (reviewFilter === "rejected" && s.verified === false);
         if (matchFilter) {
-          allPendingReviews.push({ ...s, memberId: mid, memberName: getMemberName(mid) });
+          allPendingReviews.push({ ...s, memberId: mid, memberName: getMemberName(mid, members) });
         }
       });
     });
@@ -763,8 +766,8 @@ function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
     const missingMembers = [];
     challenge.participants.forEach((mid) => {
       const sub = (challenge.submissions[mid] || []).find((s) => s.date === dateStr);
-      if (sub) daySubs.push({ ...sub, memberId: mid, memberName: getMemberName(mid) });
-      else missingMembers.push(getMemberName(mid));
+      if (sub) daySubs.push({ ...sub, memberId: mid, memberName: getMemberName(mid, members) });
+      else missingMembers.push(getMemberName(mid, members));
     });
     dailyData.push({ date: dateStr, dayNum: d + 1, submissions: daySubs, missing: missingMembers });
   }
@@ -776,9 +779,9 @@ function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
   challenge.participants.forEach((mid) => {
     const sub = (challenge.submissions[mid] || []).find((s) => s.date === today);
     if (sub) {
-      todaysCheckins.push({ ...sub, memberId: mid, memberName: getMemberName(mid) });
+      todaysCheckins.push({ ...sub, memberId: mid, memberName: getMemberName(mid, members) });
     } else {
-      todaysMissing.push({ memberId: mid, memberName: getMemberName(mid) });
+      todaysMissing.push({ memberId: mid, memberName: getMemberName(mid, members) });
     }
   });
   todaysCheckins.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
@@ -1061,9 +1064,9 @@ function ChallengeDetailModal({ challenge, onClose, onUpdate, B, isStaff }) {
                 </div>
               )}
               {todaysCheckins.map((sub) => {
-                const isCoachCheckin = sub.memberId === "coach";
+                const isCoachCheckin = sub.memberId === meId;
                 const subLikes = sub.likes || [];
-                const isLiked = subLikes.includes("coach");
+                const isLiked = subLikes.includes(meId);
                 return (
                   <div key={sub.id} style={{
                     background: B.dark, borderRadius: 12, padding: 16,
@@ -1392,8 +1395,8 @@ function CreateChallengeModal({ onClose, onCreate, B }) {
   const [description, setDescription] = useState("");
   const [type, setType] = useState("adherence");
   const [targetDescription, setTargetDescription] = useState("");
-  const [startDate, setStartDate] = useState(TODAY);
-  const [endDate, setEndDate] = useState(toDateStr(new Date(now.getTime() + 30 * 86400000)));
+  const [startDate, setStartDate] = useState(localISO());
+  const [endDate, setEndDate] = useState(localISO(new Date(Date.now() + 30 * 86400000)));
   const [prize, setPrize] = useState("");
   const [prizeType, setPrizeType] = useState("none");
 
@@ -1547,9 +1550,9 @@ function CreateChallengeModal({ onClose, onCreate, B }) {
 }
 
 /* ── Challenge Feed Card ── */
-function ChallengeFeedCard({ challenge, onClick, B }) {
-  const stats = getChallengeStats(challenge, "coach");
-  const isParticipant = challenge.participants.includes("coach");
+function ChallengeFeedCard({ challenge, onClick, B, meId = "coach" }) {
+  const stats = getChallengeStats(challenge, meId);
+  const isParticipant = challenge.participants.includes(meId);
   const progressPct = Math.round((stats.elapsedDays / stats.totalDays) * 100);
 
   return (
@@ -1664,6 +1667,8 @@ export default function CommunityFeed() {
   const [expandedComments, setExpandedComments] = useState({});
   const [commentInputs, setCommentInputs] = useState({});
   const [menuOpen, setMenuOpen] = useState(null);
+  const [editingPostId, setEditingPostId] = useState(null);
+  const [editPostText, setEditPostText] = useState("");
 
   // Challenge state
   const [showCreateChallenge, setShowCreateChallenge] = useState(false);
@@ -1682,10 +1687,10 @@ export default function CommunityFeed() {
     const pts = {};
     const add = (id, n) => { pts[id] = (pts[id] || 0) + n; };
     posts.forEach((p) => {
-      add(p.authorId, p.likes.length);
-      p.comments.forEach((c) => {
-        add(c.authorId, c.likes.length);
-        (c.replies || []).forEach((r) => add(r.authorId, r.likes.length));
+      add(p.authorId, (p.likes || []).length);
+      (p.comments || []).forEach((c) => {
+        add(c.authorId, (c.likes || []).length);
+        (c.replies || []).forEach((r) => add(r.authorId, (r.likes || []).length));
       });
     });
     return pts;
@@ -1693,7 +1698,8 @@ export default function CommunityFeed() {
 
   /* ── Active challenges ── */
   const activeChallenges = useMemo(() => {
-    return challenges.filter((c) => c.startDate <= TODAY && c.endDate >= TODAY);
+    const todayStr = localISO();
+    return challenges.filter((c) => c.startDate <= todayStr && c.endDate >= todayStr);
   }, [challenges]);
 
   /* ── Build combined feed items (posts + challenge cards) ── */
@@ -1740,9 +1746,9 @@ export default function CommunityFeed() {
       }
       const p = item.data;
       let latest = new Date(p.createdAt).getTime();
-      p.comments.forEach((c) => {
-        latest = Math.max(latest, new Date(c.timestamp).getTime());
-        (c.replies || []).forEach((r) => { latest = Math.max(latest, new Date(r.timestamp).getTime()); });
+      (p.comments || []).forEach((c) => {
+        latest = Math.max(latest, new Date(c.timestamp ?? c.createdAt).getTime());
+        (c.replies || []).forEach((r) => { latest = Math.max(latest, new Date(r.timestamp ?? r.createdAt).getTime()); });
       });
       return latest;
     };
@@ -1751,8 +1757,8 @@ export default function CommunityFeed() {
       list.sort((a, b) => new Date(b.type === "challenge" ? b.data.createdAt : b.data.createdAt) - new Date(a.type === "challenge" ? a.data.createdAt : a.data.createdAt));
     } else if (sortMode === "top") {
       list.sort((a, b) => {
-        const aScore = a.type === "post" ? a.data.likes.length : a.data.participants.length;
-        const bScore = b.type === "post" ? b.data.likes.length : b.data.participants.length;
+        const aScore = a.type === "post" ? (a.data.likes || []).length : a.data.participants.length;
+        const bScore = b.type === "post" ? (b.data.likes || []).length : b.data.participants.length;
         return bScore - aScore;
       });
     } else {
@@ -1810,11 +1816,12 @@ export default function CommunityFeed() {
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id !== postId) return p;
-        const liked = p.likes.includes("coach");
-        return { ...p, likes: liked ? p.likes.filter((l) => l !== "coach") : [...p.likes, "coach"] };
+        const likes = p.likes || [];
+        const liked = likes.includes(staffId);
+        return { ...p, likes: liked ? likes.filter((l) => l !== staffId) : [...likes, staffId] };
       })
     );
-  }, [setPosts]);
+  }, [setPosts, staffId]);
 
   const toggleCommentLike = useCallback((postId, commentId) => {
     setPosts((prev) =>
@@ -1822,17 +1829,19 @@ export default function CommunityFeed() {
         if (p.id !== postId) return p;
         return {
           ...p,
-          comments: p.comments.map((c) => {
+          comments: (p.comments || []).map((c) => {
             if (c.id === commentId) {
-              const liked = c.likes.includes("coach");
-              return { ...c, likes: liked ? c.likes.filter((l) => l !== "coach") : [...c.likes, "coach"] };
+              const likes = c.likes || [];
+              const liked = likes.includes(staffId);
+              return { ...c, likes: liked ? likes.filter((l) => l !== staffId) : [...likes, staffId] };
             }
             return {
               ...c,
               replies: (c.replies || []).map((r) => {
                 if (r.id === commentId) {
-                  const liked = r.likes.includes("coach");
-                  return { ...r, likes: liked ? r.likes.filter((l) => l !== "coach") : [...r.likes, "coach"] };
+                  const likes = r.likes || [];
+                  const liked = likes.includes(staffId);
+                  return { ...r, likes: liked ? likes.filter((l) => l !== staffId) : [...likes, staffId] };
                 }
                 return r;
               })
@@ -1841,7 +1850,7 @@ export default function CommunityFeed() {
         };
       })
     );
-  }, [setPosts]);
+  }, [setPosts, staffId]);
 
   const addComment = useCallback((postId) => {
     const text = (commentInputs[postId] || "").trim();
@@ -1849,38 +1858,40 @@ export default function CommunityFeed() {
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id !== postId) return p;
+        const ts = new Date().toISOString();
         return {
           ...p,
           comments: [
-            ...p.comments,
-            { id: uuid(), authorId: staffId, authorName: staffName, text, likes: [], timestamp: new Date().toISOString(), replies: [] }
+            ...(p.comments || []),
+            { id: uuid(), authorId: staffId, authorName: staffName, text, content: text, likes: [], timestamp: ts, createdAt: ts, replies: [] }
           ]
         };
       })
     );
     setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
-  }, [commentInputs, setPosts]);
+  }, [commentInputs, setPosts, staffId, staffName]);
 
   const addReply = useCallback((postId, commentId, text) => {
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id !== postId) return p;
+        const ts = new Date().toISOString();
         return {
           ...p,
-          comments: p.comments.map((c) => {
+          comments: (p.comments || []).map((c) => {
             if (c.id !== commentId) return c;
             return {
               ...c,
               replies: [
                 ...(c.replies || []),
-                { id: uuid(), authorId: staffId, authorName: staffName, text, likes: [], timestamp: new Date().toISOString() }
+                { id: uuid(), authorId: staffId, authorName: staffName, text, content: text, likes: [], timestamp: ts, createdAt: ts, replies: [] }
               ]
             };
           })
         };
       })
     );
-  }, [setPosts]);
+  }, [setPosts, staffId, staffName]);
 
   const togglePin = useCallback((postId) => {
     setPosts((prev) => {
@@ -1898,17 +1909,17 @@ export default function CommunityFeed() {
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id !== postId) return p;
-        const already = p.pollOptions.some((o) => o.votes.includes("coach"));
+        const already = p.pollOptions.some((o) => o.votes.includes(staffId));
         if (already) return p;
         return {
           ...p,
           pollOptions: p.pollOptions.map((o, i) =>
-            i === optionIndex ? { ...o, votes: [...o.votes, "coach"] } : o
+            i === optionIndex ? { ...o, votes: [...o.votes, staffId] } : o
           )
         };
       })
     );
-  }, [setPosts]);
+  }, [setPosts, staffId]);
 
   const handleCreateChallenge = useCallback((challenge) => {
     setChallenges((prev) => [challenge, ...prev]);
@@ -1919,7 +1930,7 @@ export default function CommunityFeed() {
     setSelectedChallenge(updated);
   }, [setChallenges]);
 
-  const totalComments = (p) => p.comments.reduce((s, c) => s + 1 + (c.replies || []).length, 0);
+  const totalComments = (p) => (p.comments || []).reduce((s, c) => s + 1 + (c.replies || []).length, 0);
 
   /* ── Styles ── */
   const btnBase = { background: "none", border: "none", cursor: "pointer", padding: 0 };
@@ -1989,7 +2000,7 @@ export default function CommunityFeed() {
           {!composing ? (
             <div onClick={() => setComposing(true)}
               style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-              <Avatar name="Coach" size={40} B={B} />
+              <Avatar name={staffName} size={40} B={B} />
               <div style={{
                 flex: 1, padding: "10px 14px", borderRadius: 20,
                 background: B.dark, border: `1px solid ${B.border}`,
@@ -1999,10 +2010,10 @@ export default function CommunityFeed() {
           ) : (
             <div>
               <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-                <Avatar name="Coach" size={40} B={B} />
+                <Avatar name={staffName} size={40} B={B} />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <span style={{ fontWeight: 600, fontSize: 14, color: B.text }}>Coach</span>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: B.text }}>{staffName}</span>
                     <select value={composeCategory} onChange={(e) => setComposeCategory(e.target.value)}
                       style={{
                         background: B.dark, border: `1px solid ${B.border}`, borderRadius: 8,
@@ -2140,12 +2151,14 @@ export default function CommunityFeed() {
                 challenge={item.data}
                 onClick={() => setSelectedChallenge(item.data)}
                 B={B}
+                meId={staffId}
               />
             );
           }
 
           const post = item.data;
-          const liked = post.likes.includes("coach");
+          const postLikes = post.likes || [];
+          const liked = postLikes.includes(staffId);
           const commentsExpanded = expandedComments[post.id];
           const commentCount = totalComments(post);
           const ytId = post.mediaType === "video" ? extractYouTubeId(post.mediaUrl) : null;
@@ -2190,6 +2203,18 @@ export default function CommunityFeed() {
                         border: `1px solid ${B.border}`, borderRadius: 10, padding: 4,
                         minWidth: 140, boxShadow: "0 8px 24px rgba(0,0,0,0.3)", zIndex: 10
                       }}>
+                        {(post.authorId === staffId || isStaff) && (
+                          <button onClick={() => { setEditingPostId(post.id); setEditPostText(post.content); setMenuOpen(null); }}
+                            style={{
+                              ...btnBase, width: "100%", textAlign: "left", padding: "8px 12px",
+                              borderRadius: 6, fontSize: 13, color: B.text, display: "flex",
+                              alignItems: "center", gap: 8
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = `${B.muted}15`; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                            {"\u270F\uFE0F"} Edit post
+                          </button>
+                        )}
                         <button onClick={() => togglePin(post.id)}
                           style={{
                             ...btnBase, width: "100%", textAlign: "left", padding: "8px 12px",
@@ -2201,6 +2226,16 @@ export default function CommunityFeed() {
                           <PinIcon size={13} color={B.muted} />
                           {post.pinned ? "Unpin post" : "Pin post"}
                         </button>
+                        <button onClick={() => { if (window.confirm("Delete this post? This cannot be undone.")) setPosts(prev => prev.filter(p => p.id !== post.id)); }}
+                          style={{
+                            ...btnBase, width: "100%", textAlign: "left", padding: "8px 12px",
+                            borderRadius: 6, fontSize: 13, color: B.red || "#ef4444", display: "flex",
+                            alignItems: "center", gap: 8
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = (B.red || "#ef4444") + "15"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                          {"\uD83D\uDDD1\uFE0F"} Delete post
+                        </button>
                       </div>
                     )}
                   </div>
@@ -2211,7 +2246,22 @@ export default function CommunityFeed() {
                   fontSize: 15, color: B.text, lineHeight: 1.55, marginBottom: 10,
                   whiteSpace: "pre-wrap", wordBreak: "break-word"
                 }}>
-                  {post.content}
+                  {editingPostId === post.id ? (
+                    <div>
+                      <textarea value={editPostText} onChange={e => setEditPostText(e.target.value)}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid " + B.accent + "60", background: B.darker, color: B.text, fontSize: 15, lineHeight: 1.55, outline: "none", resize: "vertical", minHeight: 80, fontFamily: "inherit", boxSizing: "border-box" }} autoFocus />
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <button onClick={() => setEditingPostId(null)} style={{ padding: "5px 14px", borderRadius: 6, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 12, cursor: "pointer" }}>Cancel</button>
+                        <button onClick={() => { setPosts(prev => prev.map(p => p.id === post.id ? { ...p, content: editPostText.trim(), editedAt: new Date().toISOString() } : p)); setEditingPostId(null); }}
+                          style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: B.accent, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {post.content}
+                      {post.editedAt && <span style={{ fontSize: 11, color: B.dim, marginLeft: 6 }}>(edited)</span>}
+                    </>
+                  )}
                 </div>
 
                 {/* Media: YouTube */}
@@ -2241,7 +2291,7 @@ export default function CommunityFeed() {
 
                 {/* Media: Poll */}
                 {post.mediaType === "poll" && post.pollOptions.length > 0 && (
-                  <PollUI options={post.pollOptions} postId={post.id} onVote={handleVote} B={B} />
+                  <PollUI options={post.pollOptions} postId={post.id} onVote={handleVote} B={B} meId={staffId} />
                 )}
 
                 {/* Actions bar */}
@@ -2256,8 +2306,8 @@ export default function CommunityFeed() {
                       color: liked ? B.red : B.muted, transition: "color 0.15s"
                     }}>
                     <HeartIcon filled={liked} size={16} color={liked ? B.red : B.muted} />
-                    {post.likes.length > 0 && <span>{post.likes.length}</span>}
-                    {post.likes.length === 0 && <span>Like</span>}
+                    {postLikes.length > 0 && <span>{postLikes.length}</span>}
+                    {postLikes.length === 0 && <span>Like</span>}
                   </button>
                   <button onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
                     style={{
@@ -2273,14 +2323,14 @@ export default function CommunityFeed() {
                 {/* Comments section */}
                 {commentsExpanded && (
                   <div style={{ marginTop: 8 }}>
-                    {post.comments.map((c) => (
+                    {(post.comments || []).map((c) => (
                       <Comment key={c.id} c={c} postId={post.id}
                         onLikeComment={toggleCommentLike} onReply={addReply}
-                        B={B} authorPoints={authorPoints} />
+                        B={B} authorPoints={authorPoints} meId={staffId} meName={staffName} />
                     ))}
                     {/* Comment input */}
                     <div style={{ display: "flex", gap: 8, marginTop: 14, alignItems: "center" }}>
-                      <Avatar name="Coach" size={30} B={B} />
+                      <Avatar name={staffName} size={30} B={B} />
                       <input
                         value={commentInputs[post.id] || ""}
                         onChange={(e) => setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))}
@@ -2331,6 +2381,8 @@ export default function CommunityFeed() {
           onUpdate={handleUpdateChallenge}
           B={B}
           isStaff={isStaff}
+          meId={staffId}
+          members={members}
         />
       )}
     </div>

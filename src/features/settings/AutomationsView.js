@@ -118,6 +118,10 @@ export default function AutomationsView() {
   const [sendingId, setSendingId] = useState(null);
   const [resultMsg, setResultMsg] = useState({});
   const { members } = useMembers();
+  const [attendance] = useLocalStorage("hf_attendance", []);
+  const [payments] = useLocalStorage("hf_payments", []);
+  const [schedule] = useLocalStorage("hf_schedule", []);
+  const [, setNotifications] = useLocalStorage("hf_notifications", []);
 
   const getBranding = () => {
     try { return JSON.parse(localStorage.getItem('hf_branding') || '{}'); } catch { return {}; }
@@ -131,7 +135,7 @@ export default function AutomationsView() {
 
   const addLogEntry = useCallback((automation, member, action, status) => {
     const entry = {
-      id: Date.now(),
+      id: crypto.randomUUID(),
       date: new Date().toISOString().replace('T', ' ').slice(0, 16),
       automation: automation.name,
       member,
@@ -151,32 +155,80 @@ export default function AutomationsView() {
     const integrations = getIntegrations();
     const branding = getBranding();
     const gymName = branding.gymName || 'GymKit';
+    const isByok = integrations.messagingMode === 'byok';
     const actionLower = a.action.toLowerCase();
     const isEmail = actionLower.includes('email') || actionLower.includes('reminder') || actionLower.includes('birthday') || actionLower.includes('re-sign');
     const isSMS = actionLower.includes('sms');
     const isNotification = actionLower.includes('notification');
     const isAlert = actionLower.includes('alert');
 
-    // Get eligible members (all active members for demo)
-    const eligibleMembers = (members || []).filter(m => m.status !== 'inactive').slice(0, 50);
+    // Filter recipients by the automation's trigger where computable from local data
+    const activeMembers = (members || []).filter(m => m.status !== 'inactive' && m.membershipStatus !== 'inactive');
+    const paymentsArr = Array.isArray(payments) ? payments : [];
+    const attendanceArr = Array.isArray(attendance) ? attendance : [];
+    const scheduleArr = Array.isArray(schedule) ? schedule : [];
+    const trigger = (a.trigger || '').toLowerCase();
+    const bookingByMember = {};
+    let eligibleMembers;
+    let computable = true;
+    if (trigger.includes('birthday')) {
+      const today = new Date();
+      eligibleMembers = activeMembers.filter(m => {
+        if (!m.dob) return false;
+        const dob = new Date(m.dob + 'T12:00:00');
+        return dob.getMonth() === today.getMonth() && dob.getDate() === today.getDate();
+      });
+    } else if (trigger.includes('missed') || trigger.includes('7 days')) {
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      eligibleMembers = activeMembers.filter(m => {
+        const times = attendanceArr.filter(r => r.memberId === m.id && !r.noShow && r.checkInTime).map(r => new Date(r.checkInTime).getTime());
+        return times.length > 0 && Math.max(...times) < cutoff;
+      });
+    } else if (trigger.includes('payment')) {
+      eligibleMembers = activeMembers.filter(m => paymentsArr.some(p => p.memberId === m.id && p.status === 'overdue'));
+    } else if (trigger.includes('booked session') || trigger.includes('session booked')) {
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const dow = tomorrow.getDay() === 0 ? 6 : tomorrow.getDay() - 1; // app convention: 0 = Monday
+      scheduleArr.filter(c => c.dayOfWeek === dow).forEach(c => (c.bookings || []).forEach(id => { if (!bookingByMember[id]) bookingByMember[id] = c; }));
+      eligibleMembers = activeMembers.filter(m => bookingByMember[m.id]);
+    } else {
+      // Trigger not computable from local data (e.g. "New member joins") — require explicit confirmation
+      computable = false;
+      eligibleMembers = activeMembers;
+    }
+    eligibleMembers = eligibleMembers.slice(0, 50);
     if (eligibleMembers.length === 0) {
-      showResult(a.id, 'No eligible members found.');
+      showResult(a.id, 'No members currently match this trigger.');
       setSendingId(null);
       return;
     }
+    if (!computable && !window.confirm(`"${a.name}" (trigger: ${a.trigger}) can't be filtered automatically. Run Now will send to all ${eligibleMembers.length} active member${eligibleMembers.length !== 1 ? 's' : ''}. Send anyway?`)) {
+      setSendingId(null);
+      return;
+    }
+
+    // Fill template variables with real values where available
+    const buildVars = (member) => {
+      const vars = { firstName: member.firstName || member.name?.split(' ')[0] || 'Client', gymName };
+      const overdueTotal = paymentsArr.filter(p => p.memberId === member.id && p.status === 'overdue').reduce((s, p) => s + (p.amount || 0), 0);
+      if (overdueTotal > 0) vars.amount = '$' + overdueTotal.toFixed(2);
+      const cls = bookingByMember[member.id];
+      if (cls) { vars.className = cls.name; vars.time = cls.startTime; }
+      return vars;
+    };
 
     let sentCount = 0;
     let failCount = 0;
 
     if (isEmail) {
-      if (!integrations.resendApiKey) {
+      if (isByok && !integrations.resendApiKey) {
         showResult(a.id, 'Failed: no Resend API key configured. Go to Settings > Integrations.');
         setSendingId(null);
         return;
       }
       for (const member of eligibleMembers) {
         if (!member.email) continue;
-        const vars = { firstName: member.firstName || member.name?.split(' ')[0] || 'Client', gymName, amount: '$0.00', className: 'Session', time: 'TBD' };
+        const vars = buildVars(member);
         const subject = replaceVariables(a.subject, vars);
         const html = `<p>${replaceVariables(a.body, vars).replace(/\n/g, '<br>')}</p>`;
         try {
@@ -194,14 +246,14 @@ export default function AutomationsView() {
         }
       }
     } else if (isSMS) {
-      if (!integrations.twilioSid || !integrations.twilioToken) {
+      if (isByok && (!integrations.twilioSid || !integrations.twilioToken)) {
         showResult(a.id, 'Failed: no Twilio credentials configured. Go to Settings > Integrations.');
         setSendingId(null);
         return;
       }
       for (const member of eligibleMembers) {
         if (!member.phone) continue;
-        const vars = { firstName: member.firstName || member.name?.split(' ')[0] || 'Client', gymName, amount: '$0.00', className: 'Session', time: 'TBD' };
+        const vars = buildVars(member);
         const body = replaceVariables(a.body || a.subject || a.name, vars);
         try {
           const res = await sendSMS({ to: member.phone, body });
@@ -218,12 +270,12 @@ export default function AutomationsView() {
         }
       }
     } else if (isNotification || isAlert) {
-      // In-app notification: store to hf_notifications
-      const existing = JSON.parse(localStorage.getItem('hf_notifications') || '[]');
+      // In-app notification: store via the synced hf_notifications setter
+      const newNotifs = [];
       for (const member of eligibleMembers) {
-        const vars = { firstName: member.firstName || member.name?.split(' ')[0] || 'Client', gymName };
-        existing.unshift({
-          id: 'notif_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        const vars = buildVars(member);
+        newNotifs.unshift({
+          id: crypto.randomUUID(),
           type: 'automation',
           title: replaceVariables(a.subject || a.name, vars),
           message: replaceVariables(a.body || '', vars),
@@ -233,7 +285,7 @@ export default function AutomationsView() {
         sentCount++;
         addLogEntry(a, member.name || 'Member', isAlert ? 'Coach alerted' : 'Notification sent', 'sent');
       }
-      localStorage.setItem('hf_notifications', JSON.stringify(existing));
+      setNotifications(prev => [...newNotifs, ...(Array.isArray(prev) ? prev : [])]);
     }
 
     const msg = failCount > 0
@@ -254,10 +306,11 @@ export default function AutomationsView() {
     const isEmail = actionLower.includes('email') || actionLower.includes('reminder') || actionLower.includes('birthday') || actionLower.includes('re-sign');
     const isSMS = actionLower.includes('sms');
 
+    const isByok = integrations.messagingMode === 'byok';
     const vars = { firstName: 'Test User', gymName, amount: '$99.00', className: 'HIIT Class', time: '9:00 AM' };
 
     if (isEmail) {
-      if (!integrations.resendApiKey) {
+      if (isByok && !integrations.resendApiKey) {
         showResult(a.id, 'Failed: no Resend API key configured.');
         setSendingId(null);
         return;
@@ -272,7 +325,7 @@ export default function AutomationsView() {
         showResult(a.id, 'Failed: server unreachable.');
       }
     } else if (isSMS) {
-      if (!integrations.twilioSid || !integrations.twilioToken) {
+      if (isByok && (!integrations.twilioSid || !integrations.twilioToken)) {
         showResult(a.id, 'Failed: no Twilio credentials configured.');
         setSendingId(null);
         return;
@@ -286,17 +339,15 @@ export default function AutomationsView() {
         showResult(a.id, 'Failed: server unreachable.');
       }
     } else {
-      // In-app test notification
-      const existing = JSON.parse(localStorage.getItem('hf_notifications') || '[]');
-      existing.unshift({
-        id: 'notif_test_' + Date.now(),
+      // In-app test notification — stored via the synced hf_notifications setter
+      setNotifications(prev => [{
+        id: crypto.randomUUID(),
         type: 'automation',
         title: '[TEST] ' + replaceVariables(a.subject || a.name, vars),
         message: replaceVariables(a.body || '', vars),
         time: new Date().toISOString(),
         read: false,
-      });
-      localStorage.setItem('hf_notifications', JSON.stringify(existing));
+      }, ...(Array.isArray(prev) ? prev : [])]);
       showResult(a.id, 'Test notification added. Check the notification bell.');
       addLogEntry(a, 'Admin (test)', 'Test notification', 'sent');
     }
@@ -381,7 +432,7 @@ export default function AutomationsView() {
       {/* Header */}
       <h2 style={{ color: B.text, margin: 0 }}>Automations</h2>
       <p style={{ color: B.muted, fontSize: 14, marginTop: 4, marginBottom: 24 }}>
-        Set up automated actions triggered by events
+        Message templates for common events. Scheduled sending isn't available yet &mdash; enabled automations are run manually with &ldquo;Run Now&rdquo;.
       </p>
 
       {/* ── Automation cards ──────────────────────────── */}
@@ -401,7 +452,12 @@ export default function AutomationsView() {
             >
               {/* Trigger */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{a.name}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: B.text, display: "flex", alignItems: "center", gap: 6 }}>
+                  {a.name}
+                  <span title="No scheduler yet — this automation only sends when you press Run Now" style={{ fontSize: 9, fontWeight: 700, color: B.muted, border: `1px solid ${B.border}`, borderRadius: 6, padding: "1px 6px", textTransform: "uppercase", letterSpacing: 0.5, flexShrink: 0 }}>
+                    Manual
+                  </span>
+                </div>
                 <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>{a.trigger}</div>
               </div>
 

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { sendEmail } from "../../utils/messaging";
 import Card from "../../components/ui/Card";
 
 /* ========== constants ========== */
@@ -95,24 +96,24 @@ function SignatureCanvas({ canvasRef, B }) {
 }
 
 /* ========== Main Component ========== */
+const DEFAULT_DOC_TYPES = [
+  { id: "waiver", name: "Liability Waiver", icon: "\uD83D\uDCDD", required: true },
+  { id: "contract", name: "Membership Agreement", icon: "\uD83D\uDCCB", required: false },
+  { id: "medical", name: "Medical History Form", icon: "\uD83C\uDFE5", required: false },
+  { id: "photo_release", name: "Photo/Media Release", icon: "\uD83D\uDCF7", required: false },
+  { id: "policies", name: "Gym Policies", icon: "\uD83D\uDCDC", required: false },
+  { id: "custom", name: "Custom Document", icon: "\uD83D\uDCC4", required: false },
+];
+
 export default function WaiverView() {
   const B = useTheme();
   const { members } = useMembers();
   const [waiverTemplate, setWaiverTemplate] = useLocalStorage("hf_waiver_template", DEFAULT_WAIVER_TEXT);
-  const [waivers, setWaivers] = useLocalStorage("hf_waivers", (() => {
-    try {
-      const stored = localStorage.getItem("hf_members");
-      const m = stored ? JSON.parse(stored) : [];
-      return m.slice(0, 4).map((member, i) => ({
-        id: crypto.randomUUID(),
-        memberId: member.id,
-        signedAt: new Date(Date.now() - (i + 1) * 86400000 * (i * 15 + 5)).toISOString(),
-        signaturePng: "",
-        fullName: member.firstName + " " + member.lastName,
-        waiverText: DEFAULT_WAIVER_TEXT,
-      }));
-    } catch { return []; }
-  })());
+  const [docTemplates, setDocTemplates] = useLocalStorage("hf_doc_templates", []);
+  const [activeDocType, setActiveDocType] = useState("waiver");
+  const [showNewDoc, setShowNewDoc] = useState(false);
+  const [newDocForm, setNewDocForm] = useState({ name: "", content: "", requireSignature: true });
+  const [waivers, setWaivers] = useLocalStorage("hf_waivers", []);
 
   const [templateDraft, setTemplateDraft] = useState(waiverTemplate);
   const [templateEditing, setTemplateEditing] = useState(false);
@@ -120,6 +121,7 @@ export default function WaiverView() {
   const [toast, setToast] = useState("");
   const [signingMemberId, setSigningMemberId] = useState(null);
   const [viewingWaiverId, setViewingWaiverId] = useState(null);
+  const [sendingWaiverId, setSendingWaiverId] = useState(null);
 
   // Signing form state
   const [agreed, setAgreed] = useState(false);
@@ -132,9 +134,10 @@ export default function WaiverView() {
     setTimeout(() => setToast(""), 3000);
   }, []);
 
+  // Liability waivers only — records with a docType are custom-document signatures
   const waiverMap = useMemo(() => {
     const map = {};
-    (Array.isArray(waivers) ? waivers : []).forEach(w => { map[w.memberId] = w; });
+    (Array.isArray(waivers) ? waivers : []).forEach(w => { if (!w.docType) map[w.memberId] = w; });
     return map;
   }, [waivers]);
 
@@ -162,12 +165,38 @@ export default function WaiverView() {
       fullName: sigFullName.trim(),
       waiverText: waiverTemplate,
     };
-    setWaivers(prev => [...prev.filter(w => w.memberId !== signingMemberId), newWaiver]);
+    // Only replace the member's liability waiver — keep their custom-document (docType) signatures
+    setWaivers(prev => [...(Array.isArray(prev) ? prev : []).filter(w => !(w.memberId === signingMemberId && !w.docType)), newWaiver]);
     setSigningMemberId(null);
     setAgreed(false);
     setSigFullName("");
     showToast("Waiver signed successfully!");
   }, [agreed, sigFullName, signingMemberId, waiverTemplate, setWaivers, showToast]);
+
+  const sendWaiverEmail = async (m) => {
+    if (!m.email) {
+      showToast("No email address on file");
+      return;
+    }
+    setSendingWaiverId(m.id);
+    try {
+      let branding = {};
+      try { branding = JSON.parse(localStorage.getItem("hf_branding") || "{}"); } catch {}
+      const gymName = branding.gymName || "GymKit";
+      const gymUrl = branding.gymUrl || window.location.origin;
+      await sendEmail({
+        to: m.email,
+        subject: `${gymName} — Please Sign Your Liability Waiver`,
+        html: `<h2>Hi ${m.firstName},</h2><p>Please review the liability waiver below, then sign it at the front desk or ask a coach to open it for you at your next visit.</p><p><strong>${gymName}:</strong> <a href="${gymUrl}">${gymUrl}</a></p><div style="white-space:pre-wrap;border:1px solid #ddd;border-radius:8px;padding:14px;font-size:12px;color:#555;line-height:1.6;">${waiverTemplate}</div>`,
+      });
+      showToast(`Waiver sent to ${m.email}`);
+    } catch (err) {
+      console.error("Failed to send waiver email:", err);
+      showToast("Failed to send waiver email");
+    } finally {
+      setSendingWaiverId(null);
+    }
+  };
 
   const openSigning = useCallback((memberId) => {
     const m = members.find(x => x.id === memberId);
@@ -201,8 +230,166 @@ export default function WaiverView() {
 
   return (
     <div style={s.page}>
-      <h1 style={s.h1}>Waivers & Agreements</h1>
-      <p style={s.subtitle}>Manage digital waivers, view signing status, and collect signatures.</p>
+      <h1 style={s.h1}>Documents & Waivers</h1>
+      <p style={s.subtitle}>Manage waivers, agreements, forms, and other documents for your clients.</p>
+
+      {/* Document Type Tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+        {[{ id: "waiver", name: "Liability Waiver", icon: "\uD83D\uDCDD" }, ...docTemplates].map(dt => (
+          <button key={dt.id} onClick={() => setActiveDocType(dt.id)} style={{
+            padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+            border: activeDocType === dt.id ? `2px solid ${B.accent}` : `1px solid ${B.border}`,
+            background: activeDocType === dt.id ? B.accent + "15" : "transparent",
+            color: activeDocType === dt.id ? B.accent : B.muted,
+          }}>{dt.icon || "\uD83D\uDCC4"} {dt.name}</button>
+        ))}
+        <button onClick={() => setShowNewDoc(true)} style={{
+          padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
+          border: "1px dashed " + B.accent + "40", background: "transparent", color: B.accent,
+        }}>+ New Document Type</button>
+      </div>
+
+      {/* Create New Document Type Modal */}
+      {showNewDoc && (
+        <div style={s.overlay} onClick={() => setShowNewDoc(false)}>
+          <div style={s.modal} onClick={e => e.stopPropagation()}>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: B.text, margin: "0 0 16px" }}>Create Document Type</h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: B.muted, display: "block", marginBottom: 4 }}>Document Name</label>
+                <input style={s.input} value={newDocForm.name} onChange={e => setNewDocForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Medical History Form" />
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: B.muted, display: "block", marginBottom: 4 }}>Template Content</label>
+                <textarea value={newDocForm.content} onChange={e => setNewDocForm(p => ({ ...p, content: e.target.value }))}
+                  placeholder="Enter the document text that members will review and sign..."
+                  style={{ ...s.input, minHeight: 200, resize: "vertical", fontFamily: "inherit" }} />
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={newDocForm.requireSignature} onChange={e => setNewDocForm(p => ({ ...p, requireSignature: e.target.checked }))} style={{ width: 16, height: 16, accentColor: B.accent }} />
+                <span style={{ fontSize: 13, color: B.text }}>Require signature</span>
+              </label>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => setShowNewDoc(false)} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13 }}>Cancel</button>
+                <button onClick={() => {
+                  if (!newDocForm.name.trim()) return;
+                  const newDoc = { id: "doc_" + Date.now(), name: newDocForm.name.trim(), content: newDocForm.content.trim(), requireSignature: newDocForm.requireSignature, icon: "\uD83D\uDCC4", createdAt: new Date().toISOString() };
+                  setDocTemplates(prev => [...prev, newDoc]);
+                  setActiveDocType(newDoc.id);
+                  setNewDocForm({ name: "", content: "", requireSignature: true });
+                  setShowNewDoc(false);
+                  showToast("Document type created!");
+                }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Create</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Document Interface */}
+      {activeDocType !== "waiver" && (() => {
+        const doc = docTemplates.find(d => d.id === activeDocType);
+        if (!doc) return null;
+        const [editingDoc, setEditingDoc] = [templateEditing, setTemplateEditing]; // reuse state
+        const docSignatures = (Array.isArray(waivers) ? waivers : []).filter(w => w.docType === activeDocType);
+        const signedIds = new Set(docSignatures.map(w => w.memberId));
+        const activeMembers = members.filter(m => !!m.membershipPlanId);
+        return (
+          <>
+            {/* Document Template */}
+            <Card style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h2 style={s.sectionTitle}>{doc.name}</h2>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {!editingDoc ? (
+                    <button style={s.btn(B.border, B.text)} onClick={() => { setTemplateDraft(doc.content); setTemplateEditing(true); }}>Edit</button>
+                  ) : (
+                    <>
+                      <button style={s.btn(B.border, B.text)} onClick={() => setTemplateEditing(false)}>Cancel</button>
+                      <button style={s.btn()} onClick={() => { setDocTemplates(prev => prev.map(d => d.id === activeDocType ? { ...d, content: templateDraft } : d)); setTemplateEditing(false); showToast("Document saved!"); }}>Save</button>
+                    </>
+                  )}
+                  <button style={s.btn(B.red + "22", B.red || "#ef4444")} onClick={() => { if (window.confirm(`Delete "${doc.name}"? This cannot be undone.`)) { setDocTemplates(prev => prev.filter(d => d.id !== activeDocType)); setActiveDocType("waiver"); } }}>Delete</button>
+                </div>
+              </div>
+              {editingDoc ? (
+                <textarea style={s.textarea} value={templateDraft} onChange={e => setTemplateDraft(e.target.value)} />
+              ) : (
+                <div style={{ background: B.darker, borderRadius: 8, padding: 16, fontSize: 13, color: B.muted, whiteSpace: "pre-wrap", maxHeight: 200, overflow: "auto", lineHeight: 1.6 }}>
+                  {doc.content || "No content yet — click Edit to add."}
+                </div>
+              )}
+            </Card>
+
+            {/* Member Status for this document */}
+            <Card>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h2 style={s.sectionTitle}>Signing Status ({docSignatures.length}/{activeMembers.length})</h2>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                {["all", "signed", "unsigned"].map(f => (
+                  <button key={f} onClick={() => setFilter(f)} style={s.filterBtn(filter === f)}>
+                    {f === "all" ? "All" : f === "signed" ? `Signed (${docSignatures.length})` : `Unsigned (${activeMembers.length - docSignatures.length})`}
+                  </button>
+                ))}
+              </div>
+              <table style={s.table}>
+                <thead>
+                  <tr>
+                    <th style={s.th}>Member</th>
+                    <th style={s.th}>Status</th>
+                    <th style={s.th}>Date</th>
+                    <th style={s.th}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeMembers.filter(m => {
+                    if (filter === "signed") return signedIds.has(m.id);
+                    if (filter === "unsigned") return !signedIds.has(m.id);
+                    return true;
+                  }).map(m => {
+                    const sig = docSignatures.find(w => w.memberId === m.id);
+                    return (
+                      <tr key={m.id}>
+                        <td style={s.td}>
+                          <span style={s.avatar}>{((m.firstName?.[0] || "") + (m.lastName?.[0] || "")).toUpperCase()}</span>
+                          {m.firstName} {m.lastName}
+                        </td>
+                        <td style={s.td}>
+                          {sig ? <span style={s.badge(B.green)}>Signed</span> : <span style={s.badge(B.orange)}>Pending</span>}
+                        </td>
+                        <td style={s.td}>{sig ? fmtDate(sig.signedAt) : "---"}</td>
+                        <td style={s.td}>
+                          {!sig ? (
+                            <button style={s.btn()} onClick={() => {
+                              setWaivers(prev => [...(Array.isArray(prev) ? prev : []), {
+                                id: crypto.randomUUID(),
+                                memberId: m.id,
+                                docType: activeDocType,
+                                signedAt: new Date().toISOString(),
+                                fullName: m.firstName + " " + m.lastName,
+                                waiverText: doc.content,
+                              }]);
+                              showToast(`${m.firstName} signed ${doc.name}`);
+                            }}>Send / Mark Signed</button>
+                          ) : (
+                            <button style={s.btn(B.border, B.text)} onClick={() => {
+                              setWaivers(prev => (Array.isArray(prev) ? prev : []).filter(w => !(w.memberId === m.id && w.docType === activeDocType)));
+                            }}>Revoke</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          </>
+        );
+      })()}
+
+      {/* Waiver: Template Editor (only for default waiver) */}
+      {activeDocType === "waiver" && <>
 
       {/* Template Editor */}
       <div style={s.section}>
@@ -275,7 +462,9 @@ export default function WaiverView() {
                           ) : (
                             <>
                               <button style={s.btnSm(B.green + "22", B.green)} onClick={() => openSigning(m.id)}>Sign Waiver</button>
-                              <button style={s.btnSm()} onClick={() => showToast(`Waiver sent to ${m.email}`)}>Send Waiver</button>
+                              <button style={{ ...s.btnSm(), opacity: sendingWaiverId === m.id ? 0.6 : 1 }} disabled={sendingWaiverId === m.id} onClick={() => sendWaiverEmail(m)}>
+                                {sendingWaiverId === m.id ? "Sending..." : "Send Waiver"}
+                              </button>
                             </>
                           )}
                         </div>
@@ -403,6 +592,8 @@ export default function WaiverView() {
           </div>
         </div>
       )}
+
+      </>}
 
       {/* Toast */}
       {toast && <div style={s.toast}>{toast}</div>}

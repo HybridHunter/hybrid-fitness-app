@@ -6,6 +6,40 @@ const { Resend } = require('resend');
 
 const app = express();
 app.use(cors());
+
+// Stripe webhook — must be registered BEFORE express.json() so the raw body
+// is available for signature verification (express.json would consume it).
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  try {
+    let event;
+    if (endpointSecret) {
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    } else {
+      event = JSON.parse(req.body);
+    }
+
+    switch (event.type) {
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted':
+      case 'invoice.payment_succeeded':
+      case 'invoice.payment_failed':
+        console.log(`[Stripe Webhook] ${event.type}:`, event.data.object.id);
+        // In production: update Supabase gym subscription status here
+        break;
+      default:
+        console.log(`[Stripe Webhook] Unhandled: ${event.type}`);
+    }
+
+    res.json({ received: true });
+  } catch (err) {
+    console.error('Webhook error:', err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.use(express.json({ limit: '10mb' }));
 
 // ── Stripe: Card Payments ──
@@ -34,9 +68,11 @@ app.post('/api/create-fc-session', async (req, res) => {
   try {
     const { memberName, memberEmail } = req.body;
     let customer;
-    const existing = await stripe.customers.list({ email: memberEmail, limit: 1 });
-    if (existing.data.length > 0) { customer = existing.data[0]; }
-    else { customer = await stripe.customers.create({ name: memberName, email: memberEmail || undefined }); }
+    if (memberEmail) {
+      const existing = await stripe.customers.list({ email: memberEmail, limit: 1 });
+      if (existing.data.length > 0) customer = existing.data[0];
+    }
+    if (!customer) { customer = await stripe.customers.create({ name: memberName, email: memberEmail || undefined }); }
     const setupIntent = await stripe.setupIntents.create({
       customer: customer.id, payment_method_types: ['us_bank_account'],
       payment_method_options: { us_bank_account: { financial_connections: { permissions: ['payment_method'] } } },
@@ -337,38 +373,6 @@ app.post('/api/subscription/change-plan', async (req, res) => {
       planAmount: updated.items.data[0]?.price?.unit_amount / 100,
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// Stripe webhook for subscription events
-app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
-  try {
-    let event;
-    if (endpointSecret) {
-      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-    } else {
-      event = JSON.parse(req.body);
-    }
-
-    switch (event.type) {
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted':
-      case 'invoice.payment_succeeded':
-      case 'invoice.payment_failed':
-        console.log(`[Stripe Webhook] ${event.type}:`, event.data.object.id);
-        // In production: update Supabase gym subscription status here
-        break;
-      default:
-        console.log(`[Stripe Webhook] Unhandled: ${event.type}`);
-    }
-
-    res.json({ received: true });
-  } catch (err) {
-    console.error('Webhook error:', err.message);
-    res.status(400).json({ error: err.message });
-  }
 });
 
 // ── Health ──

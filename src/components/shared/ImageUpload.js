@@ -3,10 +3,12 @@ import { useTheme } from "../../context/ThemeContext";
 
 // Resizes image to max dimension and returns base64 data URL
 function resizeImage(file, maxSize = 800) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read file"));
     reader.onload = (ev) => {
       const img = new Image();
+      img.onerror = () => reject(new Error("Could not load image"));
       img.onload = () => {
         let w = img.width, h = img.height;
         if (w > maxSize || h > maxSize) {
@@ -16,8 +18,15 @@ function resizeImage(file, maxSize = 800) {
         const canvas = document.createElement("canvas");
         canvas.width = w;
         canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", 0.75));
+        const ctx = canvas.getContext("2d");
+        const isPng = file.type === "image/png";
+        if (!isPng) {
+          // JPEG has no alpha channel — flatten transparency onto white, not black
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, w, h);
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(isPng ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", 0.75));
       };
       img.src = ev.target.result;
     };
@@ -33,8 +42,12 @@ export default function ImageUpload({ onUpload, label, maxSize = 800, style = {}
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const dataUrl = await resizeImage(file, maxSize);
-    onUpload(dataUrl);
+    try {
+      const dataUrl = await resizeImage(file, maxSize);
+      onUpload(dataUrl);
+    } catch {
+      alert("Could not process that image file.");
+    }
     e.target.value = "";
   };
 
@@ -61,8 +74,12 @@ export function ImageUploadZone({ value, onChange, maxSize = 800, label }) {
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const dataUrl = await resizeImage(file, maxSize);
-    onChange(dataUrl);
+    try {
+      const dataUrl = await resizeImage(file, maxSize);
+      onChange(dataUrl);
+    } catch {
+      alert("Could not process that image file.");
+    }
     e.target.value = "";
   };
 
@@ -70,8 +87,12 @@ export function ImageUploadZone({ value, onChange, maxSize = 800, label }) {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (!file || !file.type.startsWith("image/")) return;
-    const dataUrl = await resizeImage(file, maxSize);
-    onChange(dataUrl);
+    try {
+      const dataUrl = await resizeImage(file, maxSize);
+      onChange(dataUrl);
+    } catch {
+      alert("Could not process that image file.");
+    }
   };
 
   if (value) {

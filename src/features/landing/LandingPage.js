@@ -99,9 +99,6 @@ export default function LandingPage() {
           <button onClick={() => navigate('/register')} style={{ background: ACCENT, border: 'none', color: WHITE, padding: '16px 36px', borderRadius: 12, fontSize: 17, fontWeight: 700, cursor: 'pointer', boxShadow: `0 4px 24px rgba(143,191,59,0.3)`, transition: 'transform 0.2s' }}>
             Start 14-Day Free Trial
           </button>
-          <button style={{ background: 'transparent', border: `2px solid rgba(255,255,255,0.2)`, color: WHITE, padding: '16px 36px', borderRadius: 12, fontSize: 17, fontWeight: 700, cursor: 'pointer', transition: 'border-color 0.2s' }}>
-            Watch Demo
-          </button>
         </div>
 
         {/* Hero mockup */}

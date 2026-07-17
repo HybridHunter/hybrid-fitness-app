@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { healValue } from "../../hooks/useLocalStorage";
 import { sendEmail } from "../../utils/messaging";
 
 const ACCENT = "#4ADE80";
@@ -24,8 +25,30 @@ export default function LoginPage() {
     setForgotSending(true);
     setForgotStatus("");
     try {
-      const members = JSON.parse(localStorage.getItem("hf_members") || "[]");
-      const member = members.find(m => m.email?.toLowerCase() === forgotEmail.trim().toLowerCase());
+      const input = forgotEmail.trim().toLowerCase();
+      let member = null;
+      // P4: search all gyms' member lists in Supabase (local cache is empty on a fresh device)
+      try {
+        const SUPABASE_URL = 'https://qzvxnklyeadbroesccxt.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM';
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/data_store?key=eq.hf_members&select=gym_id,value`, {
+          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        });
+        if (res.ok) {
+          const rows = await res.json();
+          for (const row of rows) {
+            const rowVal = healValue(row.value);
+            const gymMembers = Array.isArray(rowVal) ? rowVal : [];
+            const found = gymMembers.find(m => m.email?.toLowerCase() === input);
+            if (found) { member = found; break; }
+          }
+        }
+      } catch (e) { console.log("Supabase member lookup failed:", e); }
+      if (!member) {
+        // Fall back to the local cache (offline / network error)
+        const members = JSON.parse(localStorage.getItem("hf_members") || "[]");
+        member = members.find(m => m.email?.toLowerCase() === input) || null;
+      }
       if (member) {
         await sendEmail({
           to: member.email,
@@ -211,6 +234,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
+            disabled={loggingIn}
             style={{
               width: "100%",
               padding: "12px 0",
@@ -220,7 +244,8 @@ export default function LoginPage() {
               color: "#0f172a",
               border: "none",
               borderRadius: 8,
-              cursor: "pointer",
+              cursor: loggingIn ? "default" : "pointer",
+              opacity: loggingIn ? 0.6 : 1,
               transition: "opacity 0.2s",
             }}
             onMouseEnter={(e) => (e.target.style.opacity = "0.85")}

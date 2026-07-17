@@ -3,6 +3,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
+import { localISO } from "../../utils/dates";
 
 const DEFAULT_STATIONS = Array.from({ length: 8 }, (_, i) => ({
   id: `station-${i + 1}`,
@@ -16,6 +17,8 @@ const DEFAULT_STATIONS = Array.from({ length: 8 }, (_, i) => ({
 export default function StationSetup() {
   const B = useTheme();
   const { members } = useMembers();
+  // Station URLs must carry the gym so a fresh iPad lands in the right tenant
+  const gymId = localStorage.getItem("hf_gym_id") || "default";
   const [stations, setStations] = useLocalStorage("hf_stations", DEFAULT_STATIONS);
   const [classes] = useLocalStorage("hf_schedule", []);
   const [workouts] = useLocalStorage("hf_w", []);
@@ -28,7 +31,7 @@ export default function StationSetup() {
   const todaysClasses = useMemo(() => {
     const today = new Date().getDay();
     const dow = today === 0 ? 6 : today - 1; // convert to Mon=0 format
-    return classes.filter(c => c.dayOfWeek === dow);
+    return classes.filter(c => c.dayOfWeek === dow && !(c.exceptions || []).includes(localISO()));
   }, [classes]);
 
   const selectedClass = useMemo(
@@ -159,14 +162,14 @@ export default function StationSetup() {
   }, [stations.length, setStations]);
 
   const launchStation = useCallback((stationId) => {
-    window.open(`/station/${stationId}`, `_station_${stationId}`);
-  }, []);
+    window.open(`/station/${stationId}?gym=${encodeURIComponent(gymId)}`, `_station_${stationId}`);
+  }, [gymId]);
 
   const launchAll = useCallback(() => {
     stations.forEach(s => {
-      if (s.memberId) window.open(`/station/${s.id}`, `_station_${s.id}`);
+      if (s.memberId) window.open(`/station/${s.id}?gym=${encodeURIComponent(gymId)}`, `_station_${s.id}`);
     });
-  }, [stations]);
+  }, [stations, gymId]);
 
   const getMemberById = useCallback(
     (id) => members.find(m => m.id === id) || null,
@@ -507,7 +510,7 @@ export default function StationSetup() {
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {stations.map(station => {
-            const url = `${window.location.origin}/station/${station.id}`;
+            const url = `${window.location.origin}/station/${station.id}?gym=${encodeURIComponent(gymId)}`;
             return (
               <div
                 key={station.id}

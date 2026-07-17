@@ -62,13 +62,9 @@ function findSwappedExercise(exercise, pattern, score, matrix, exByName) {
     if (bestChain) break;
   }
 
-  // If exercise isn't in any chain, try to find a chain for the pattern
-  // and use the exercise at the member's score level
-  if (!bestChain) {
-    // Use the first chain for this pattern as a fallback
-    bestChain = patternChains[0];
-    exerciseBaseLevel = 0;
-  }
+  // If exercise isn't in any chain, keep the original exercise —
+  // never substitute from an unrelated chain
+  if (!bestChain) return null;
 
   // Calculate the target level based on member's score
   // The score IS the target level (member scored at -2 means they should do level -2 exercises)

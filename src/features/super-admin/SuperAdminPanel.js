@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
+import { EX } from "../../data/exercises";
 
 const SUPABASE_URL = "https://qzvxnklyeadbroesccxt.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM";
@@ -29,25 +30,28 @@ async function supabaseGet(gymId, key) {
 }
 
 async function supabaseUpsert(gymId, key, value) {
-  await fetch(`${SUPABASE_URL}/rest/v1/data_store`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/data_store?on_conflict=gym_id,key`, {
     method: "POST",
     headers: { ...HEADERS, Prefer: "return=minimal,resolution=merge-duplicates" },
     body: JSON.stringify({ gym_id: gymId, key, value }),
   });
+  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
 }
 
 async function supabaseDelete(gymId, key) {
-  await fetch(
+  const res = await fetch(
     `${SUPABASE_URL}/rest/v1/data_store?gym_id=eq.${encodeURIComponent(gymId)}&key=eq.${encodeURIComponent(key)}`,
     { method: "DELETE", headers: HEADERS }
   );
+  if (!res.ok) throw new Error(`Supabase delete error: ${res.status}`);
 }
 
 async function supabaseDeleteAllForGym(gymId) {
-  await fetch(
+  const res = await fetch(
     `${SUPABASE_URL}/rest/v1/data_store?gym_id=eq.${encodeURIComponent(gymId)}`,
     { method: "DELETE", headers: HEADERS }
   );
+  if (!res.ok) throw new Error(`Supabase delete error: ${res.status}`);
 }
 
 function slugify(str) {
@@ -106,21 +110,27 @@ export default function SuperAdminPanel() {
     loadRegistry();
   }, [isSuperAdmin]);
 
+  const fetchRegistry = async () => {
+    const data = await supabaseGet("__super__", "hf_gyms_registry");
+    return Array.isArray(data) ? data : [];
+  };
+
   const loadRegistry = async () => {
     setLoading(true);
-    const data = await supabaseGet("__super__", "hf_gyms_registry");
-    setRegistry(Array.isArray(data) ? data : []);
+    setRegistry(await fetchRegistry());
     setLoading(false);
   };
 
   const loadGymDetails = async (gymId) => {
-    if (gymDetails[gymId]) return;
+    if (gymDetails[gymId]) return gymDetails[gymId];
     const [info, sub, members] = await Promise.all([
       supabaseGet(gymId, "hf_gym_info"),
       supabaseGet(gymId, "hf_subscription"),
       supabaseGet(gymId, "hf_members"),
     ]);
-    setGymDetails(prev => ({ ...prev, [gymId]: { info, sub, members: Array.isArray(members) ? members : [] } }));
+    const details = { info, sub, members: Array.isArray(members) ? members : [] };
+    setGymDetails(prev => ({ ...prev, [gymId]: details }));
+    return details;
   };
 
   const loadFeedback = async () => {
@@ -145,6 +155,17 @@ export default function SuperAdminPanel() {
   const [impersonateTarget, setImpersonateTarget] = useState(null);
 
   const handleImpersonate = async (gym, role, userOverride) => {
+    const actualRole = role || "admin";
+    // Pre-fetch members for this gym BEFORE touching any session state
+    const memberData = await supabaseGet(gym.gymId, "hf_members");
+    const gymMembers = Array.isArray(memberData) ? memberData : [];
+
+    // Impersonating as a client requires a member to impersonate
+    if (actualRole === "client" && !userOverride?.memberId && gymMembers.length === 0) {
+      flash(`${gym.gymName} has no members yet — cannot impersonate as a client.`);
+      return;
+    }
+
     localStorage.setItem("hf_gym_id_backup", localStorage.getItem("hf_gym_id") || "");
     localStorage.setItem("hf_session_backup", localStorage.getItem("hf_session") || "");
     localStorage.setItem("hf_gym_id", gym.gymId);
@@ -153,19 +174,18 @@ export default function SuperAdminPanel() {
     // Clear cached data so it loads fresh for this gym
     Object.keys(localStorage).filter(k => k.startsWith("hf_") && !["hf_theme","hf_session","hf_users","hf_gym_id","hf_onboarding_complete","hf_gym_id_backup","hf_session_backup","hf_impersonating"].includes(k)).forEach(k => localStorage.removeItem(k));
 
-    const actualRole = role || "admin";
+    const realName = currentUser?.displayName || currentUser?.username || "Super Admin";
     const sessionUser = userOverride || {
       id: "impersonate_" + Date.now(),
-      username: "superadmin",
+      username: currentUser?.email || currentUser?.username || "superadmin",
+      email: currentUser?.email || "",
       role: actualRole,
-      displayName: `Super Admin (as ${actualRole})`,
+      displayName: realName,
       gymId: gym.gymId,
       isSuperAdmin: true,
     };
 
-    // Pre-fetch and cache members data for this gym so client portal loads instantly
-    const memberData = await supabaseGet(gym.gymId, "hf_members");
-    const gymMembers = Array.isArray(memberData) ? memberData : [];
+    // Cache members data for this gym so client portal loads instantly
     if (gymMembers.length > 0) {
       localStorage.setItem("hf_members", JSON.stringify(gymMembers));
     }
@@ -184,9 +204,12 @@ export default function SuperAdminPanel() {
   };
 
   const handleStopImpersonating = () => {
-    const backup = localStorage.getItem("hf_gym_id_backup");
-    if (backup) localStorage.setItem("hf_gym_id", backup);
+    const backupGym = localStorage.getItem("hf_gym_id_backup");
+    const backupSession = localStorage.getItem("hf_session_backup");
+    if (backupGym) localStorage.setItem("hf_gym_id", backupGym);
+    if (backupSession) localStorage.setItem("hf_session", backupSession);
     localStorage.removeItem("hf_gym_id_backup");
+    localStorage.removeItem("hf_session_backup");
     localStorage.removeItem("hf_impersonating");
     window.location.href = "/super-admin";
   };
@@ -297,7 +320,8 @@ export default function SuperAdminPanel() {
         adminEmail: f.adminEmail || f.email, adminUsername: f.adminUsername,
         status, createdAt: now, memberCount: 0,
       };
-      const updated = [...registry, newEntry];
+      const freshRegistry = await fetchRegistry();
+      const updated = [...freshRegistry, newEntry];
       await supabaseUpsert("__super__", "hf_gyms_registry", updated);
       setRegistry(updated);
 
@@ -319,17 +343,21 @@ export default function SuperAdminPanel() {
 
   /* ================= EXTEND TRIAL ================= */
   const handleExtendTrial = async (gym) => {
-    const details = gymDetails[gym.gymId];
-    if (!details?.sub) { await loadGymDetails(gym.gymId); return; }
-    const sub = { ...details.sub, trialEndsAt: new Date(Date.now() + 14 * 86400000).toISOString(), status: "trial" };
-    await supabaseUpsert(gym.gymId, "hf_subscription", sub);
-    setGymDetails(prev => ({ ...prev, [gym.gymId]: { ...prev[gym.gymId], sub } }));
-    // Also update registry status
-    const updatedReg = registry.map(g => g.gymId === gym.gymId ? { ...g, status: "trial" } : g);
-    await supabaseUpsert("__super__", "hf_gyms_registry", updatedReg);
-    setRegistry(updatedReg);
-    addAction(`Extended trial for ${gym.gymName}`);
-    flash(`Trial extended 14 days for ${gym.gymName}`);
+    try {
+      const details = await loadGymDetails(gym.gymId);
+      const sub = { ...(details?.sub || {}), trialEndsAt: new Date(Date.now() + 14 * 86400000).toISOString(), status: "trial" };
+      await supabaseUpsert(gym.gymId, "hf_subscription", sub);
+      setGymDetails(prev => ({ ...prev, [gym.gymId]: { ...prev[gym.gymId], sub } }));
+      // Also update registry status — re-fetch first to avoid clobbering concurrent writes
+      const freshRegistry = await fetchRegistry();
+      const updatedReg = freshRegistry.map(g => g.gymId === gym.gymId ? { ...g, status: "trial" } : g);
+      await supabaseUpsert("__super__", "hf_gyms_registry", updatedReg);
+      setRegistry(updatedReg);
+      addAction(`Extended trial for ${gym.gymName}`);
+      flash(`Trial extended 14 days for ${gym.gymName}`);
+    } catch (err) {
+      flash("Error extending trial: " + err.message);
+    }
   };
 
   /* ================= DELETE LOCATION ================= */
@@ -346,7 +374,8 @@ export default function SuperAdminPanel() {
           supabaseDelete(gym.gymId, "hf_subscription"),
         ]);
       }
-      const updated = registry.filter(g => g.gymId !== gym.gymId);
+      const freshRegistry = await fetchRegistry();
+      const updated = freshRegistry.filter(g => g.gymId !== gym.gymId);
       await supabaseUpsert("__super__", "hf_gyms_registry", updated);
       setRegistry(updated);
       setGymDetails(prev => { const n = { ...prev }; delete n[gym.gymId]; return n; });
@@ -363,9 +392,9 @@ export default function SuperAdminPanel() {
 
   /* ================= EDIT LOCATION ================= */
   const openEdit = async (gym) => {
-    if (!gymDetails[gym.gymId]) await loadGymDetails(gym.gymId);
-    const info = gymDetails[gym.gymId]?.info || {};
-    const sub = gymDetails[gym.gymId]?.sub || {};
+    const details = await loadGymDetails(gym.gymId);
+    const info = details?.info || {};
+    const sub = details?.sub || {};
     setEditForm({
       gymName: gym.gymName || "", phone: info.phone || "", email: info.email || gym.adminEmail || "",
       street: info.address?.street || "", city: info.address?.city || "", state: info.address?.state || "", zip: info.address?.zip || "",
@@ -398,8 +427,9 @@ export default function SuperAdminPanel() {
       if (editForm.trialEndsAt) subUpdate.trialEndsAt = editForm.trialEndsAt;
       await supabaseUpsert(editGym.gymId, "hf_subscription", { ...(gymDetails[editGym.gymId]?.sub || {}), ...subUpdate });
       setGymDetails(prev => ({ ...prev, [editGym.gymId]: { ...prev[editGym.gymId], sub: { ...(prev[editGym.gymId]?.sub || {}), ...subUpdate } } }));
-      // Update registry
-      const updatedReg = registry.map(g => g.gymId === editGym.gymId ? { ...g, gymName: editForm.gymName, adminEmail: editForm.email, planId: editForm.planId, planName, price, status: editForm.status } : g);
+      // Update registry — re-fetch first to avoid clobbering concurrent writes
+      const freshRegistry = await fetchRegistry();
+      const updatedReg = freshRegistry.map(g => g.gymId === editGym.gymId ? { ...g, gymName: editForm.gymName, adminEmail: editForm.email, planId: editForm.planId, planName, price, status: editForm.status } : g);
       await supabaseUpsert("__super__", "hf_gyms_registry", updatedReg);
       setRegistry(updatedReg);
       setGymDetails(prev => ({ ...prev, [editGym.gymId]: { ...prev[editGym.gymId], info: updatedInfo } }));
@@ -627,22 +657,22 @@ export default function SuperAdminPanel() {
               </div>
             </div>
           )}
-          <label style={checkboxRow} onClick={() => updateCreateForm("trial", !f.trial)}>
+          <label style={checkboxRow} onClick={(e) => { e.preventDefault(); updateCreateForm("trial", !f.trial); }}>
             <input type="checkbox" checked={f.trial} readOnly style={{ accentColor: B.green }} />
             <span>Start with 14-day free trial</span>
           </label>
 
           {/* Initial Setup */}
           <div style={sectionTitle}>Initial Setup Options</div>
-          <label style={checkboxRow} onClick={() => updateCreateForm("loadDemo", !f.loadDemo)}>
+          <label style={checkboxRow} onClick={(e) => { e.preventDefault(); updateCreateForm("loadDemo", !f.loadDemo); }}>
             <input type="checkbox" checked={f.loadDemo} readOnly style={{ accentColor: B.green }} />
             <span>Load demo data (sample members, sessions, etc.)</span>
           </label>
-          <label style={checkboxRow} onClick={() => updateCreateForm("loadExercises", !f.loadExercises)}>
+          <label style={checkboxRow} onClick={(e) => { e.preventDefault(); updateCreateForm("loadExercises", !f.loadExercises); }}>
             <input type="checkbox" checked={f.loadExercises} readOnly style={{ accentColor: B.green }} />
             <span>Load exercise library (default exercises)</span>
           </label>
-          <label style={checkboxRow} onClick={() => updateCreateForm("loadProgression", !f.loadProgression)}>
+          <label style={checkboxRow} onClick={(e) => { e.preventDefault(); updateCreateForm("loadProgression", !f.loadProgression); }}>
             <input type="checkbox" checked={f.loadProgression} readOnly style={{ accentColor: B.green }} />
             <span>Load progression engine (default matrix)</span>
           </label>
@@ -787,7 +817,7 @@ export default function SuperAdminPanel() {
             <br />This action cannot be undone.
           </p>
 
-          <label style={{ ...checkboxRow, justifyContent: "center", marginBottom: 20 }} onClick={() => setDeleteData(!deleteData)}>
+          <label style={{ ...checkboxRow, justifyContent: "center", marginBottom: 20 }} onClick={(e) => { e.preventDefault(); setDeleteData(!deleteData); }}>
             <input type="checkbox" checked={deleteData} readOnly style={{ accentColor: B.red || "#e74c3c" }} />
             <span style={{ color: B.red || "#e74c3c" }}>Also delete ALL data for this gym from Supabase</span>
           </label>
@@ -1289,13 +1319,10 @@ function ExerciseLibraryTab({ B, supabaseGet, supabaseUpsert, PC, PATS, registry
       const data = await supabaseGet("__super__", "hf_master_exercises");
       if (data && Array.isArray(data)) setExercises(data);
       else {
-        // Seed from default EX if none exists
+        // Seed from the bundled default library (src/data/exercises.js), never the browser's hf_ex cache
         try {
-          const defaultEx = JSON.parse(localStorage.getItem("hf_ex") || "[]");
-          if (defaultEx.length > 0) {
-            setExercises(defaultEx);
-            await supabaseUpsert("__super__", "hf_master_exercises", defaultEx);
-          }
+          setExercises(EX);
+          await supabaseUpsert("__super__", "hf_master_exercises", EX);
         } catch {}
       }
       setLoadingEx(false);
@@ -1349,28 +1376,6 @@ function ExerciseLibraryTab({ B, supabaseGet, supabaseUpsert, PC, PATS, registry
   });
 
   const inputStyle = { width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid " + B.border, background: B.darker || B.dark, color: B.text, fontSize: 13, outline: "none", boxSizing: "border-box" };
-
-  const renderForm = (ex, onSave, onCancel) => {
-    const [f, setF] = useState(ex || { n: "", p: "Squat", m: "Quads/Glutes", e: "BW", u: "", g: "", c: "" });
-    return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)" }} onClick={onCancel}>
-        <div style={{ background: B.card, borderRadius: 14, padding: 24, width: 440, maxWidth: "95vw", maxHeight: "85vh", overflow: "auto", border: "1px solid " + B.border }} onClick={e => e.stopPropagation()}>
-          <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700, color: B.text }}>{ex ? "Edit Exercise" : "Add Exercise"}</h3>
-          <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Name</div><input style={inputStyle} value={f.n} onChange={e => setF(p => ({ ...p, n: e.target.value }))} /></div>
-          <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Pattern</div><select style={{ ...inputStyle, cursor: "pointer" }} value={f.p} onChange={e => setF(p => ({ ...p, p: e.target.value }))}>{PATS.filter(x => x !== "All").map(x => <option key={x}>{x}</option>)}</select></div>
-          <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Muscle Group</div><input style={inputStyle} value={f.m} onChange={e => setF(p => ({ ...p, m: e.target.value }))} /></div>
-          <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Equipment</div><input style={inputStyle} value={f.e} onChange={e => setF(p => ({ ...p, e: e.target.value }))} /></div>
-          <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>YouTube URL</div><input style={inputStyle} value={f.u} onChange={e => setF(p => ({ ...p, u: e.target.value }))} placeholder="https://youtube.com/watch?v=..." /></div>
-          <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>GIF URL</div><input style={inputStyle} value={f.g || ""} onChange={e => setF(p => ({ ...p, g: e.target.value }))} placeholder="https://example.com/demo.gif" /></div>
-          <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Coaching Cues</div><textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical", fontFamily: "inherit" }} value={f.c} onChange={e => setF(p => ({ ...p, c: e.target.value }))} placeholder="1. Cue one. 2. Cue two." /></div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-            <button onClick={onCancel} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
-            <button onClick={() => { if (!f.n.trim()) return; onSave(f); }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Save</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   if (loadingEx) return <div style={{ textAlign: "center", padding: 40, color: B.dim }}>Loading exercise library...</div>;
 
@@ -1431,7 +1436,39 @@ function ExerciseLibraryTab({ B, supabaseGet, supabaseUpsert, PC, PATS, registry
 
       {toast && <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: B.accent, color: "#fff", padding: "10px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, zIndex: 9999 }}>{toast}</div>}
 
-      {(showAdd || editEx) && renderForm(editEx, handleSaveExercise, () => { setEditEx(null); setShowAdd(false); })}
+      {(showAdd || editEx) && (
+        <ExerciseForm
+          key={editEx ? `${editEx.n}|${editEx.p}` : "add"}
+          B={B}
+          PATS={PATS}
+          inputStyle={inputStyle}
+          ex={editEx}
+          onSave={handleSaveExercise}
+          onCancel={() => { setEditEx(null); setShowAdd(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ExerciseForm({ B, PATS, inputStyle, ex, onSave, onCancel }) {
+  const [f, setF] = useState(ex || { n: "", p: "Squat", m: "Quads/Glutes", e: "BW", u: "", g: "", c: "" });
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)" }} onClick={onCancel}>
+      <div style={{ background: B.card, borderRadius: 14, padding: 24, width: 440, maxWidth: "95vw", maxHeight: "85vh", overflow: "auto", border: "1px solid " + B.border }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700, color: B.text }}>{ex ? "Edit Exercise" : "Add Exercise"}</h3>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Name</div><input style={inputStyle} value={f.n} onChange={e => setF(p => ({ ...p, n: e.target.value }))} /></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Pattern</div><select style={{ ...inputStyle, cursor: "pointer" }} value={f.p} onChange={e => setF(p => ({ ...p, p: e.target.value }))}>{PATS.filter(x => x !== "All").map(x => <option key={x}>{x}</option>)}</select></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Muscle Group</div><input style={inputStyle} value={f.m} onChange={e => setF(p => ({ ...p, m: e.target.value }))} /></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Equipment</div><input style={inputStyle} value={f.e} onChange={e => setF(p => ({ ...p, e: e.target.value }))} /></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>YouTube URL</div><input style={inputStyle} value={f.u} onChange={e => setF(p => ({ ...p, u: e.target.value }))} placeholder="https://youtube.com/watch?v=..." /></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>GIF URL</div><input style={inputStyle} value={f.g || ""} onChange={e => setF(p => ({ ...p, g: e.target.value }))} placeholder="https://example.com/demo.gif" /></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Coaching Cues</div><textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical", fontFamily: "inherit" }} value={f.c} onChange={e => setF(p => ({ ...p, c: e.target.value }))} placeholder="1. Cue one. 2. Cue two." /></div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onCancel} style={{ padding: "8px 18px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+          <button onClick={() => { if (!f.n.trim()) return; onSave(f); }} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Save</button>
+        </div>
+      </div>
     </div>
   );
 }

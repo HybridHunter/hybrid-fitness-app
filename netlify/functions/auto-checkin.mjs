@@ -39,6 +39,49 @@ function uuid() {
   });
 }
 
+const DOW = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 }; // app convention: 0=Mon
+
+// Compute "now" in the gym's local timezone (0=Mon dayOfWeek, YYYY-MM-DD, minutes
+// since midnight). Falls back to UTC when timezone is missing or invalid.
+function gymLocalNow(timezone) {
+  const now = new Date();
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      }).formatToParts(now);
+      const get = type => parts.find(p => p.type === type)?.value;
+      return {
+        dayOfWeek: DOW[get('weekday')],
+        dateStr: `${get('year')}-${get('month')}-${get('day')}`,
+        minutes: (Number(get('hour')) % 24) * 60 + Number(get('minute')),
+      };
+    } catch (e) {
+      console.log(`[auto-checkin] Invalid timezone "${timezone}", falling back to UTC`);
+    }
+  }
+  const utcDow = now.getUTCDay() === 0 ? 6 : now.getUTCDay() - 1;
+  return {
+    dayOfWeek: utcDow,
+    dateStr: now.toISOString().slice(0, 10),
+    minutes: now.getUTCHours() * 60 + now.getUTCMinutes(),
+  };
+}
+
+// Gym-local YYYY-MM-DD for a stored ISO timestamp (UTC fallback).
+function dateInTZ(iso, timezone) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  if (timezone) {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    } catch (e) { /* fall through to UTC */ }
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 export default async (req) => {
   console.log('[auto-checkin] Running...');
 
@@ -67,16 +110,21 @@ export default async (req) => {
 
       if (!Array.isArray(schedule) || schedule.length === 0) continue;
 
-      const now = new Date();
-      const todayDow = now.getDay() === 0 ? 6 : now.getDay() - 1; // 0=Mon
-      const todayStr = now.toISOString().slice(0, 10);
-      const currentMin = now.getHours() * 60 + now.getMinutes();
+      // Compute "now" in the gym's local timezone (UTC fallback)
+      const gymInfo = await supabaseGet(gymId, 'hf_gym_info');
+      const timezone = gymInfo?.timezone;
+      const { dayOfWeek: todayDow, dateStr: todayStr, minutes: currentMin } = gymLocalNow(timezone);
       const existingAttendance = Array.isArray(attendance) ? attendance : [];
+
+      const isDuplicate = (list, memberId, classId) => list.some(
+        a => a.memberId === memberId && a.classId === classId && a.checkInTime && dateInTZ(a.checkInTime, timezone) === todayStr
+      );
 
       const newCheckins = [];
 
       for (const cls of schedule) {
         if (cls.dayOfWeek !== todayDow) continue;
+        if (cls.exceptions?.includes(todayStr)) continue; // per-date deleted instance
         if (!cls.bookings || cls.bookings.length === 0) continue;
 
         const [sh, sm] = (cls.startTime || '0:0').split(':').map(Number);
@@ -85,14 +133,11 @@ export default async (req) => {
         // Auto check-in for sessions that started (up to 4 hours window)
         if (currentMin >= startMin && currentMin <= startMin + 240) {
           for (const memberId of cls.bookings) {
-            const alreadyCheckedIn = existingAttendance.some(
-              a => a.memberId === memberId && a.checkInTime?.slice(0, 10) === todayStr && a.classId === cls.id
-            );
-            if (!alreadyCheckedIn) {
+            if (!isDuplicate(existingAttendance, memberId, cls.id)) {
               newCheckins.push({
                 id: uuid(),
                 memberId,
-                checkInTime: new Date(now.getFullYear(), now.getMonth(), now.getDate(), sh, sm).toISOString(),
+                checkInTime: new Date().toISOString(),
                 method: 'auto',
                 classId: cls.id,
               });
@@ -102,10 +147,16 @@ export default async (req) => {
       }
 
       if (newCheckins.length > 0) {
-        const updatedAttendance = [...existingAttendance, ...newCheckins];
-        await supabaseUpsert(gymId, 'hf_attendance', updatedAttendance);
-        totalCheckins += newCheckins.length;
-        console.log(`[auto-checkin] ${gymId}: ${newCheckins.length} auto check-ins`);
+        // Refetch right before writing to avoid clobbering concurrent writes,
+        // and re-check duplicates against the fresh blob
+        const fresh = await supabaseGet(gymId, 'hf_attendance');
+        const freshAttendance = Array.isArray(fresh) ? fresh : existingAttendance;
+        const toAdd = newCheckins.filter(c => !isDuplicate(freshAttendance, c.memberId, c.classId));
+        if (toAdd.length > 0) {
+          await supabaseUpsert(gymId, 'hf_attendance', [...freshAttendance, ...toAdd]);
+          totalCheckins += toAdd.length;
+          console.log(`[auto-checkin] ${gymId}: ${toAdd.length} auto check-ins`);
+        }
       }
     }
 

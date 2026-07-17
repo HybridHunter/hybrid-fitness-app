@@ -199,13 +199,13 @@ export default function IntegrationsView() {
   const updateSyncSetting = (key, value) => {
     setIntegrations(prev => ({
       ...prev,
-      ghl: { ...prev.ghl, syncSettings: { ...prev.ghl.syncSettings, [key]: value } },
+      ghl: { ...(prev?.ghl ?? {}), syncSettings: { ...(prev?.ghl?.syncSettings ?? {}), [key]: value } },
     }));
   };
 
   const updateFieldMapping = (index, ghlValue) => {
     setIntegrations(prev => {
-      const updated = [...prev.fieldMappings];
+      const updated = [...(prev?.fieldMappings ?? DEFAULT_FIELD_MAPPINGS)];
       updated[index] = { ...updated[index], ghl: ghlValue };
       return { ...prev, fieldMappings: updated };
     });

@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { DSEC, getLabel } from "../../data/constants";
 import VideoModal from "../../components/shared/VideoModal";
 import ConfirmDialog from "../../components/shared/ConfirmDialog";
 import Thumb from "../../components/shared/Thumb";
 
-function PrintArea({w}){if(!w)return null;const secs=w.sections||DSEC;
+export function PrintArea({w}){if(!w)return null;const secs=w.sections||DSEC;
 return(<div id="print-area"><style>{`
 @media print{
   body>*{display:none!important}
@@ -21,7 +22,7 @@ return(<div id="print-area"><style>{`
   <div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:800}}>{w.name||"Workout"}</div><div style={{fontSize:12,color:"#555"}}>{w.phase} &middot; {w.workoutLabel}</div></div>
 </div>
 {w.description&&<div style={{fontSize:11,color:"#444",marginBottom:12,fontStyle:"italic",borderLeft:"3px solid #ccc",paddingLeft:8}}>{w.description}</div>}
-{secs.map((sec,si)=>{const ss=w.sections[si]?.slots||[];const filled=ss.filter(s=>s.exercise);if(!filled.length)return null;return(<div key={si} style={{marginBottom:12,pageBreakInside:"avoid"}}>
+{secs.map((sec,si)=>{const ss=sec.slots||[];const filled=ss.filter(s=>s.exercise);if(!filled.length)return null;return(<div key={si} style={{marginBottom:12,pageBreakInside:"avoid"}}>
   <div style={{fontSize:13,fontWeight:800,textTransform:"uppercase",borderBottom:"2px solid #333",paddingBottom:3,marginBottom:6}}>{sec.id}. {sec.name} <span style={{fontWeight:400,fontSize:10,color:"#888"}}>({sec.repRange})</span></div>
   <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
     <thead><tr style={{background:"#f0f0f0"}}><th style={{textAlign:"left",padding:"4px 6px",width:24,borderBottom:"1px solid #ccc"}}>#</th><th style={{textAlign:"left",padding:"4px 6px",borderBottom:"1px solid #ccc"}}>Exercise</th><th style={{textAlign:"center",padding:"4px 6px",width:40,borderBottom:"1px solid #ccc"}}>Sets</th><th style={{textAlign:"center",padding:"4px 6px",width:40,borderBottom:"1px solid #ccc"}}>Reps</th><th style={{textAlign:"center",padding:"4px 6px",width:34,borderBottom:"1px solid #ccc"}}>RPE</th><th style={{textAlign:"center",padding:"4px 6px",width:50,borderBottom:"1px solid #ccc"}}>Tempo</th><th style={{textAlign:"left",padding:"4px 6px",borderBottom:"1px solid #ccc"}}>Notes</th></tr></thead>
@@ -45,9 +46,30 @@ export default function WorkoutsView({workouts,setWorkouts,exercises,onLoad}){
   const[confirm,setConfirm]=useState(null);
   const[printW,setPrintW]=useState(null);
   const[video,setVideo]=useState(null);
+  const[programs,setPrograms]=useLocalStorage("hf_p",[]);
+  const[schedule]=useLocalStorage("hf_schedule",[]);
+  const[stations]=useLocalStorage("hf_stations",[]);
+  const[remoteWorkouts]=useLocalStorage("hf_remote_workouts",[]);
 
   const openVideo=(url,title)=>setVideo({url,title});
   const doPrint=(w)=>{setPrintW(w);setTimeout(()=>window.print(),200);};
+
+  const askDelete=(w)=>{
+    const wid=String(w.id);
+    const progCount=programs.filter(p=>(p.workoutIds||[]).some(id=>String(id)===wid)).length;
+    const schedCount=schedule.filter(c=>c.workoutId!=null&&String(c.workoutId)===wid).length;
+    const stationCount=stations.filter(s=>s.workoutId!=null&&String(s.workoutId)===wid).length;
+    const remoteCount=remoteWorkouts.filter(r=>r.workoutId!=null&&String(r.workoutId)===wid).length;
+    const refs=[progCount&&progCount+" program(s)",schedCount&&schedCount+" scheduled class(es)",stationCount&&stationCount+" station(s)",remoteCount&&remoteCount+" remote assignment(s)"].filter(Boolean);
+    const msg=refs.length
+      ?"Delete this workout? It is still used by "+refs.join(", ")+" — those references will stop working (it will be removed from programs automatically). This cannot be undone."
+      :"Delete this workout? This cannot be undone.";
+    setConfirm({msg,action:()=>{
+      setWorkouts(p=>p.filter(x=>x.id!==w.id));
+      if(progCount)setPrograms(p=>p.map(pr=>(pr.workoutIds||[]).some(id=>String(id)===wid)?{...pr,workoutIds:pr.workoutIds.filter(id=>String(id)!==wid)}:pr));
+      setConfirm(null);
+    }});
+  };
 
   return(<div>
     {confirm&&<ConfirmDialog msg={confirm.msg} onOk={confirm.action} onNo={()=>setConfirm(null)}/>}
@@ -66,7 +88,7 @@ export default function WorkoutsView({workouts,setWorkouts,exercises,onLoad}){
           <div style={{display:"flex",gap:6}}>
             <button onClick={()=>doPrint(w)} style={{background:B.accent+"15",border:"1px solid "+B.accent+"30",borderRadius:6,color:B.accent,cursor:"pointer",fontSize:10,padding:"5px 12px",fontWeight:700}}>Print</button>
             <button onClick={()=>onLoad(w)} style={{background:B.blue+"30",border:"1px solid "+B.blue+"50",borderRadius:6,color:"#6ea8fe",cursor:"pointer",fontSize:10,padding:"5px 12px",fontWeight:700}}>Edit</button>
-            <button onClick={()=>setConfirm({msg:"Delete this workout? This cannot be undone.",action:()=>{setWorkouts(p=>p.filter(x=>x.id!==w.id));setConfirm(null);}})} style={{background:B.red+"15",border:"1px solid "+B.red+"30",borderRadius:6,color:B.red,cursor:"pointer",fontSize:10,padding:"5px 12px",fontWeight:700}}>Delete</button>
+            <button onClick={()=>askDelete(w)} style={{background:B.red+"15",border:"1px solid "+B.red+"30",borderRadius:6,color:B.red,cursor:"pointer",fontSize:10,padding:"5px 12px",fontWeight:700}}>Delete</button>
           </div>
         </div>
         {w.description&&<div style={{fontSize:11,color:B.muted,marginBottom:8,fontStyle:"italic"}}>{w.description}</div>}

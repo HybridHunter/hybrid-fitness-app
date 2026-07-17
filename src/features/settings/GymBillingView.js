@@ -1,9 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
 
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://gymkit-server.fly.dev";
+const SERVER_URL = process.env.REACT_APP_API_URL || "http://localhost:3002";
+
+// Read a blob from the useLocalStorage read cache (defensive: heal double-stringified rows)
+function readCachedBlob(key) {
+  try {
+    let v = JSON.parse(localStorage.getItem(key) || "null");
+    if (typeof v === "string") { try { v = JSON.parse(v); } catch { return null; } }
+    return v && typeof v === "object" ? v : null;
+  } catch { return null; }
+}
 
 const PLANS = [
   { id: "starter", name: "Starter", price: 99, features: ["Up to 50 members", "1 coach account", "Basic scheduling", "Client portal", "Email support"] },
@@ -19,17 +28,57 @@ export default function GymBillingView() {
   const [portalLoading, setPortalLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const gymName = branding.gymName || "Your Gym";
-  const gymEmail = branding.email || "";
+  // D11: branding has no email — gym email lives in hf_gym_info (signup) or hf_settings
+  const gymInfo = readCachedBlob("hf_gym_info");
+  const gymSettings = readCachedBlob("hf_settings");
+  const gymName = gymInfo?.gymName || branding.gymName || gymSettings?.gymName || "Your Gym";
+  const gymEmail = gymInfo?.email || gymSettings?.email || "";
   const gymId = localStorage.getItem("hf_gym_id") || "default";
 
   // Current plan info
   const currentPlan = subscription ? PLANS.find(p => p.id === subscription.planId) : null;
-  const isTrialing = subscription?.status === "trial";
-  const isCancelled = subscription?.status === "cancelled" || subscription?.cancelAtPeriodEnd;
+  // D9: signup writes "trialing", this view historically wrote "trial" — accept both
+  const isTrialing = subscription?.status === "trial" || subscription?.status === "trialing";
+  const isCancelled = subscription?.status === "cancelled" || subscription?.status === "canceled" || subscription?.cancelAtPeriodEnd;
   const trialDaysLeft = isTrialing && subscription?.trialEndsAt
     ? Math.max(0, Math.ceil((new Date(subscription.trialEndsAt) - new Date()) / 86400000))
     : 0;
+  const planPrice = subscription?.price ?? currentPlan?.price;
+
+  // G7: refresh hf_subscription from Stripe once on mount (when we have a customer id).
+  // Fails silently so the cached subscription keeps working when the API is unreachable.
+  const statusRefreshed = useRef(false);
+  useEffect(() => {
+    if (statusRefreshed.current) return;
+    const customerId = subscription?.stripeCustomerId;
+    if (!customerId) return;
+    statusRefreshed.current = true;
+    (async () => {
+      try {
+        const res = await fetch(`${SERVER_URL}/api/subscription/status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customerId, subscriptionId: subscription?.stripeSubscriptionId }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const s = data?.subscription;
+        if (!s) return;
+        setSubscription(prev => prev ? ({
+          ...prev,
+          status: s.status || prev.status,
+          stripeSubscriptionId: s.id || prev.stripeSubscriptionId,
+          price: (typeof s.planAmount === "number" && !isNaN(s.planAmount)) ? s.planAmount : prev.price,
+          trialEndsAt: s.trialEnd || prev.trialEndsAt,
+          cancelAtPeriodEnd: !!s.cancelAtPeriodEnd,
+          cancelAt: s.cancelAtPeriodEnd ? (s.currentPeriodEnd || prev.cancelAt) : null,
+          currentPeriodEnd: s.currentPeriodEnd || prev.currentPeriodEnd,
+        }) : prev);
+      } catch {
+        // API unreachable — keep the cached subscription
+      }
+    })();
+  }, [subscription, setSubscription]);
 
   // Open Stripe Customer Portal
   const openBillingPortal = async () => {
@@ -194,7 +243,7 @@ export default function GymBillingView() {
               <div style={{ fontSize: 13, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Current Plan</div>
               <div style={{ fontSize: 24, fontWeight: 800, color: B.text }}>{subscription.planName || subscription.planId}</div>
               <div style={{ fontSize: 14, color: B.muted }}>
-                ${subscription.price}/month
+                {planPrice != null ? `$${planPrice}/month` : ""}
                 {isTrialing && <span style={{ color: B.orange, fontWeight: 700, marginLeft: 8 }}>Trial — {trialDaysLeft} days left</span>}
                 {isCancelled && <span style={{ color: B.red, fontWeight: 700, marginLeft: 8 }}>Cancels {subscription.cancelAt ? new Date(subscription.cancelAt).toLocaleDateString() : "at period end"}</span>}
               </div>
@@ -207,7 +256,7 @@ export default function GymBillingView() {
               )}
               {isCancelled ? (
                 <button onClick={handleResume} disabled={loading} style={s.btn(B.green + "22", B.green)}>Resume</button>
-              ) : subscription.status !== "trial" ? (
+              ) : !isTrialing ? (
                 <button onClick={handleCancel} disabled={loading} style={s.btn(B.red + "15", B.red)}>Cancel</button>
               ) : null}
             </div>

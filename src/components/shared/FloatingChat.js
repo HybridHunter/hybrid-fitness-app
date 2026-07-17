@@ -46,7 +46,9 @@ function ChatBox({ chat, onClose, onMinimize, B, conversations, setConversations
 
   const send = () => {
     if (!text.trim()) return;
-    const msg = { id: crypto.randomUUID(), senderId: myId, text: text.trim(), timestamp: new Date().toISOString(), read: true };
+    const now = new Date().toISOString();
+    // read means read-by-recipient — outgoing messages are born unread
+    const msg = { id: crypto.randomUUID(), senderId: myId, text: text.trim(), content: text.trim(), timestamp: now, createdAt: now, read: false };
     if (conv) {
       setConversations(prev => prev.map(c =>
         c.id === conv.id ? { ...c, messages: [...c.messages, msg], lastActivity: msg.timestamp } : c
@@ -84,6 +86,11 @@ function ChatBox({ chat, onClose, onMinimize, B, conversations, setConversations
             {messages.length === 0 && <div style={{ color: B.dim, fontSize: 12, textAlign: "center", padding: 20 }}>Start a conversation</div>}
             {messages.map(m => {
               const isMe = m.senderId === myId;
+              const rawText = m.text ?? m.content ?? "";
+              // Dedicated imageUrl field, with backward-compat parsing of legacy [img:...] text
+              const legacyImg = !m.imageUrl ? rawText.match(/\[img:(.*?)\]/) : null;
+              const imageUrl = m.imageUrl || legacyImg?.[1];
+              const displayText = legacyImg ? rawText.replace(legacyImg[0], "").trim() : rawText;
               return (
                 <div key={m.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "80%" }}>
                   <div style={{
@@ -91,11 +98,10 @@ function ChatBox({ chat, onClose, onMinimize, B, conversations, setConversations
                     background: isMe ? B.accent : B.darker, color: isMe ? "#fff" : B.text,
                     fontSize: 13, lineHeight: 1.4, wordBreak: "break-word",
                   }}>
-                    {m.text?.startsWith("[img:") ? (
-                      <img src={m.text.match(/\[img:(.*?)\]/)?.[1]} alt="" style={{ maxWidth: "100%", borderRadius: 6 }} />
-                    ) : m.text}
+                    {imageUrl && <img src={imageUrl} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block" }} />}
+                    {displayText}
                   </div>
-                  <div style={{ fontSize: 9, color: B.dim, marginTop: 1, textAlign: isMe ? "right" : "left" }}>{timeAgo(m.timestamp)}</div>
+                  <div style={{ fontSize: 9, color: B.dim, marginTop: 1, textAlign: isMe ? "right" : "left" }}>{timeAgo(m.timestamp ?? m.createdAt)}</div>
                 </div>
               );
             })}
@@ -109,7 +115,8 @@ function ChatBox({ chat, onClose, onMinimize, B, conversations, setConversations
               const file = e.target.files?.[0];
               if (!file) return;
               const url = await resizeImage(file);
-              const msg = { id: crypto.randomUUID(), senderId: myId, text: `[img:${url}]`, timestamp: new Date().toISOString(), read: true };
+              const now = new Date().toISOString();
+              const msg = { id: crypto.randomUUID(), senderId: myId, text: "", content: "", imageUrl: url, timestamp: now, createdAt: now, read: false };
               if (conv) { setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, messages: [...c.messages, msg], lastActivity: msg.timestamp } : c)); }
               else { setConversations(prev => [...prev, { id: crypto.randomUUID(), participants: [chat.memberId], messages: [msg], lastActivity: msg.timestamp }]); }
               e.target.value = "";

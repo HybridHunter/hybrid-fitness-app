@@ -3,7 +3,6 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
 import { resizeImage } from "../../components/shared/ImageUpload";
 
 function getInitials(f, l) {
@@ -25,73 +24,13 @@ function formatTime(ts) {
   return new Date(ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
-function buildDemoConversations(members) {
-  if (members.length < 4) return [];
-  const m0 = members[0]; // Sarah
-  const m1 = members[1]; // Mike
-  const m2 = members[2]; // Emily
-  const m4 = members[4]; // Lisa
-  const now = Date.now();
-  return [
-    {
-      id: "demo-conv-1",
-      participants: [m0.id],
-      messages: [
-        { id: "dm1-1", senderId: myId, text: "Hey Sarah! Great job on your 10K this weekend. How are your legs feeling?", timestamp: new Date(now - 86400000 * 2).toISOString(), read: true },
-        { id: "dm1-2", senderId: m0.id, text: "Thanks coach! A little sore in my calves but nothing major. Should I still come in tomorrow?", timestamp: new Date(now - 86400000 * 2 + 3600000).toISOString(), read: true },
-        { id: "dm1-3", senderId: myId, text: "Absolutely. We'll do a recovery session - foam rolling, light stretching, and some easy mobility work. No heavy lifting.", timestamp: new Date(now - 86400000 * 2 + 7200000).toISOString(), read: true },
-        { id: "dm1-4", senderId: m0.id, text: "Sounds perfect. See you at 7am!", timestamp: new Date(now - 86400000 + 1800000).toISOString(), read: true },
-        { id: "dm1-5", senderId: myId, text: "Also, I updated your program to include more hip mobility work. Check it out when you get a chance.", timestamp: new Date(now - 3600000).toISOString(), read: false },
-      ],
-      lastActivity: new Date(now - 3600000).toISOString(),
-    },
-    {
-      id: "demo-conv-2",
-      participants: [m1.id],
-      messages: [
-        { id: "dm2-1", senderId: myId, text: "Mike, I noticed your squat form was off yesterday. Let's work on that next session.", timestamp: new Date(now - 86400000 * 3).toISOString(), read: true },
-        { id: "dm2-2", senderId: m1.id, text: "Yeah I felt like I was leaning forward a lot. Any drills I can do at home?", timestamp: new Date(now - 86400000 * 3 + 5400000).toISOString(), read: true },
-        { id: "dm2-3", senderId: myId, text: "Try goblet squats with a 3-second pause at the bottom. Do 3 sets of 8 with light weight. Focus on keeping your chest up.", timestamp: new Date(now - 86400000 * 3 + 7200000).toISOString(), read: true },
-        { id: "dm2-4", senderId: m1.id, text: "Got it, I'll practice tonight. Also, can we reschedule Thursday to Friday this week?", timestamp: new Date(now - 86400000).toISOString(), read: true },
-        { id: "dm2-5", senderId: myId, text: "Friday at 6pm works. See you then!", timestamp: new Date(now - 43200000).toISOString(), read: true },
-        { id: "dm2-6", senderId: m1.id, text: "Perfect, thanks!", timestamp: new Date(now - 36000000).toISOString(), read: false },
-      ],
-      lastActivity: new Date(now - 36000000).toISOString(),
-    },
-    {
-      id: "demo-conv-3",
-      participants: [m2.id],
-      messages: [
-        { id: "dm3-1", senderId: m2.id, text: "Coach, I just hit a 225lb clean and jerk! New PR!", timestamp: new Date(now - 86400000 * 5).toISOString(), read: true },
-        { id: "dm3-2", senderId: myId, text: "That's incredible Emily! All that technique work is paying off. How did it feel?", timestamp: new Date(now - 86400000 * 5 + 1800000).toISOString(), read: true },
-        { id: "dm3-3", senderId: m2.id, text: "Felt smooth! The catch position was solid. I think 235 is within reach.", timestamp: new Date(now - 86400000 * 5 + 3600000).toISOString(), read: true },
-        { id: "dm3-4", senderId: myId, text: "Let's not rush it. We'll add 5lbs next week and keep building. Consistency over everything.", timestamp: new Date(now - 86400000 * 4).toISOString(), read: true },
-        { id: "dm3-5", senderId: "system", text: "Coach assigned a new workout: Competition Prep Week 12", timestamp: new Date(now - 86400000 * 2).toISOString(), read: true },
-      ],
-      lastActivity: new Date(now - 86400000 * 2).toISOString(),
-    },
-    {
-      id: "demo-conv-4",
-      participants: [m4.id],
-      messages: [
-        { id: "dm4-1", senderId: myId, text: "Hi Lisa! Welcome to your second month. How are you feeling about the program so far?", timestamp: new Date(now - 86400000 * 7).toISOString(), read: true },
-        { id: "dm4-2", senderId: m4.id, text: "I'm really enjoying it! I feel stronger already. The nutrition tips have been super helpful too.", timestamp: new Date(now - 86400000 * 7 + 7200000).toISOString(), read: true },
-        { id: "dm4-3", senderId: myId, text: "That's great to hear! Remember, consistency is key. Even on days you don't feel like it, just show up and do something.", timestamp: new Date(now - 86400000 * 6).toISOString(), read: true },
-        { id: "dm4-4", senderId: "system", text: "Coach assigned a new workout: Full Body Foundations B", timestamp: new Date(now - 86400000 * 4).toISOString(), read: true },
-        { id: "dm4-5", senderId: m4.id, text: "Quick question - should I be sore after every workout? Sometimes I feel fine the next day and worry I'm not working hard enough.", timestamp: new Date(now - 86400000 * 1).toISOString(), read: false },
-      ],
-      lastActivity: new Date(now - 86400000 * 1).toISOString(),
-    },
-  ];
-}
-
 export default function MessagingView() {
   const B = useTheme();
   const { currentUser, isClient } = useAuth();
   const { members } = useMembers();
   // Determine sender ID: staff uses "coach", clients use their memberId
   const myId = isClient ? currentUser?.memberId : "coach";
-  const [conversations, setConversations] = useLocalStorage("hf_messages", []);
+  const [conversations, setConversations, conversationsLoaded] = useLocalStorage("hf_messages", []);
   const [activeConvId, setActiveConvId] = useState(null);
   const [search, setSearch] = useState("");
   const [messageText, setMessageText] = useState("");
@@ -111,27 +50,27 @@ export default function MessagingView() {
     if (autoOpenProcessed.current) return;
     const params = new URLSearchParams(window.location.search);
     const toMemberId = params.get("to");
-    if (!toMemberId || conversations.length === undefined) return;
-    autoOpenProcessed.current = true;
+    if (!toMemberId || !conversationsLoaded) return;
 
     // Find existing conversation with this member
     const existing = conversations.find(c => c.participants?.includes(toMemberId));
     if (existing) {
+      autoOpenProcessed.current = true;
       setActiveConvId(existing.id);
       setMobileShowConv(true);
     } else {
-      // Create a new conversation
+      // Create a new conversation — if members aren't loaded yet, retry when they arrive
       const m = members.find(x => x.id === toMemberId);
-      if (m) {
-        const newConv = { id: crypto.randomUUID(), participants: [toMemberId], messages: [], lastActivity: new Date().toISOString() };
-        setConversations(prev => [newConv, ...prev]);
-        setActiveConvId(newConv.id);
-        setMobileShowConv(true);
-      }
+      if (!m) return;
+      autoOpenProcessed.current = true;
+      const newConv = { id: crypto.randomUUID(), participants: [toMemberId], messages: [], lastActivity: new Date().toISOString() };
+      setConversations(prev => [newConv, ...prev]);
+      setActiveConvId(newConv.id);
+      setMobileShowConv(true);
     }
     // Clean up URL
     window.history.replaceState({}, "", window.location.pathname);
-  }, [conversations, members]);
+  }, [conversations, members, conversationsLoaded]);
 
   // Demo data initialization removed — demo data is now loaded only via Settings page
 
@@ -159,7 +98,7 @@ export default function MessagingView() {
         setManualUnread(prev => { const n = new Set(prev); n.delete(activeConvId); return n; });
       }
     }
-  }, [activeConvId]);
+  }, [activeConvId, activeConv?.messages?.length]);
 
   useEffect(() => {
     if (messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -182,30 +121,25 @@ export default function MessagingView() {
     return info.name.toLowerCase().includes(q);
   });
 
-  const handleSendMessage = () => {
-    if (!messageText.trim() || !activeConvId) return;
-    const msg = { id: crypto.randomUUID(), senderId: myId, text: messageText.trim(), timestamp: new Date().toISOString(), read: true };
+  const handleSendMessage = (textArg) => {
+    const content = (typeof textArg === "string" ? textArg : messageText).trim();
+    if (!content || !activeConvId) return;
+    const now = new Date().toISOString();
+    // read means read-by-recipient — outgoing messages are born unread
+    const msg = { id: crypto.randomUUID(), senderId: myId, text: content, content, timestamp: now, createdAt: now, read: false };
     setConversations(prev => prev.map(c =>
       c.id === activeConvId
         ? { ...c, messages: [...c.messages, msg], lastActivity: msg.timestamp }
         : c
     ));
-
-    // Send notification for new message
-    if (getNotificationPrefs().message !== false && activeConv) {
-      const senderInfo = getMemberInfo(activeConv.participants[0]);
-      const senderName = myId === "coach" ? "Coach" : senderInfo.name;
-      const preview = messageText.trim().length > 50 ? messageText.trim().slice(0, 50) + "..." : messageText.trim();
-      sendLocalNotification(`${senderName}: ${preview}`, { body: messageText.trim() });
-    }
-
     setMessageText("");
   };
 
   const handleNewConversation = () => {
     if (!newMsgMemberId || !newMsgText.trim()) return;
     const existing = conversations.find(c => c.participants.includes(newMsgMemberId));
-    const msg = { id: crypto.randomUUID(), senderId: myId, text: newMsgText.trim(), timestamp: new Date().toISOString(), read: true };
+    const now = new Date().toISOString();
+    const msg = { id: crypto.randomUUID(), senderId: myId, text: newMsgText.trim(), content: newMsgText.trim(), timestamp: now, createdAt: now, read: false };
     if (existing) {
       setConversations(prev => prev.map(c =>
         c.id === existing.id
@@ -247,7 +181,7 @@ export default function MessagingView() {
     convTime: { fontSize: 10, color: B.dim, whiteSpace: "nowrap" },
     unreadBadge: { minWidth: 18, height: 18, borderRadius: 9, background: B.accent, color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px" },
     chatHeader: { display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderBottom: "1px solid " + B.border, background: B.dark },
-    chatArea: { flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 8 },
+    chatArea: { flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 8, justifyContent: "flex-end", minHeight: 0 },
     bubbleCoach: { alignSelf: "flex-end", maxWidth: "70%", background: B.accent, color: "#fff", borderRadius: "16px 16px 4px 16px", padding: "10px 14px", fontSize: 13, lineHeight: 1.5 },
     bubbleMember: { alignSelf: "flex-start", maxWidth: "70%", background: B.card, color: B.text, borderRadius: "16px 16px 16px 4px", padding: "10px 14px", fontSize: 13, lineHeight: 1.5, border: "1px solid " + B.border },
     bubbleSystem: { alignSelf: "center", background: B.border + "44", color: B.dim, borderRadius: 12, padding: "6px 14px", fontSize: 11, fontStyle: "italic" },
@@ -326,7 +260,7 @@ export default function MessagingView() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
                     <span style={{ ...s.convPreview, fontWeight: hasUnread ? 600 : 400, color: hasUnread ? B.text : B.dim }}>
-                      {lastMsg?.senderId === myId ? "You: " : ""}{lastMsg?.senderId === "system" ? lastMsg.text : (lastMsg?.text || "")}
+                      {lastMsg?.senderId === myId ? "You: " : ""}{lastMsg?.imageUrl ? "🖼️ Image" : (lastMsg?.text ?? lastMsg?.content ?? "")}
                     </span>
                     {hasUnread && <span style={s.unreadBadge}>{unreadCount || "\u2022"}</span>}
                   </div>
@@ -371,17 +305,25 @@ export default function MessagingView() {
         {/* Messages */}
         <div style={s.chatArea}>
           {activeConv.messages.map(msg => {
+            const rawText = msg.text ?? msg.content ?? "";
             if (msg.senderId === "system") {
               return (
-                <div key={msg.id} style={s.bubbleSystem}>{msg.text}</div>
+                <div key={msg.id} style={s.bubbleSystem}>{rawText}</div>
               );
             }
             const isMe = msg.senderId === myId;
+            // Dedicated imageUrl field, with backward-compat parsing of legacy [img:...] text
+            const legacyImg = !msg.imageUrl ? rawText.match(/\[img:(.*?)\]/) : null;
+            const imageUrl = msg.imageUrl || legacyImg?.[1];
+            const displayText = legacyImg ? rawText.replace(legacyImg[0], "").trim() : rawText;
             return (
               <div key={msg.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "70%" }}>
-                <div style={isMe ? s.bubbleCoach : s.bubbleMember}>{msg.text}</div>
+                <div style={isMe ? s.bubbleCoach : s.bubbleMember}>
+                  {imageUrl && <img src={imageUrl} alt="" style={{ maxWidth: "100%", borderRadius: 8, display: "block", marginBottom: displayText ? 6 : 0 }} />}
+                  {displayText}
+                </div>
                 <div style={isMe ? s.bubbleTimeCoach : s.bubbleTime}>
-                  {formatTime(msg.timestamp)}
+                  {formatTime(msg.timestamp ?? msg.createdAt)}
                   {isMe && msg.read && <span style={{ marginLeft: 6 }}>&#10003;&#10003;</span>}
                 </div>
               </div>
@@ -403,8 +345,15 @@ export default function MessagingView() {
               const file = e.target.files?.[0];
               if (!file) return;
               const dataUrl = await resizeImage(file);
-              setMessageText(prev => prev + ` [img:${dataUrl}]`);
               e.target.value = "";
+              if (!activeConvId) return;
+              const now = new Date().toISOString();
+              const msg = { id: crypto.randomUUID(), senderId: myId, text: "", content: "", imageUrl: dataUrl, timestamp: now, createdAt: now, read: false };
+              setConversations(prev => prev.map(c =>
+                c.id === activeConvId
+                  ? { ...c, messages: [...c.messages, msg], lastActivity: msg.timestamp }
+                  : c
+              ));
             }} />
             <button style={s.inputActionBtn} title="Send GIF" onClick={() => alert("GIF picker coming soon")}>
               GIF
@@ -424,14 +373,11 @@ export default function MessagingView() {
             {"\uD83D\uDE0A"}
           </button>
           {messageText.trim() ? (
-            <button style={s.sendBtn} onClick={handleSendMessage}>
+            <button style={s.sendBtn} onClick={() => handleSendMessage()}>
               {"\u27A4"}
             </button>
           ) : (
-            <button style={s.quickLikeBtn} title="Quick like" onClick={() => {
-              setMessageText("\uD83D\uDC4D");
-              setTimeout(() => handleSendMessage(), 50);
-            }}>
+            <button style={s.quickLikeBtn} title="Quick like" onClick={() => handleSendMessage("\uD83D\uDC4D")}>
               {"\uD83D\uDC4D"}
             </button>
           )}
@@ -455,9 +401,9 @@ export default function MessagingView() {
           }} onClick={e => e.stopPropagation()}>
             {manualUnread.has(contextMenu.convId) || conversations.find(c => c.id === contextMenu.convId)?.messages.some(m => !m.read && m.senderId !== myId) ? (
               <button onClick={() => {
-                // Mark as read
+                // Mark as read (only messages from the other party — read means read-by-recipient)
                 setConversations(prev => prev.map(c =>
-                  c.id === contextMenu.convId ? { ...c, messages: c.messages.map(m => ({ ...m, read: true })) } : c
+                  c.id === contextMenu.convId ? { ...c, messages: c.messages.map(m => m.senderId !== myId ? { ...m, read: true } : m) } : c
                 ));
                 setManualUnread(prev => { const n = new Set(prev); n.delete(contextMenu.convId); return n; });
                 setContextMenu(null);

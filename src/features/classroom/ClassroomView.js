@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
@@ -73,7 +74,12 @@ const DEMO_COURSES = [
 /* ── component ───────────────────────────────────────── */
 export default function ClassroomView() {
   const B = useTheme();
+  const { currentUser } = useAuth();
   const { members } = useMembers();
+  // Progress records are per-person; identify the current viewer.
+  // NOTE (product gap): there is no client-portal course reader yet, so members
+  // can't view courses or record their own progress — only staff progress exists.
+  const progressIdentity = currentUser?.memberId || currentUser?.id || "admin";
 
   /* ── state ── */
   const [courses, setCourses] = useLocalStorage("hf_courses", []);
@@ -86,6 +92,7 @@ export default function ClassroomView() {
   const [previewing, setPreviewing] = useState(false);
   const [previewLessonPath, setPreviewLessonPath] = useState(null);
   const [previewExpandedModules, setPreviewExpandedModules] = useState({});
+  const [browsing, setBrowsing] = useState(true);
 
   const course = courses[selectedCourseIdx] || courses[0];
 
@@ -93,9 +100,9 @@ export default function ClassroomView() {
   const completedSet = useMemo(() => {
     if (!course) return new Set();
     const ids = new Set();
-    progress.filter(p => p.courseId === course.id).forEach(p => (p.lessonIds || []).forEach(l => ids.add(l)));
+    progress.filter(p => p.courseId === course.id && (p.memberId || "admin") === progressIdentity).forEach(p => (p.lessonIds || []).forEach(l => ids.add(l)));
     return ids;
-  }, [progress, course]);
+  }, [progress, course, progressIdentity]);
 
   const totalLessons = useMemo(() => course ? course.modules.reduce((s, m) => s + m.lessons.filter(l => l.published).length, 0) : 0, [course]);
   const completedCount = useMemo(() => {
@@ -129,12 +136,12 @@ export default function ClassroomView() {
   /* ── toggle progress ── */
   function toggleComplete(lessonId) {
     setProgress(prev => {
-      const existing = prev.find(p => p.courseId === course.id);
+      const existing = prev.find(p => p.courseId === course.id && (p.memberId || "admin") === progressIdentity);
       if (existing) {
         const ids = existing.lessonIds.includes(lessonId) ? existing.lessonIds.filter(id => id !== lessonId) : [...existing.lessonIds, lessonId];
-        return prev.map(p => p.courseId === course.id ? { ...p, lessonIds: ids } : p);
+        return prev.map(p => p === existing ? { ...p, lessonIds: ids } : p);
       }
-      return [...prev, { courseId: course.id, lessonIds: [lessonId], memberId: "admin" }];
+      return [...prev, { courseId: course.id, lessonIds: [lessonId], memberId: progressIdentity }];
     });
   }
 
@@ -284,6 +291,9 @@ export default function ClassroomView() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: 0 }}>{editCourse.title ? "Edit Course" : "New Course"}</h1>
           <div style={{ display: "flex", gap: 8 }}>
+            {courses.some(c => c.id === editCourse.id) && (
+              <button onClick={() => { if (window.confirm(`Delete course "${editCourse.title || "Untitled"}"? This cannot be undone.`)) { deleteCourse(editCourse.id); setEditing(false); setEditCourse(null); setBrowsing(true); } }} style={btnDanger}>Delete Course</button>
+            )}
             <button onClick={() => { setEditing(false); setEditCourse(null); }} style={btnSecondary}>Cancel</button>
             <button onClick={saveCourse} style={btnPrimary}>Save Course</button>
           </div>
@@ -388,6 +398,59 @@ export default function ClassroomView() {
     );
   }
 
+  /* ── Netflix browse helpers ── */
+  const COURSE_GRADIENTS = [
+    "linear-gradient(135deg, #1a5276 0%, #2e86c1 100%)",
+    "linear-gradient(135deg, #6c3483 0%, #a569bd 100%)",
+    "linear-gradient(135deg, #1e8449 0%, #52be80 100%)",
+    "linear-gradient(135deg, #b9770e 0%, #f4d03f 100%)",
+    "linear-gradient(135deg, #922b21 0%, #e74c3c 100%)",
+    "linear-gradient(135deg, #1b4f72 0%, #5dade2 100%)",
+    "linear-gradient(135deg, #4a235a 0%, #8e44ad 100%)",
+    "linear-gradient(135deg, #0e6655 0%, #1abc9c 100%)",
+  ];
+  function getCourseGradient(idx) { return COURSE_GRADIENTS[idx % COURSE_GRADIENTS.length]; }
+
+  function getCourseProgress(c) {
+    const total = c.modules.reduce((s, m) => s + m.lessons.filter(l => l.published).length, 0);
+    if (!total) return 0;
+    const prg = progress.find(p => p.courseId === c.id && (p.memberId || "admin") === progressIdentity);
+    if (!prg) return 0;
+    let done = 0;
+    c.modules.forEach(m => m.lessons.forEach(l => { if (l.published && (prg.lessonIds || []).includes(l.id)) done++; }));
+    return Math.round((done / total) * 100);
+  }
+
+  function getCourseLessonCount(c) {
+    return c.modules.reduce((s, m) => s + m.lessons.filter(l => l.published).length, 0);
+  }
+
+  const coursesWithProgress = useMemo(() => courses.filter(c => getCourseProgress(c) > 0 && getCourseProgress(c) < 100), [courses, progress]);
+
+  // Group courses by access type for categories
+  const courseCategories = useMemo(() => {
+    const cats = [];
+    if (coursesWithProgress.length > 0) {
+      cats.push({ title: "Continue Learning", courses: coursesWithProgress });
+    }
+    const open = courses.filter(c => c.accessType === "open");
+    const membersOnly = courses.filter(c => c.accessType === "members-only");
+    const levelLocked = courses.filter(c => c.accessType === "level-locked");
+    const planLocked = courses.filter(c => c.accessType === "plan-locked");
+    if (open.length > 0) cats.push({ title: "Open Access", courses: open });
+    if (membersOnly.length > 0) cats.push({ title: "Clients Only", courses: membersOnly });
+    if (levelLocked.length > 0) cats.push({ title: "Advanced", courses: levelLocked });
+    if (planLocked.length > 0) cats.push({ title: "Plan-Locked", courses: planLocked });
+    // If no categories yet (all same type), just show all
+    if (cats.length === 0 && courses.length > 0) cats.push({ title: "All Courses", courses });
+    return cats;
+  }, [courses, coursesWithProgress]);
+
+  const scrollRowStyle = {
+    display: "flex", gap: 16, overflowX: "auto", paddingBottom: 8, scrollBehavior: "smooth",
+    msOverflowStyle: "none", scrollbarWidth: "none",
+  };
+
   /* ──────────────────── MAIN VIEW ──────────────────── */
   if (!course) {
     return (
@@ -409,11 +472,126 @@ export default function ClassroomView() {
 
   const badge = accessBadge(course);
 
+  /* ──────────────────── NETFLIX BROWSE VIEW ──────────────────── */
+  if (browsing) {
+    return (
+      <div style={{ minHeight: "calc(100vh - 80px)" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: B.text, margin: 0 }}>Classroom</h1>
+          <button onClick={() => openEditor(null)} style={btnPrimary}>+ New Course</button>
+        </div>
+
+        {/* Category rows */}
+        {courseCategories.map((cat, catIdx) => (
+          <div key={cat.title} style={{ marginBottom: 32 }}>
+            <h2 style={{ fontSize: 17, fontWeight: 700, color: B.text, margin: "0 0 14px", paddingLeft: 2 }}>{cat.title}</h2>
+            <div
+              style={scrollRowStyle}
+              ref={el => {
+                // Hide scrollbar via inline style injection
+                if (el) {
+                  el.style.cssText += "; -ms-overflow-style: none; scrollbar-width: none;";
+                  // WebKit scrollbar hide
+                  if (!el.dataset.scrollHidden) {
+                    const style = document.createElement("style");
+                    style.textContent = `.netflix-scroll-row::-webkit-scrollbar { display: none; }`;
+                    document.head.appendChild(style);
+                    el.dataset.scrollHidden = "1";
+                  }
+                }
+              }}
+              className="netflix-scroll-row"
+            >
+              {cat.courses.map((c, ci) => {
+                const cBadge = accessBadge(c);
+                const lessonCount = getCourseLessonCount(c);
+                const prog = getCourseProgress(c);
+                const globalIdx = courses.indexOf(c);
+                return (
+                  <div
+                    key={c.id}
+                    onClick={() => { setSelectedCourseIdx(globalIdx); setSelectedLessonPath(null); setExpandedModules({}); setBrowsing(false); }}
+                    style={{
+                      minWidth: 280, maxWidth: 280, height: 160, borderRadius: 12, cursor: "pointer",
+                      background: getCourseGradient(globalIdx), position: "relative", overflow: "hidden",
+                      transition: "transform 0.2s ease, box-shadow 0.2s ease", flexShrink: 0,
+                      boxShadow: `0 2px 8px rgba(0,0,0,0.3)`,
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.5)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)"; }}
+                  >
+                    {/* Dark overlay at bottom for text readability */}
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "70%", background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)" }} />
+
+                    {/* Lesson count badge */}
+                    <div style={{
+                      position: "absolute", top: 10, right: 10, background: "rgba(0,0,0,0.6)",
+                      borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 700, color: "#fff",
+                    }}>
+                      {lessonCount} lesson{lessonCount !== 1 ? "s" : ""}
+                    </div>
+
+                    {/* Access badge */}
+                    <div style={{
+                      position: "absolute", top: 10, left: 10,
+                      borderRadius: 6, padding: "3px 8px", fontSize: 10, fontWeight: 700,
+                      background: cBadge.bg, color: cBadge.color,
+                    }}>
+                      {cBadge.label}
+                    </div>
+
+                    {/* Bottom content */}
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "12px 14px" }}>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", marginBottom: 4, lineHeight: 1.3 }}>{c.title}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description}</div>
+                      {/* Progress bar for courses with progress */}
+                      {prog > 0 && (
+                        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ flex: 1, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${prog}%`, background: B.green, borderRadius: 2 }} />
+                          </div>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: B.green }}>{prog}%</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        {/* Preview modal (still accessible from browse) */}
+        {previewing && course && (
+          <div
+            onClick={closePreview}
+            style={{
+              position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 10000,
+              display: "flex", flexDirection: "column",
+            }}
+          >
+            <div style={{ background: `linear-gradient(90deg, ${B.green}22 0%, ${B.green}08 100%)`, borderBottom: `1px solid ${B.green}40`, padding: "10px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 15 }}>&#128065;</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: B.green }}>Preview Mode</span>
+              </div>
+              <button onClick={closePreview} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: B.red || "#ef4444", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+                <span style={{ fontSize: 16 }}>&#10005;</span> Close Preview
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 80px)" }}>
       {/* ── TOP BAR ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => { setBrowsing(true); setSelectedLessonPath(null); }} style={{ ...btnSecondary, padding: "6px 12px", fontSize: 16, display: "flex", alignItems: "center" }}>&#8592;</button>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: B.text, margin: 0 }}>{course.title}</h1>
           <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: badge.bg, color: badge.color }}>{badge.label}</span>
           {course.accessType === "plan-locked" && <PlanLockBadge allowedPlanIds={course.allowedPlanIds} B={B} />}

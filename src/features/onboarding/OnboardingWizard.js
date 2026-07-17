@@ -3,17 +3,30 @@ import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
+import { localISO } from "../../utils/dates";
 
 const SUPABASE_URL = "https://qzvxnklyeadbroesccxt.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM";
 const HEADERS = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" };
 
 async function supabaseUpsert(gymId, key, value) {
-  await fetch(`${SUPABASE_URL}/rest/v1/data_store`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/data_store?on_conflict=gym_id,key`, {
     method: "POST",
     headers: { ...HEADERS, Prefer: "return=minimal,resolution=merge-duplicates" },
-    body: JSON.stringify({ gym_id: gymId, key, value: JSON.stringify(value) }),
+    body: JSON.stringify({ gym_id: gymId, key, value }),
   });
+  if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+}
+
+async function supabaseGet(gymId, key) {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/data_store?gym_id=eq.${encodeURIComponent(gymId)}&key=eq.${encodeURIComponent(key)}&select=value`,
+    { headers: HEADERS }
+  );
+  if (!res.ok) return null;
+  const rows = await res.json();
+  if (rows.length === 0) return null;
+  try { return JSON.parse(rows[0].value); } catch { return rows[0].value; }
 }
 
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -51,41 +64,78 @@ export default function OnboardingWizard() {
     if (members.length < 5) setMembers(prev => [...prev, { name: "", email: "", pin: "" }]);
   };
 
-  // Check if already completed
+  // Check if already completed (locally, then in the cloud for new devices)
   useEffect(() => {
-    const completed = localStorage.getItem("hf_onboarding_complete");
-    if (completed === "true") navigate(`/gym/${localStorage.getItem("hf_gym_id") || "default"}/`);
+    const gid = localStorage.getItem("hf_gym_id") || "default";
+    if (localStorage.getItem("hf_onboarding_complete") === "true") {
+      navigate(`/gym/${gid}/`);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const cloud = await supabaseGet(gid, "hf_onboarding_complete");
+      if (!cancelled && (cloud === true || cloud === "true")) {
+        localStorage.setItem("hf_onboarding_complete", "true");
+        navigate(`/gym/${gid}/`);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [navigate]);
 
-  const handleFinish = async () => {
-    // Save branding
-    if (logoUrl || tagline || primaryColor !== "#8fbf3b") {
-      await supabaseUpsert(gymId, "hf_branding", { logoUrl, primaryColor, tagline });
-      localStorage.setItem("hf_branding", JSON.stringify({ logoUrl, primaryColor, tagline }));
-    }
+  const handleFinish = async (destination) => {
+    try {
+      // Save branding
+      if (logoUrl || tagline || primaryColor !== "#8fbf3b") {
+        await supabaseUpsert(gymId, "hf_branding", { logoUrl, primaryColor, tagline });
+        localStorage.setItem("hf_branding", JSON.stringify({ logoUrl, primaryColor, tagline }));
+      }
 
-    // Save first class
-    if (className.trim()) {
-      const classes = [{ id: "cls_1", name: className, day: classDay, time: classTime, capacity: parseInt(classCapacity) || 20, coach: currentUser?.displayName || "Coach" }];
-      await supabaseUpsert(gymId, "hf_classes", classes);
-      localStorage.setItem("hf_classes", JSON.stringify(classes));
-    }
+      // Save first session (hf_schedule shape: dayOfWeek 0=Mon..6=Sun)
+      if (className.trim()) {
+        const [h, min] = classTime.split(":").map(Number);
+        const endTime = `${String(((h || 0) + 1) % 24).padStart(2, "0")}:${String(min || 0).padStart(2, "0")}`;
+        const schedule = [{
+          id: "cls_1", name: className, instructor: currentUser?.displayName || "Coach",
+          dayOfWeek: Math.max(0, DAYS_OF_WEEK.indexOf(classDay)), startTime: classTime, endTime,
+          capacity: parseInt(classCapacity) || 20, bookings: [], waitlist: [], recurring: true,
+        }];
+        await supabaseUpsert(gymId, "hf_schedule", schedule);
+        localStorage.setItem("hf_schedule", JSON.stringify(schedule));
+      }
 
-    // Save members
-    const validMembers = members.filter(m => m.name.trim());
-    if (validMembers.length > 0) {
-      const memberRecords = validMembers.map((m, i) => {
-        const parts = m.name.trim().split(" ");
-        return { id: "m_" + (Date.now() + i), firstName: parts[0] || "", lastName: parts.slice(1).join(" ") || "", email: m.email, pin: m.pin || "1234", status: "active", joinDate: new Date().toISOString().split("T")[0] };
-      });
-      await supabaseUpsert(gymId, "hf_members", memberRecords);
-      localStorage.setItem("hf_members", JSON.stringify(memberRecords));
-    }
+      // Save members (merge with any existing members — never overwrite a real roster)
+      const validMembers = members.filter(m => m.name.trim());
+      if (validMembers.length > 0) {
+        const now = new Date().toISOString();
+        const memberRecords = validMembers.map((m, i) => {
+          const parts = m.name.trim().split(" ");
+          return {
+            id: "m_" + (Date.now() + i), firstName: parts[0] || "", lastName: parts.slice(1).join(" ") || "",
+            email: m.email, phone: "", pin: m.pin || "1234",
+            membershipPlanId: "", membershipStatus: "active", photo: "", familyGroupId: null,
+            startDate: localISO(), notes: "", tags: [],
+            address: { street: "", city: "", state: "", zip: "", country: "US" },
+            movementScores: { Squat: 0, Hinge: 0, Lunge: 0, Push: 0, Pull: 0, Core: 0, Carry: 0 },
+            gamification: { level: 1, xp: 0, totalWorkouts: 0, totalWeightLifted: 0, badges: [], currentStreak: 0, longestStreak: 0 },
+            rank: { current: "White", promotionDate: null },
+            inbody: { lastScan: null, history: [] },
+            createdAt: now,
+          };
+        });
+        const existing = await supabaseGet(gymId, "hf_members");
+        const combined = [...(Array.isArray(existing) ? existing : []), ...memberRecords];
+        await supabaseUpsert(gymId, "hf_members", combined);
+        localStorage.setItem("hf_members", JSON.stringify(combined));
+      }
 
-    // Mark complete
-    localStorage.setItem("hf_onboarding_complete", "true");
-    await supabaseUpsert(gymId, "hf_onboarding_complete", true);
-    navigate(`/gym/${localStorage.getItem("hf_gym_id") || "default"}/`);
+      // Mark complete
+      localStorage.setItem("hf_onboarding_complete", "true");
+      await supabaseUpsert(gymId, "hf_onboarding_complete", true);
+    } catch (e) {
+      alert("Failed to save your setup: " + (e.message || e));
+      return;
+    }
+    navigate(destination || `/gym/${gymId}/`);
   };
 
   /* ===================== STYLES ===================== */
@@ -219,7 +269,7 @@ export default function OnboardingWizard() {
             <p style={{ ...subStyle, textAlign: "center", maxWidth: 460, margin: "0 auto 24px" }}>
               Use the Workout Builder to create your first WOD, strength session, or custom workout. You can do this now or come back to it later.
             </p>
-            <button style={btnPrimary} onClick={() => { localStorage.setItem("hf_onboarding_complete", "true"); navigate(`/gym/${localStorage.getItem("hf_gym_id") || "default"}/build`); }}>
+            <button style={btnPrimary} onClick={() => handleFinish(`/gym/${gymId}/build`)}>
               Open Workout Builder
             </button>
             <div style={{ marginTop: 16 }}>
@@ -238,17 +288,17 @@ export default function OnboardingWizard() {
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, maxWidth: 480, margin: "0 auto 32px" }}>
               {[
-                { label: "Dashboard", path: "/dashboard", icon: "\u{1F4CA}" },
-                { label: "Schedule", path: "/scheduling", icon: "\u{1F4C5}" },
-                { label: "Clients", path: "/members", icon: "\u{1F465}" },
+                { label: "Dashboard", path: "", icon: "\u{1F4CA}" },
+                { label: "Schedule", path: "schedule", icon: "\u{1F4C5}" },
+                { label: "Clients", path: "members", icon: "\u{1F465}" },
               ].map(link => (
-                <Card key={link.path} onClick={() => { handleFinish(); navigate(link.path); }} style={{ cursor: "pointer", textAlign: "center", padding: 20 }}>
+                <Card key={link.label} onClick={() => handleFinish(`/gym/${gymId}/${link.path}`)} style={{ cursor: "pointer", textAlign: "center", padding: 20 }}>
                   <div style={{ fontSize: 28, marginBottom: 8 }}>{link.icon}</div>
                   <div style={{ color: B.text, fontWeight: 600, fontSize: 14 }}>{link.label}</div>
                 </Card>
               ))}
             </div>
-            <button style={btnPrimary} onClick={handleFinish}>Go to Dashboard</button>
+            <button style={btnPrimary} onClick={() => handleFinish()}>Go to Dashboard</button>
           </div>
         )}
 

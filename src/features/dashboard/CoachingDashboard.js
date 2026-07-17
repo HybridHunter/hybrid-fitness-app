@@ -6,6 +6,7 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
 import { useAuth } from "../../context/AuthContext";
 import { PostShiftCheckinModal } from "../coaching/PostShiftCheckin";
+import { localISO } from "../../utils/dates";
 
 /* ========== constants ========== */
 const PATTERNS = ["Squat","Hinge","Lunge","Push","Pull","Core","Carry"];
@@ -17,7 +18,7 @@ const DAYS_OF_WEEK = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday
 
 /* ========== helpers ========== */
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return localISO();
 }
 
 function getTodayDayOfWeek() {
@@ -119,7 +120,7 @@ export default function CoachingDashboard() {
 
   const todayCheckins = useMemo(() => {
     return attendance
-      .filter(a => isToday(a.checkInTime))
+      .filter(a => !a.noShow && isToday(a.checkInTime))
       .sort((a, b) => new Date(b.checkInTime) - new Date(a.checkInTime));
   }, [attendance, now]);
 
@@ -135,7 +136,12 @@ export default function CoachingDashboard() {
         return { ...m, lastSeenDays: days, lastCheckin };
       })
       .filter(m => m.lastSeenDays >= 7)
-      .sort((a, b) => b.lastSeenDays - a.lastSeenDays);
+      .sort((a, b) => {
+        // Infinity (no check-ins + no startDate) sorts first without producing NaN
+        const av = Number.isFinite(a.lastSeenDays) ? a.lastSeenDays : Number.MAX_SAFE_INTEGER;
+        const bv = Number.isFinite(b.lastSeenDays) ? b.lastSeenDays : Number.MAX_SAFE_INTEGER;
+        return bv - av;
+      });
   }, [members, attendance]);
 
   const recentAssessments = useMemo(() => {
@@ -171,15 +177,20 @@ export default function CoachingDashboard() {
     const today = todayISO();
     const pending = [];
 
+    // Only nag for days this coach actually taught. If instructor names don't
+    // match this coach anywhere in the schedule, fall back to any-class days.
+    const coachHasClasses = schedule.some(s => s.instructor === coachName);
+    const isCoachClass = (s) => !coachHasClasses || s.instructor === coachName;
+
     // Check last 7 days for missed check-ins
     for (let i = 0; i < 7; i++) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().slice(0, 10);
+      const dateStr = localISO(d);
       const dow = d.getDay() === 0 ? 6 : d.getDay() - 1;
 
       // Did this coach have sessions on this day?
-      const hadSessions = schedule.some(s => s.dayOfWeek === dow);
+      const hadSessions = schedule.some(s => s.dayOfWeek === dow && isCoachClass(s));
       if (!hadSessions) continue;
 
       // Already submitted for this date?
@@ -188,7 +199,7 @@ export default function CoachingDashboard() {
 
       // For today, only prompt if all sessions are done
       if (dateStr === today) {
-        const todaySess = schedule.filter(s => s.dayOfWeek === dow);
+        const todaySess = schedule.filter(s => s.dayOfWeek === dow && isCoachClass(s));
         const allDone = todaySess.every(s => {
           const endMin = timeToMinutes(s.endTime);
           return currentMinutes > endMin;
@@ -426,9 +437,9 @@ export default function CoachingDashboard() {
                             {checkedIn ? (
                               <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "center" }}>
                                 <span style={{ fontSize: 14, color: B.green }} title="Checked in">{"\u2713"}</span>
-                                <button onClick={(e) => { e.stopPropagation(); setAttendance(prev => prev.filter(a => !(a.memberId === memberId && a.classId === cls.id && a.checkInTime?.slice(0,10) === new Date().toISOString().slice(0,10)))); }}
+                                <button onClick={(e) => { e.stopPropagation(); setAttendance(prev => prev.filter(a => !(a.memberId === memberId && a.classId === cls.id && a.checkInTime && isToday(a.checkInTime)))); }}
                                   style={{ padding: "2px 6px", borderRadius: 4, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 10, cursor: "pointer" }} title="Undo check-in">Undo</button>
-                                <button onClick={(e) => { e.stopPropagation(); setAttendance(prev => { const without = prev.filter(a => !(a.memberId === memberId && a.classId === cls.id && a.checkInTime?.slice(0,10) === new Date().toISOString().slice(0,10))); return [...without, { id: crypto.randomUUID(), memberId, checkInTime: new Date().toISOString(), method: "no-show", classId: cls.id, noShow: true }]; }); }}
+                                <button onClick={(e) => { e.stopPropagation(); setAttendance(prev => { const without = prev.filter(a => !(a.memberId === memberId && a.classId === cls.id && a.checkInTime && isToday(a.checkInTime))); return [...without, { id: crypto.randomUUID(), memberId, checkInTime: new Date().toISOString(), method: "no-show", classId: cls.id, noShow: true }]; }); }}
                                   style={{ padding: "2px 6px", borderRadius: 4, border: "none", background: (B.orange || "#f59e0b") + "22", color: B.orange || "#f59e0b", fontSize: 10, fontWeight: 700, cursor: "pointer" }} title="Mark as no-show">No Show</button>
                               </div>
                             ) : canQuickCheckIn ? (
@@ -456,7 +467,7 @@ export default function CoachingDashboard() {
                   )}
 
                   <button
-                    onClick={() => navigate(_gp("command"))}
+                    onClick={() => navigate(_gp(`command?session=${cls.id}`))}
                     style={{
                       width: "100%", padding: "10px 0", borderRadius: 8,
                       border: `1px solid ${B.accent}`, background: "transparent",
@@ -523,7 +534,7 @@ export default function CoachingDashboard() {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, color: B.text, fontSize: 15 }}>{m.firstName} {m.lastName}</div>
                       <div style={{ fontSize: 13, color: severity, fontWeight: 600 }}>
-                        Last seen {m.lastSeenDays} days ago
+                        {Number.isFinite(m.lastSeenDays) ? `Last seen ${m.lastSeenDays} days ago` : "No visits yet"}
                       </div>
                       <div style={{ fontSize: 12, color: B.dim }}>{m.membershipStatus}</div>
                     </div>

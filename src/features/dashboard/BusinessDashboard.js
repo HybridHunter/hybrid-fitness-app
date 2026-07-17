@@ -6,6 +6,7 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
 import Card from "../../components/ui/Card";
 import { CoachShiftSubmissions } from "../coaching/PostShiftCheckin";
+import { localISO, localMonth, parseLocalDate } from "../../utils/dates";
 
 /* ========== helpers ========== */
 const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -48,7 +49,9 @@ function periodKey(d) {
 
 function inRange(iso, start, end) {
   if (!iso) return false;
-  const d = new Date(iso);
+  // Bare "YYYY-MM-DD" dates (payments) must be parsed as local midnight,
+  // otherwise first-of-month entries bucket into the prior month.
+  const d = String(iso).length === 10 ? parseLocalDate(iso) : new Date(iso);
   return d >= start && d <= end;
 }
 
@@ -67,8 +70,20 @@ function priorPeriod(ym) {
 
 function fmtDate(iso) {
   if (!iso) return "--";
-  const d = new Date(iso);
+  const d = String(iso).length === 10 ? parseLocalDate(iso) : new Date(iso);
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+// Normalize a plan's price to a monthly amount based on its billing cycle.
+function monthlyPrice(plan) {
+  if (!plan) return 0;
+  const price = plan.price || 0;
+  switch (plan.billingCycle) {
+    case "annual": return price / 12;
+    case "weekly": return (price * 52) / 12;
+    case "every-4-weeks": return (price * 13) / 12;
+    default: return price; // monthly
+  }
 }
 
 /* ========== Avatar ========== */
@@ -187,7 +202,7 @@ function AlertCard({ member, reason, severity, planName, onSendMessage, onDismis
 }
 
 /* ========== Member Engagement Alerts ========== */
-function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
+function MemberEngagementAlerts({ members, attendance, plans, B, navigate, gp }) {
   const [collapsed, setCollapsed] = useState(false);
   const [dismissedAlerts, setDismissedAlerts] = useLocalStorage("hf_dismissed_alerts", []);
 
@@ -286,7 +301,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
               </div>
               {noshowAlerts.map(a => (
                 <AlertCard key={a.alertKey} member={a.member} reason={a.reason} severity={a.severity} planName={a.planName} B={B}
-                  onSendMessage={() => navigate(_gp("messages"))} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(_gp(`members/${a.member.id}`))} />
+                  onSendMessage={() => navigate(gp("messages"))} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(gp(`members/${a.member.id}`))} />
               ))}
             </div>
           )}
@@ -301,7 +316,7 @@ function MemberEngagementAlerts({ members, attendance, plans, B, navigate }) {
               </div>
               {unusedAlerts.map(a => (
                 <AlertCard key={a.alertKey} member={a.member} reason={a.reason} severity={a.severity} planName={a.planName} B={B}
-                  onSendMessage={() => navigate(_gp("messages"))} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(_gp(`members/${a.member.id}`))} />
+                  onSendMessage={() => navigate(gp("messages"))} onDismiss={() => dismissAlert(a.alertKey)} onClickMember={() => navigate(gp(`members/${a.member.id}`))} />
               ))}
             </div>
           )}
@@ -318,7 +333,7 @@ function SalesFunnel({ stages, B, onStageClick }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 0, alignItems: "center", width: "100%" }}>
       {stages.map((stage, i) => {
         const pct = maxVal > 0 ? (stage.count / maxVal) * 100 : 0;
-        const actualWidth = 100 - (i / (stages.length - 1)) * 80;
+        const actualWidth = stages.length > 1 ? 100 - (i / (stages.length - 1)) * 80 : 100;
         return (
           <div key={stage.label}
             onClick={() => onStageClick && onStageClick(stage)}
@@ -497,7 +512,7 @@ function FunnelEditorModal({ stages, onSave, onClose, B }) {
   };
 
   const removeStage = (idx) => {
-    setDraft(prev => prev.filter((_, i) => i !== idx));
+    setDraft(prev => prev.length <= 2 ? prev : prev.filter((_, i) => i !== idx));
   };
 
   const addStage = () => {
@@ -603,11 +618,13 @@ function FunnelEditorModal({ stages, onSave, onClose, B }) {
               B/S/C
             </label>
 
-            {/* Delete */}
-            <button onClick={() => removeStage(idx)} style={{
-              background: "none", border: "none", color: "#ef4444", fontSize: 16, cursor: "pointer",
+            {/* Delete (funnel needs at least 2 stages) */}
+            <button disabled={draft.length <= 2} onClick={() => removeStage(idx)} style={{
+              background: "none", border: "none", color: draft.length <= 2 ? B.dim : "#ef4444", fontSize: 16,
+              cursor: draft.length <= 2 ? "default" : "pointer",
               padding: "2px 6px", borderRadius: 4, flexShrink: 0, opacity: 0.6,
             }}
+              title={draft.length <= 2 ? "Funnel needs at least 2 stages" : "Remove stage"}
               onMouseEnter={e => e.currentTarget.style.opacity = "1"}
               onMouseLeave={e => e.currentTarget.style.opacity = "0.6"}
             >{"\u2717"}</button>
@@ -625,9 +642,10 @@ function FunnelEditorModal({ stages, onSave, onClose, B }) {
             padding: "8px 20px", borderRadius: 8, border: "1px solid " + B.border,
             background: "transparent", color: B.text, fontSize: 13, fontWeight: 600, cursor: "pointer",
           }}>Cancel</button>
-          <button onClick={() => { onSave(draft); onClose(); }} style={{
+          <button disabled={draft.length < 2} onClick={() => { onSave(draft); onClose(); }} style={{
             padding: "8px 20px", borderRadius: 8, border: "none",
-            background: B.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            background: B.accent, color: "#fff", fontSize: 13, fontWeight: 700,
+            cursor: draft.length < 2 ? "default" : "pointer", opacity: draft.length < 2 ? 0.5 : 1,
           }}>Save</button>
         </div>
       </div>
@@ -637,7 +655,7 @@ function FunnelEditorModal({ stages, onSave, onClose, B }) {
 
 /* ========== Funnel Data Entry Modal ========== */
 function FunnelDataEntryModal({ stages, allFunnelData, period, cashCollected, onSave, onClose, B }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localISO();
   const [selectedDate, setSelectedDate] = useState(today);
   const [view, setView] = useState("entry"); // "entry" | "ledger"
   const [editingEntry, setEditingEntry] = useState(null);
@@ -914,16 +932,24 @@ export default function BusinessDashboard() {
   }, [preset, selectedPeriod, customStart, customEnd]);
 
   /* ---- Ad Spend (only manual metric) ---- */
-  const currentDashMetrics = useMemo(() => {
-    return dashMetrics.find(m => m.period === selectedPeriod) || { period: selectedPeriod, adSpend: 0 };
-  }, [dashMetrics, selectedPeriod]);
+  // Month keys covered by the current range, so quarter/year presets aggregate
+  // ad spend + funnel data over every month in the range (like-for-like vs revenue).
+  const monthsInRange = useMemo(() => {
+    const months = [];
+    const d = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
+    while (d <= rangeEnd) {
+      months.push(periodKey(d));
+      d.setMonth(d.getMonth() + 1);
+    }
+    return months;
+  }, [rangeStart, rangeEnd]);
 
-  const priorPeriodKey = priorPeriod(selectedPeriod);
-  const priorDashMetrics = useMemo(() => {
-    return dashMetrics.find(m => m.period === priorPeriodKey) || { period: priorPeriodKey, adSpend: 0 };
-  }, [dashMetrics, priorPeriodKey]);
-
-  const adSpend = currentDashMetrics.adSpend || 0;
+  const adSpend = useMemo(() =>
+    dashMetrics
+      .filter(m => monthsInRange.includes(m.period))
+      .reduce((sum, m) => sum + (m.adSpend || 0), 0),
+    [dashMetrics, monthsInRange]
+  );
 
   const updateAdSpend = (value) => {
     setDashMetrics(prev => {
@@ -966,10 +992,10 @@ export default function BusinessDashboard() {
   const recurringPlans = plans.filter(p => ["monthly", "annual", "weekly", "every-4-weeks"].includes(p.billingCycle));
   const recurringPlanIds = new Set(recurringPlans.map(p => p.id));
 
+  // Monthly-normalized plan price (annual/weekly/every-4-weeks converted to per-month)
   const getMemberPlanPrice = (m) => {
     const plan = plans.find(p => p.id === m.membershipPlanId);
-    if (plan) return plan.price || 0;
-    return 0;
+    return monthlyPrice(plan);
   };
 
   const getMemberPlan = (m) => {
@@ -1013,8 +1039,15 @@ export default function BusinessDashboard() {
   const downgrades = eventsInPeriod.filter(e => e.type === "downgrade").length;
 
   // Attrition % = Lost / (Starting + New)
-  // Starting members approximation: current recurring + lost in period - new in period
-  const startingMembers = recurringCount + lostMemberCount - newMemberCount;
+  // Starting base: rewind today's recurring count to the period start using every
+  // join/cancel event from rangeStart to now (not just events inside the period)
+  const rewindEnd = new Date();
+  const startingMembers = Math.max(0, membershipEvents.reduce((base, e) => {
+    if (!inRange(e.date, rangeStart, rewindEnd)) return base;
+    if (e.type === "join") return base - 1;
+    if (e.type === "cancel") return base + 1;
+    return base;
+  }, recurringCount));
   const attritionPct = (startingMembers + newMemberCount) > 0
     ? (lostMemberCount / (startingMembers + newMemberCount)) * 100
     : 0;
@@ -1051,8 +1084,19 @@ export default function BusinessDashboard() {
     new_clients: newMemberCount,
   };
 
-  // Manual funnel data for this period
-  const funnelPeriodData = salesFunnel.data?.[selectedPeriod] || {};
+  // Manual funnel data for this period — summed across every month in the range
+  // so quarter/year presets aggregate instead of showing a single month
+  const funnelPeriodData = useMemo(() => {
+    const agg = {};
+    monthsInRange.forEach(pk => {
+      const monthData = salesFunnel.data?.[pk];
+      if (!monthData) return;
+      Object.entries(monthData).forEach(([k, v]) => {
+        if (typeof v === "number") agg[k] = (agg[k] || 0) + v;
+      });
+    });
+    return agg;
+  }, [salesFunnel.data, monthsInRange]);
   const hasManualFunnelData = Object.keys(funnelPeriodData).length > 0;
   const funnelStageConfig = salesFunnel.stages || DEFAULT_FUNNEL_STAGES;
 
@@ -1191,15 +1235,20 @@ export default function BusinessDashboard() {
 
   /* ---- Today's Schedule ---- */
   const todayDay = DAYS[new Date().getDay()];
-  const todayClasses = schedule.filter((c) => c.day === todayDay || c.days?.includes?.(todayDay));
+  // Schedule rows use numeric dayOfWeek with 0=Monday; JS getDay() is 0=Sunday
+  const todayDow = (new Date().getDay() + 6) % 7;
+  const todayClasses = schedule
+    .filter((c) => c.dayOfWeek === todayDow)
+    .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
 
   /* ---- Recent Activity ---- */
   const recentActivity = useMemo(() => {
     const items = [];
     attendance.forEach((a) => {
+      if (a.noShow) return;
       const m = members.find((x) => x.id === a.memberId);
       const name = m ? `${m.firstName} ${m.lastName}` : "Unknown";
-      items.push({ text: `${name} checked in`, time: a.date || a.timestamp || a.createdAt || "", dot: B.green, sort: new Date(a.date || a.timestamp || a.createdAt || 0).getTime() });
+      items.push({ text: `${name} checked in`, time: a.checkInTime || "", dot: B.green, sort: new Date(a.checkInTime || 0).getTime() });
     });
     members.forEach((m) => {
       if (m.createdAt) items.push({ text: `New member: ${m.firstName} ${m.lastName}`, time: m.createdAt, dot: B.blue, sort: new Date(m.createdAt).getTime() });
@@ -1809,6 +1858,7 @@ export default function BusinessDashboard() {
       }
 
       /* ---- Funnel drill-downs ---- */
+      case "funnel_leads": // funnel bar for the default "leads" stage
       case "funnel_total_leads": {
         const rows = leadsInPeriod.map((l, i) => ({
           _key: l.id || i,
@@ -2053,7 +2103,26 @@ export default function BusinessDashboard() {
         </div>
       )}
 
-      {/* ============ SECTION 2: Revenue & Membership KPIs (green banner) ============ */}
+      {/* ============ CURRENT GYM SNAPSHOT (not date-filtered) ============ */}
+      <div style={{ marginBottom: sectionGap }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Current Gym Snapshot</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+          {[
+            { label: "Active Members", value: recurringCount, color: B.accent },
+            { label: "Monthly Recurring", value: "$" + currentRecurring.toLocaleString(), color: B.green },
+            { label: "On Hold", value: frozenMembers.length, color: B.blue || "#3b82f6" },
+            { label: "Avg Utilization", value: (() => { const withSessions = members.filter(m => { const p = plans.find(pl => pl.id === m.membershipPlanId); return p?.sessionsIncluded; }); if (withSessions.length === 0) return "N/A"; const month = localMonth(); const avg = withSessions.reduce((s, m) => { const p = plans.find(pl => pl.id === m.membershipPlanId); const used = attendance.filter(a => a.memberId === m.id && !a.noShow && a.checkInTime && localMonth(new Date(a.checkInTime)) === month).length; return s + (used / (p?.sessionsIncluded || 1)); }, 0) / withSessions.length * 100; return Math.round(avg) + "%"; })(), color: B.orange },
+          ].map(s => (
+            <Card key={s.label} style={{ padding: 16, textAlign: "center" }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 11, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4 }}>{s.label}</div>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* ============ PERIOD METRICS (date-filtered) ============ */}
+      <div style={{ fontSize: 14, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>Period Metrics</div>
       <div style={{
         background: "linear-gradient(135deg, #8fbf3b, #6a9a2d)",
         borderRadius: 12, padding: 20, marginBottom: sectionGap,
@@ -2117,7 +2186,7 @@ export default function BusinessDashboard() {
 
           {/* Session Utilization */}
           {(() => {
-            const cm = new Date().toISOString().slice(0, 7);
+            const cm = localMonth();
             const tracked = members.filter(m => {
               const plan = plans.find(p => p.id === m.membershipPlanId);
               return plan && plan.sessionsIncluded;
@@ -2125,7 +2194,7 @@ export default function BusinessDashboard() {
             if (tracked.length === 0) return null;
             const avgUtil = Math.round(tracked.reduce((sum, m) => {
               const plan = plans.find(p => p.id === m.membershipPlanId);
-              const used = attendance.filter(a => a.memberId === m.id && !a.noShow && a.checkInTime?.slice(0, 7) === cm).length;
+              const used = attendance.filter(a => a.memberId === m.id && !a.noShow && a.checkInTime && localMonth(new Date(a.checkInTime)) === cm).length;
               return sum + (used / plan.sessionsIncluded) * 100;
             }, 0) / tracked.length);
             return (
@@ -2358,7 +2427,7 @@ export default function BusinessDashboard() {
       </div>
 
       {/* ============ Member Engagement Alerts ============ */}
-      <MemberEngagementAlerts members={members} attendance={attendance} plans={plans} B={B} navigate={navigate} />
+      <MemberEngagementAlerts members={members} attendance={attendance} plans={plans} B={B} navigate={navigate} gp={_gp} />
 
       {/* ============ Quick Actions ============ */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
@@ -2412,10 +2481,10 @@ export default function BusinessDashboard() {
             </div>
           ) : (
             todayClasses.map((cls, i) => {
-              const booked = cls.bookedCount ?? cls.memberIds?.length ?? 0;
+              const booked = cls.bookings?.length ?? 0;
               const cap = cls.capacity || "--";
               return (
-                <div key={i} style={{
+                <div key={cls.id || i} style={{
                   padding: "12px 0", borderBottom: i < todayClasses.length - 1 ? "1px solid " + B.border + "40" : "none",
                   display: "flex", alignItems: "center", gap: 12,
                 }}>
@@ -2423,11 +2492,13 @@ export default function BusinessDashboard() {
                     width: 48, textAlign: "center", padding: "6px 0", borderRadius: 8,
                     background: B.accent + "15", color: B.accent, fontSize: 12, fontWeight: 700, flexShrink: 0,
                   }}>
-                    {cls.time || "--"}
+                    {cls.startTime || "--"}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: B.text }}>{cls.name || cls.title || "Session"}</div>
-                    <div style={{ fontSize: 11, color: B.dim }}>{booked}/{cap} booked</div>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: B.text }}>{cls.name || "Session"}</div>
+                    <div style={{ fontSize: 11, color: B.dim }}>
+                      {cls.startTime}{cls.endTime ? ` - ${cls.endTime}` : ""} {"\u00B7"} {booked}/{cap} booked
+                    </div>
                   </div>
                 </div>
               );

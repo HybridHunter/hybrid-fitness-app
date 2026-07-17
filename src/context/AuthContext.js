@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect } from "react";
-import { useLocalStorage } from "../hooks/useLocalStorage";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { useLocalStorage, healValue } from "../hooks/useLocalStorage";
 
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
@@ -28,6 +28,17 @@ function mergeUsers(stored) {
 export function AuthProvider({ children }) {
   const [storedUsers, setStoredUsers] = useLocalStorage("hf_users", DEFAULT_USERS);
   const [session, setSession] = useLocalStorage("hf_session", null);
+  // Gym the hf_users hook fetched under — after an in-app gym switch, writing
+  // through it would push the OLD gym's users into the NEW gym's row (E5)
+  const usersGymRef = useRef(localStorage.getItem("hf_gym_id") || "default");
+  const usersGymMatches = () => {
+    const now = localStorage.getItem("hf_gym_id") || "default";
+    if (now !== usersGymRef.current) {
+      console.warn(`Skipping hf_users write: gym context changed (${usersGymRef.current} → ${now}); reload first`);
+      return false;
+    }
+    return true;
+  };
 
   // Always have default accounts available
   const users = mergeUsers(storedUsers);
@@ -40,6 +51,11 @@ export function AuthProvider({ children }) {
   }, [currentUser, setSession]);
 
   const login = async (emailOrUsername, password) => {
+    // E9: never match on empty passwords/PINs (members saved without a PIN
+    // would otherwise be loggable-into with a blank password)
+    if (!password || !String(password).trim()) {
+      return { success: false, error: "Invalid credentials" };
+    }
     // Check local staff accounts — match by email or username
     const input = emailOrUsername.toLowerCase().trim();
     let user = users.find(u => (u.email?.toLowerCase() === input || u.username?.toLowerCase() === input) && u.password === password);
@@ -66,7 +82,8 @@ export function AuthProvider({ children }) {
       if (res.ok) {
         const rows = await res.json();
         for (const row of rows) {
-          const gymUsers = Array.isArray(row.value) ? row.value : [];
+          const rowVal = healValue(row.value);
+          const gymUsers = Array.isArray(rowVal) ? rowVal : [];
           const found = gymUsers.find(u => (u.email?.toLowerCase() === input || u.username?.toLowerCase() === input) && u.password === password);
           if (found) {
             // Set gym context to this user's gym
@@ -75,7 +92,11 @@ export function AuthProvider({ children }) {
             const keysToKeep = ["hf_theme", "hf_session", "hf_users", "hf_gym_id", "hf_onboarding_complete"];
             Object.keys(localStorage).filter(k => k.startsWith("hf_") && !keysToKeep.includes(k)).forEach(k => localStorage.removeItem(k));
             const gymUser = { ...found, gymId: row.gym_id };
-            setCurrentUser(gymUser);
+            // N7: persist the session synchronously so the hard redirect finds it.
+            // Deliberately NOT calling setCurrentUser here (E5): our hooks were
+            // mounted under the old gym; state writes before the reload would
+            // leak the old gym's data into the new gym's rows.
+            localStorage.setItem("hf_session", JSON.stringify(gymUser));
             return { success: true, user: gymUser, requiresReload: true };
           }
         }
@@ -95,7 +116,8 @@ export function AuthProvider({ children }) {
       if (res.ok) {
         const rows = await res.json();
         for (const row of rows) {
-          const gymMembers = Array.isArray(row.value) ? row.value : [];
+          const rowVal = healValue(row.value);
+          const gymMembers = Array.isArray(rowVal) ? rowVal : [];
           const found = gymMembers.find(m => m.email?.toLowerCase() === input && m.pin === password);
           if (found) {
             localStorage.setItem("hf_gym_id", row.gym_id);
@@ -105,7 +127,8 @@ export function AuthProvider({ children }) {
             const keysToKeep = ["hf_theme", "hf_session", "hf_users", "hf_gym_id", "hf_onboarding_complete", "hf_members"];
             Object.keys(localStorage).filter(k => k.startsWith("hf_") && !keysToKeep.includes(k)).forEach(k => localStorage.removeItem(k));
             const clientUser = { id: "client_" + found.id, username: found.email, role: "client", memberId: found.id, displayName: found.firstName + " " + found.lastName, gymId: row.gym_id };
-            setCurrentUser(clientUser);
+            // N7/E5: persist synchronously for the hard redirect; skip setCurrentUser
+            localStorage.setItem("hf_session", JSON.stringify(clientUser));
             return { success: true, user: clientUser, requiresReload: true };
           }
         }
@@ -117,6 +140,10 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     setCurrentUser(null);
+    // E6: clear any leftover impersonation state so it can't leak into the next session
+    localStorage.removeItem("hf_impersonating");
+    localStorage.removeItem("hf_gym_id_backup");
+    localStorage.removeItem("hf_session_backup");
     // Reset to default gym
     localStorage.setItem("hf_gym_id", "default");
   };
@@ -125,9 +152,16 @@ export function AuthProvider({ children }) {
   const isClient = currentUser?.role === "client";
   const isStaff = isAdmin || isCoach;
 
-  const addUser = (user) => setStoredUsers(prev => [...(Array.isArray(prev) ? prev : []), { id: "u_" + Date.now(), ...user }]);
-  const removeUser = (id) => setStoredUsers(prev => (Array.isArray(prev) ? prev : []).filter(u => u.id !== id));
+  const addUser = (user) => {
+    if (!usersGymMatches()) return;
+    setStoredUsers(prev => [...(Array.isArray(prev) ? prev : []), { id: "u_" + Date.now(), ...user }]);
+  };
+  const removeUser = (id) => {
+    if (!usersGymMatches()) return;
+    setStoredUsers(prev => (Array.isArray(prev) ? prev : []).filter(u => u.id !== id));
+  };
   const updateUser = (id, updates) => {
+    if (!usersGymMatches()) return;
     setStoredUsers(prev => (Array.isArray(prev) ? prev : []).map(u => u.id === id ? { ...u, ...updates } : u));
     if (currentUser?.id === id) setCurrentUser(prev => ({ ...prev, ...updates }));
   };

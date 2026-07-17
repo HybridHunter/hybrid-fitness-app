@@ -32,13 +32,14 @@ function genId() {
   return "chain-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
 }
 
-function getExercisesForPattern(pattern) {
-  return EX.filter(e => e.p === pattern).map(e => e.n).sort();
+function getExercisesForPattern(library, pattern) {
+  return library.filter(e => e.p === pattern).map(e => e.n).sort();
 }
 
 export default function MatrixView() {
   const B = useTheme();
   const [matrix, setMatrix] = useLocalStorage("hf_matrix", DEFAULT_MATRIX);
+  const [exLib] = useLocalStorage("hf_ex", EX);
   const [filter, setFilter] = useState("All");
   const [showModal, setShowModal] = useState(false);
   const [showReset, setShowReset] = useState(false);
@@ -85,8 +86,9 @@ export default function MatrixView() {
     setShowReset(false);
   }
 
+  const library = exLib && exLib.length ? exLib : EX;
   const patternExercises = {};
-  PATS.filter(p => p !== "All").forEach(p => { patternExercises[p] = getExercisesForPattern(p); });
+  PATS.filter(p => p !== "All").forEach(p => { patternExercises[p] = getExercisesForPattern(library, p); });
 
   // --- Styles ---
   const overlay = {

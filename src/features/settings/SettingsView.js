@@ -448,6 +448,146 @@ function DisplayScaleSetting({ B }) {
   );
 }
 
+/* ── Data tab: demo data load/clear (synced via useLocalStorage setters) ── */
+function DataTab({ B, showToast }) {
+  // One synced store per key so demo-row removal syncs to the cloud (no raw localStorage, no reload)
+  const membersStore = useLocalStorage("hf_members", []);
+  const paymentsStore = useLocalStorage("hf_payments", []);
+  const membershipEventsStore = useLocalStorage("hf_membership_events", []);
+  const attendanceStore = useLocalStorage("hf_attendance", []);
+  const scheduleStore = useLocalStorage("hf_schedule", []);
+  const communityPostsStore = useLocalStorage("hf_community_posts", []);
+  const challengesStore = useLocalStorage("hf_challenges", []);
+  const messagesStore = useLocalStorage("hf_messages", []);
+  const notificationsStore = useLocalStorage("hf_notifications", []);
+  const waiversStore = useLocalStorage("hf_waivers", []);
+  const assessmentsStore = useLocalStorage("hf_assessments", []);
+  const stationsStore = useLocalStorage("hf_stations", []);
+  const communityEventsStore = useLocalStorage("hf_community_events", []);
+  const resourcesStore = useLocalStorage("hf_resources", []);
+  const coursesStore = useLocalStorage("hf_courses", []);
+  const workoutLogsStore = useLocalStorage("hf_workout_logs", []);
+  const automationLogStore = useLocalStorage("hf_automation_log", []);
+  const plansStore = useLocalStorage("hf_plans", []);
+
+  const dataKeys = [
+    { key: "hf_members", label: "Demo Clients", store: membersStore },
+    { key: "hf_payments", label: "Demo Payments", store: paymentsStore },
+    { key: "hf_membership_events", label: "Membership Events", store: membershipEventsStore },
+    { key: "hf_attendance", label: "Attendance Records", store: attendanceStore },
+    { key: "hf_schedule", label: "Demo Sessions", store: scheduleStore },
+    { key: "hf_community_posts", label: "Community Posts", store: communityPostsStore },
+    { key: "hf_challenges", label: "Challenges", store: challengesStore },
+    { key: "hf_messages", label: "Messages", store: messagesStore },
+    { key: "hf_notifications", label: "Notifications", store: notificationsStore },
+    { key: "hf_waivers", label: "Waivers", store: waiversStore },
+    { key: "hf_assessments", label: "Assessments", store: assessmentsStore },
+    { key: "hf_stations", label: "Stations", store: stationsStore },
+    { key: "hf_community_events", label: "Events", store: communityEventsStore },
+    { key: "hf_resources", label: "Resources", store: resourcesStore },
+    { key: "hf_courses", label: "Courses", store: coursesStore },
+    { key: "hf_workout_logs", label: "Workout Logs", store: workoutLogsStore },
+    { key: "hf_automation_log", label: "Automation Log", store: automationLogStore },
+    { key: "hf_plans", label: "Plans", store: plansStore },
+  ];
+
+  const getDemoCount = (store) => Array.isArray(store[0]) ? store[0].filter(r => r?._demo === true).length : 0;
+  const stripDemo = (store) => store[1](prev => Array.isArray(prev) ? prev.filter(r => r?._demo !== true) : prev);
+
+  const totalDemo = dataKeys.reduce((sum, item) => sum + getDemoCount(item.store), 0);
+  const demoLoaded = totalDemo > 0;
+
+  const loadDemoData = () => {
+    const now = new Date().toISOString();
+    const uid = () => crypto.randomUUID();
+    const demoMembers = [
+      { id: uid(), firstName: "Sarah", lastName: "Johnson", email: "sarah@example.com", phone: "555-0101", pin: "1234", membershipPlanId: "", membershipStatus: "active", photo: "", familyGroupId: null, startDate: "2025-09-15", notes: "Demo client", tags: ["morning"], address: { street: "", city: "", state: "", zip: "", country: "US" }, movementScores: { Squat: 2, Hinge: 1, Lunge: 0, Push: 1, Pull: 2, Core: 1, Carry: 2 }, gamification: { level: 12, xp: 2400, totalWorkouts: 87, totalWeightLifted: 42350, badges: ["First Workout", "10 Workouts", "50 Workouts"], currentStreak: 5, longestStreak: 14 }, rank: { current: "Silver", promotionDate: null }, inbody: { lastScan: null, history: [] }, createdAt: now, _demo: true },
+      { id: uid(), firstName: "Mike", lastName: "Chen", email: "mike@example.com", phone: "555-0102", pin: "2345", membershipPlanId: "", membershipStatus: "active", photo: "", familyGroupId: null, startDate: "2025-11-01", notes: "Demo client", tags: ["evening"], address: { street: "", city: "", state: "", zip: "", country: "US" }, movementScores: { Squat: -1, Hinge: 0, Lunge: -1, Push: 0, Pull: -1, Core: 0, Carry: 0 }, gamification: { level: 5, xp: 950, totalWorkouts: 32, totalWeightLifted: 15200, badges: ["First Workout", "10 Workouts"], currentStreak: 2, longestStreak: 7 }, rank: { current: "Bronze", promotionDate: null }, inbody: { lastScan: null, history: [] }, createdAt: now, _demo: true },
+      { id: uid(), firstName: "Emily", lastName: "Rodriguez", email: "emily@example.com", phone: "555-0103", pin: "3456", membershipPlanId: "", membershipStatus: "active", photo: "", familyGroupId: null, startDate: "2025-06-20", notes: "Demo client", tags: ["morning"], address: { street: "", city: "", state: "", zip: "", country: "US" }, movementScores: { Squat: 3, Hinge: 2, Lunge: 2, Push: 3, Pull: 2, Core: 2, Carry: 3 }, gamification: { level: 22, xp: 5800, totalWorkouts: 156, totalWeightLifted: 98400, badges: ["First Workout", "10 Workouts", "50 Workouts", "100 Workouts"], currentStreak: 12, longestStreak: 30 }, rank: { current: "Gold", promotionDate: null }, inbody: { lastScan: null, history: [] }, createdAt: now, _demo: true },
+      { id: uid(), firstName: "Lisa", lastName: "Park", email: "lisa@example.com", phone: "555-0104", pin: "4567", membershipPlanId: "", membershipStatus: "active", photo: "", familyGroupId: null, startDate: "2026-01-05", notes: "Demo client", tags: [], address: { street: "", city: "", state: "", zip: "", country: "US" }, movementScores: { Squat: 0, Hinge: 0, Lunge: 0, Push: -1, Pull: 0, Core: -1, Carry: 0 }, gamification: { level: 3, xp: 450, totalWorkouts: 15, totalWeightLifted: 6800, badges: ["First Workout"], currentStreak: 3, longestStreak: 5 }, rank: { current: "White", promotionDate: null }, inbody: { lastScan: null, history: [] }, createdAt: now, _demo: true },
+      { id: uid(), firstName: "Tom", lastName: "Baker", email: "tom@example.com", phone: "555-0105", pin: "5678", membershipPlanId: "", membershipStatus: "trial", photo: "", familyGroupId: null, startDate: now.slice(0, 10), notes: "Demo trial client", tags: ["trial"], address: { street: "", city: "", state: "", zip: "", country: "US" }, movementScores: { Squat: 0, Hinge: 0, Lunge: 0, Push: 0, Pull: 0, Core: 0, Carry: 0 }, gamification: { level: 1, xp: 50, totalWorkouts: 2, totalWeightLifted: 1200, badges: ["First Workout"], currentStreak: 1, longestStreak: 1 }, rank: { current: "White", promotionDate: null }, inbody: { lastScan: null, history: [] }, createdAt: now, _demo: true },
+    ];
+    const demoSchedule = [
+      { id: uid(), name: "6AM Semi-Private", instructor: "Coach", dayOfWeek: 1, startTime: "06:00", endTime: "06:45", capacity: 8, bookings: [], waitlist: [], recurring: true, _demo: true },
+      { id: uid(), name: "7AM Strength", instructor: "Coach", dayOfWeek: 1, startTime: "07:00", endTime: "07:45", capacity: 8, bookings: [], waitlist: [], recurring: true, _demo: true },
+      { id: uid(), name: "12PM Lunch Express", instructor: "Coach", dayOfWeek: 2, startTime: "12:00", endTime: "12:30", capacity: 6, bookings: [], waitlist: [], recurring: true, _demo: true },
+      { id: uid(), name: "5PM Evening Semi-Private", instructor: "Coach", dayOfWeek: 3, startTime: "17:00", endTime: "17:45", capacity: 8, bookings: [], waitlist: [], recurring: true, _demo: true },
+      { id: uid(), name: "6PM Advanced", instructor: "Coach", dayOfWeek: 4, startTime: "18:00", endTime: "18:45", capacity: 6, bookings: [], waitlist: [], recurring: true, _demo: true },
+      { id: uid(), name: "9AM Open Gym", instructor: "Coach", dayOfWeek: 5, startTime: "09:00", endTime: "10:00", capacity: 12, bookings: [], waitlist: [], recurring: true, _demo: true },
+    ];
+    const demoPlans = [
+      { id: "plan_unlimited", name: "Unlimited", price: 199, billingCycle: "monthly", sessionsIncluded: null, description: "Full access", features: "Unlimited sessions", active: true, _demo: true },
+      { id: "plan_3x", name: "3x/Week", price: 149, billingCycle: "monthly", sessionsIncluded: 12, description: "3 sessions per week", features: "12 sessions/month", active: true, _demo: true },
+      { id: "plan_dropin", name: "Drop-In", price: 25, billingCycle: "per-session", sessionsIncluded: 1, description: "Single session", features: "1 session", active: true, _demo: true },
+    ];
+    membersStore[1](prev => [...(Array.isArray(prev) ? prev : []), ...demoMembers]);
+    scheduleStore[1](prev => [...(Array.isArray(prev) ? prev : []), ...demoSchedule]);
+    plansStore[1](prev => [...(Array.isArray(prev) ? prev : []), ...demoPlans]);
+    showToast("Demo data loaded!");
+  };
+
+  return (
+    <div>
+      {/* Load Demo Data */}
+      <Card style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: B.text, margin: "0 0 8px" }}>Sample Data</h3>
+        <p style={{ color: B.muted, fontSize: 13, marginBottom: 16 }}>
+          {demoLoaded
+            ? "Demo data is loaded. You can clear it below to keep only your real records."
+            : "Your account starts empty. Load sample data to explore the app with realistic demo members, sessions, and plans."}
+        </p>
+        {!demoLoaded ? (
+          <button onClick={() => {
+            if (window.confirm("Load demo data? This adds sample members, sessions, and plans to explore the app. You can remove them later.")) {
+              loadDemoData();
+            }
+          }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            Load Demo Data
+          </button>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 13, color: B.accent, fontWeight: 600 }}>Demo data loaded ({totalDemo} records)</span>
+          </div>
+        )}
+      </Card>
+
+      {/* Clear Demo Data */}
+      {totalDemo > 0 && (
+      <Card style={{ marginBottom: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: B.text, margin: "0 0 8px" }}>Clear Demo Data</h3>
+        <p style={{ color: B.muted, fontSize: 13, marginBottom: 16 }}>Remove only demo records while keeping your real data intact.</p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {dataKeys.map(item => {
+            const count = getDemoCount(item.store);
+            return (
+            <button key={item.key} onClick={() => {
+              if (window.confirm(`Clear ${count} demo record(s) from ${item.label}?`)) {
+                stripDemo(item.store);
+                showToast(`Demo records cleared from ${item.label}.`);
+              }
+            }} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid " + B.border, background: B.dark, color: count > 0 ? B.muted : B.dim, fontSize: 12, fontWeight: 600, cursor: count > 0 ? "pointer" : "default", opacity: count > 0 ? 1 : 0.5 }} disabled={count === 0}>
+              Clear {item.label}{count > 0 ? ` (${count})` : ""}
+            </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 16, borderTop: "1px solid " + B.border, paddingTop: 12 }}>
+          <button onClick={() => {
+            if (window.confirm(`Clear all ${totalDemo} demo records? Your real data is preserved.`)) {
+              dataKeys.forEach(item => stripDemo(item.store));
+              showToast("All demo data cleared.");
+            }
+          }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: B.red, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            Clear ALL Demo Data ({totalDemo} records)
+          </button>
+          <p style={{ color: B.dim, fontSize: 11, marginTop: 8 }}>Removes only demo records. Your real data is preserved.</p>
+        </div>
+      </Card>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsView() {
   const B = useTheme();
   const { currentUser, users, addUser, removeUser, updateUser } = useAuth();
@@ -668,7 +808,7 @@ export default function SettingsView() {
         <p style={{ fontSize: 12, color: B.muted, margin: "0 0 16px" }}>Secret key should be configured server-side only. Never expose it in the client.</p>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={s.btn()} onClick={() => {
-            setIntegrations(prev => ({ ...prev, stripe: { ...(prev.stripe || {}), connected: !!prev.stripe.publishableKey } }));
+            setIntegrations(prev => ({ ...prev, stripe: { ...(prev.stripe || {}), connected: !!prev.stripe?.publishableKey } }));
             showToast(integrations.stripe?.publishableKey ? "Stripe connection successful!" : "Please enter a publishable key first.");
           }}>Test Connection</button>
           <button style={s.btn(B.border, B.text)} onClick={() => {
@@ -1187,7 +1327,7 @@ export default function SettingsView() {
         </div>
         <button style={{ ...s.btn(), opacity: (newUser.email && newUser.password && newUser.displayName) ? 1 : 0.4 }} onClick={() => {
           if (!newUser.email || !newUser.password || !newUser.displayName) return;
-          addUser({ ...newUser, username: newUser.email });
+          addUser({ ...newUser, username: newUser.email, gymId: localStorage.getItem("hf_gym_id") || "default" });
           setNewUser({ email: "", username: "", password: "", role: "coach", displayName: "" });
           showToast("User added!");
         }}>Add User</button>
@@ -1490,104 +1630,7 @@ export default function SettingsView() {
         </div>
       )}
       {activeTab === "Gamification" && renderGamification()}
-      {activeTab === "Data" && (() => {
-        const dataKeys = [
-          { key: "hf_members", label: "Demo Clients" },
-          { key: "hf_payments", label: "Demo Payments" },
-          { key: "hf_membership_events", label: "Membership Events" },
-          { key: "hf_attendance", label: "Attendance Records" },
-          { key: "hf_schedule", label: "Demo Sessions" },
-          { key: "hf_community_posts", label: "Community Posts" },
-          { key: "hf_challenges", label: "Challenges" },
-          { key: "hf_messages", label: "Messages" },
-          { key: "hf_notifications", label: "Notifications" },
-          { key: "hf_waivers", label: "Waivers" },
-          { key: "hf_assessments", label: "Assessments" },
-          { key: "hf_stations", label: "Stations" },
-          { key: "hf_community_events", label: "Events" },
-          { key: "hf_resources", label: "Resources" },
-          { key: "hf_courses", label: "Courses" },
-          { key: "hf_workout_logs", label: "Workout Logs" },
-          { key: "hf_automation_log", label: "Automation Log" },
-          { key: "hf_plans", label: "Plans" },
-        ];
-        const getDemoCount = (key) => {
-          try { const arr = JSON.parse(localStorage.getItem(key) || "[]"); return Array.isArray(arr) ? arr.filter(r => r._demo === true).length : 0; } catch { return 0; }
-        };
-        const stripDemo = (key) => {
-          try { const arr = JSON.parse(localStorage.getItem(key) || "[]"); if (!Array.isArray(arr)) return; localStorage.setItem(key, JSON.stringify(arr.filter(r => r._demo !== true))); } catch { /* ignore */ }
-        };
-        const demoLoaded = localStorage.getItem("hf_demo_loaded") === "true";
-        const totalDemo = dataKeys.reduce((sum, item) => sum + getDemoCount(item.key), 0);
-        return (
-        <div>
-          {/* Load Demo Data */}
-          <Card style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: B.text, margin: "0 0 8px" }}>Sample Data</h3>
-            <p style={{ color: B.muted, fontSize: 13, marginBottom: 16 }}>
-              {demoLoaded
-                ? "Demo data is loaded. You can clear it below to keep only your real records."
-                : "Your account starts empty. Load sample data to explore the app with realistic demo members, sessions, payments, and more."}
-            </p>
-            {!demoLoaded ? (
-              <button onClick={() => {
-                if (window.confirm("Load demo data? This adds sample members, sessions, payments, and other records to explore the app. You can remove them later.")) {
-                  localStorage.setItem("hf_demo_loaded", "true");
-                  localStorage.removeItem("hf_demo_cleared");
-                  // Clear existing empty arrays so hooks regenerate with demo defaults
-                  dataKeys.forEach(item => localStorage.removeItem(item.key));
-                  window.location.reload();
-                }
-              }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                Load Demo Data
-              </button>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span style={{ fontSize: 13, color: B.accent, fontWeight: 600 }}>Demo data loaded ({totalDemo} records)</span>
-              </div>
-            )}
-          </Card>
-
-          {/* Clear Demo Data */}
-          {totalDemo > 0 && (
-          <Card style={{ marginBottom: 16 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: B.text, margin: "0 0 8px" }}>Clear Demo Data</h3>
-            <p style={{ color: B.muted, fontSize: 13, marginBottom: 16 }}>Remove only demo records while keeping your real data intact.</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {dataKeys.map(item => {
-                const count = getDemoCount(item.key);
-                return (
-                <button key={item.key} onClick={() => {
-                  if (window.confirm(`Clear ${count} demo record(s) from ${item.label}?`)) {
-                    stripDemo(item.key);
-                    window.location.reload();
-                  }
-                }} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid " + B.border, background: B.dark, color: count > 0 ? B.muted : B.dim, fontSize: 12, fontWeight: 600, cursor: count > 0 ? "pointer" : "default", opacity: count > 0 ? 1 : 0.5 }} disabled={count === 0}>
-                  Clear {item.label}{count > 0 ? ` (${count})` : ""}
-                </button>
-                );
-              })}
-            </div>
-            <div style={{ marginTop: 16, borderTop: "1px solid " + B.border, paddingTop: 12 }}>
-              <button onClick={() => {
-                if (window.confirm(`Clear all ${totalDemo} demo records? Your real data is preserved.`)) {
-                  dataKeys.forEach(item => stripDemo(item.key));
-                  Object.keys(localStorage).filter(k => k.startsWith("hf_") && !dataKeys.some(d => d.key === k)).forEach(k => {
-                    try { const arr = JSON.parse(localStorage.getItem(k) || "[]"); if (Array.isArray(arr)) { localStorage.setItem(k, JSON.stringify(arr.filter(r => r._demo !== true))); } } catch {}
-                  });
-                  localStorage.removeItem("hf_demo_loaded");
-                  window.location.reload();
-                }
-              }} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: B.red, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                Clear ALL Demo Data ({totalDemo} records)
-              </button>
-              <p style={{ color: B.dim, fontSize: 11, marginTop: 8 }}>Removes only demo records. Your real data is preserved.</p>
-            </div>
-          </Card>
-          )}
-        </div>
-        );
-      })()}
+      {activeTab === "Data" && <DataTab B={B} showToast={showToast} />}
 
       {toast && <div style={s.toast}>{toast}</div>}
     </div>

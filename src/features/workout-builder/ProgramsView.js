@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import ConfirmDialog from "../../components/shared/ConfirmDialog";
+import { PrintArea } from "./WorkoutsView";
 
 export default function ProgramsView({programs,setPrograms,workouts}){
   const B=useTheme();
@@ -11,6 +12,7 @@ export default function ProgramsView({programs,setPrograms,workouts}){
 
   return(<div>
     {confirm&&<ConfirmDialog msg={confirm.msg} onOk={confirm.action} onNo={()=>setConfirm(null)}/>}
+    <PrintArea w={printW}/>
 
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
       <div style={{fontSize:18,fontWeight:700}}>Programs <span style={{color:B.muted,fontSize:13}}>({programs.length})</span></div>

@@ -63,7 +63,7 @@ export default function AssessmentView() {
   const [expandedAssessment, setExpandedAssessment] = useState(null);
   const [successMsg, setSuccessMsg] = useState(false);
 
-  const activeMembers = members.filter((m) => !!m.membershipPlanId);
+  const activeMembers = members.filter((m) => m.membershipStatus !== "inactive");
   const selectedMember = selectedMemberId ? getMember(selectedMemberId) : null;
   const currentPattern = PATTERNS[currentPatternIdx];
 
@@ -116,8 +116,8 @@ export default function AssessmentView() {
       fullScores[p] = { score: scores[p] ?? 0, notes: notes[p] || "" };
     });
 
-    // Update member movement scores
-    updateMember(selectedMemberId, { movementScores: scoreValues });
+    // Update member movement scores (merge so scores outside the 7 assessed patterns are kept)
+    updateMember(selectedMemberId, { movementScores: { ...selectedMember?.movementScores, ...scoreValues } });
 
     // Save assessment record
     const record = {

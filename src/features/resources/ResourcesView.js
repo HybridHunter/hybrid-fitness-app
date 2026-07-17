@@ -304,7 +304,7 @@ function ResourceModal({ resource, categories, onSave, onClose, B }) {
               cursor: "pointer",
             }}
           >
-            \u2715
+            {"\u2715"}
           </button>
         </div>
 
@@ -519,7 +519,7 @@ function CategoryManager({ categories, setCategories, onClose, B }) {
               cursor: "pointer",
             }}
           >
-            \u2715
+            {"\u2715"}
           </button>
         </div>
 
@@ -558,7 +558,7 @@ function CategoryManager({ categories, setCategories, onClose, B }) {
                 onMouseEnter={(e) => (e.currentTarget.style.color = B.red)}
                 onMouseLeave={(e) => (e.currentTarget.style.color = B.muted)}
               >
-                \u2715
+                {"\u2715"}
               </button>
             </div>
           ))}
@@ -883,7 +883,7 @@ export default function ResourcesView() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(320, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
             gap: 16,
           }}
         >
@@ -1218,7 +1218,7 @@ export default function ResourcesView() {
                         <div style={{ fontWeight: 600, color: B.text }}>
                           {r.pinned && (
                             <span style={{ color: B.orange, marginRight: 4 }}>
-                              \ud83d\udccc
+                              {"\ud83d\udccc"}
                             </span>
                           )}
                           {r.title}

@@ -6,6 +6,14 @@ import { autoIndividualize } from "../../utils/autoIndividualize";
 import { EX } from "../../data/exercises";
 import { DEFAULT_MATRIX } from "../../data/movementMatrix";
 import { getYTId, getYTThumb } from "../../utils/youtube";
+import { localISO } from "../../utils/dates";
+
+// Tenant bootstrap: station URLs carry ?gym=<id> (see StationSetup) so a fresh
+// device binds to the right gym BEFORE any useLocalStorage hook reads hf_gym_id.
+try {
+  const gymParam = new URLSearchParams(window.location.search).get("gym");
+  if (gymParam) localStorage.setItem("hf_gym_id", gymParam);
+} catch (e) { /* ignore */ }
 
 // Dark theme constants (station always dark)
 const B = {
@@ -298,11 +306,13 @@ export default function StationDisplay() {
     return logs.length > 0 ? logs[logs.length - 1] : null;
   }, [workoutLogs, currentEx, member]);
 
-  // Check if exercise has been logged this session
+  // Check if exercise has been logged this session (today only — old logs shouldn't mark today's exercises complete)
   const isLogged = useCallback((exName) => {
     if (!member) return false;
+    const today = localISO();
     return workoutLogs.some(
-      l => l.memberId === member.id && l.exerciseName === exName && l.stationId === stationId
+      l => l.memberId === member.id && l.exerciseName === exName && l.stationId === stationId &&
+        l.timestamp && localISO(new Date(l.timestamp)) === today
     );
   }, [workoutLogs, member, stationId]);
 

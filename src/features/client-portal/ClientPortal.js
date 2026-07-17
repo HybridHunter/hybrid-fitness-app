@@ -9,7 +9,7 @@ import { autoIndividualize } from "../../utils/autoIndividualize";
 import { DEFAULT_MATRIX } from "../../data/movementMatrix";
 import { EX } from "../../data/exercises";
 import { getYTId, getYTThumb } from "../../utils/youtube";
-import { requestPermission } from "../../utils/pushNotifications";
+import { localISO } from "../../utils/dates";
 import ProgressPhotos from "../members/ProgressPhotos";
 
 /* ═══════════════════════════════════════════════════════════
@@ -20,7 +20,7 @@ const DAYS_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const DAYS_FULL = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => localISO();
 
 const getTodayDow = () => {
   const d = new Date().getDay(); // 0=Sun
@@ -140,7 +140,9 @@ export default function ClientPortal() {
 
   // Data stores
   const [classes, setClasses] = useLocalStorage("hf_schedule", []);
-  const [attendance] = useLocalStorage("hf_attendance", []);
+  const [attendance, setAttendance] = useLocalStorage("hf_attendance", []);
+  const [, setPayments] = useLocalStorage("hf_payments", []);
+  const [noShowSettings] = useLocalStorage("hf_noshow_settings", {});
   const [workouts] = useLocalStorage("hf_w", []);
   const [communityPosts, setCommunityPosts] = useLocalStorage("hf_community_posts", []);
   const [messages, setMessages] = useLocalStorage("hf_messages", []);
@@ -213,6 +215,21 @@ export default function ClientPortal() {
     }, 150);
   };
 
+  // Open (or create) the coach conversation and show the chat modal.
+  // Shared by the Profile tab button, the home "Message Your Coach" card,
+  // and the Messages stat tile.
+  const openCoachChat = () => {
+    const myMemberId = currentUser?.memberId;
+    if (!myMemberId) return;
+    const convs = Array.isArray(messages) ? messages : [];
+    let myConv = convs.find(c => c.participants?.includes(myMemberId));
+    if (!myConv) {
+      myConv = { id: crypto.randomUUID(), participants: [myMemberId], messages: [], lastActivity: new Date().toISOString() };
+      setMessages(prev => [...(Array.isArray(prev) ? prev : []), myConv]);
+    }
+    setClientChatOpen(myConv.id);
+  };
+
   // Today's classes this member is booked into
   const todayDow = getTodayDow();
   const myBookedClasses = useMemo(() => {
@@ -223,8 +240,10 @@ export default function ClientPortal() {
   const todayClasses = useMemo(() => {
     const now = new Date();
     const currentMin = now.getHours() * 60 + now.getMinutes();
+    const today = todayISO();
     return myBookedClasses
       .filter(c => c.dayOfWeek === todayDow)
+      .filter(c => !c.exceptions?.includes(today))
       .filter(c => {
         // Only include sessions that haven't ended yet
         const [eh, em] = (c.endTime || "23:59").split(":").map(Number);
@@ -237,22 +256,27 @@ export default function ClientPortal() {
     const now = new Date();
     const currentMin = now.getHours() * 60 + now.getMinutes();
     const upcoming = [];
-    for (let offset = 0; offset < 7 && upcoming.length < 3; offset++) {
+    // Go out 8 days (offset 7 = same weekday next week) so a class whose
+    // occurrence today already ended still shows its next occurrence.
+    for (let offset = 0; offset <= 7 && upcoming.length < 3; offset++) {
       const dow = (todayDow + offset) % 7;
+      const sessionDate = new Date(now);
+      sessionDate.setDate(sessionDate.getDate() + offset);
+      const sessionISO = localISO(sessionDate);
       const dayClasses = myBookedClasses
         .filter(c => c.dayOfWeek === dow)
+        .filter(c => !c.exceptions?.includes(sessionISO))
         .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
       for (const c of dayClasses) {
-        // Skip if it's today and already ended
+        // Skip if it's today and already ended (its next-week occurrence is picked up at offset 7)
         if (offset === 0) {
           const [eh, em] = (c.endTime || "23:59").split(":").map(Number);
           if (currentMin >= eh * 60 + em) continue;
         }
-        // Skip if already in todayClasses (shown separately)
+        // Skip if already in todayClasses (shown separately) or already listed
         if (todayClasses.some(tc => tc.id === c.id)) continue;
+        if (upcoming.some(u => u.id === c.id)) continue;
         if (upcoming.length < 3) {
-          const sessionDate = new Date(now);
-          sessionDate.setDate(sessionDate.getDate() + offset);
           const dateStr = offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : `${DAYS_FULL[dow]}, ${MONTHS[sessionDate.getMonth()]} ${sessionDate.getDate()}`;
           upcoming.push({ ...c, _dayLabel: dateStr });
         }
@@ -412,7 +436,7 @@ export default function ClientPortal() {
             <div style={{ fontSize: 22, fontWeight: 800, color: B.accent }}>{gam.longestStreak || 0}</div>
             <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\u2B50"} Best</div>
           </div>
-          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px", cursor: "pointer" }} onClick={() => switchTab("community")}>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px", cursor: "pointer" }} onClick={openCoachChat}>
             <div style={{ fontSize: 22, fontWeight: 800, color: unreadMsgCount > 0 ? B.red || "#ef4444" : B.dim }}>{unreadMsgCount}</div>
             <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83D\uDCE9"} Messages</div>
           </div>
@@ -565,7 +589,7 @@ export default function ClientPortal() {
         )}
 
         {/* Message Your Coach */}
-        <div style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 12, cursor: "pointer", marginBottom: 12 }} onClick={() => switchTab("community")}>
+        <div style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 12, cursor: "pointer", marginBottom: 12 }} onClick={openCoachChat}>
           <div style={{ width: 40, height: 40, borderRadius: 12, background: B.accent + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{"\uD83D\uDCE9"}</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: B.text }}>Message Your Coach</div>
@@ -659,7 +683,7 @@ export default function ClientPortal() {
     // Past logs
     const pastLogs = workoutLogs
       .filter(l => l.memberId === member.id)
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort((a, b) => (b.date || b.timestamp || '').localeCompare(a.date || a.timestamp || ''))
       .slice(0, 20);
 
     return (
@@ -983,7 +1007,7 @@ export default function ClientPortal() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 600, color: B.text }}>{w?.name || "Workout"}</div>
-                    <div style={mutedText}>{fmtDateNice(log.date)}</div>
+                    <div style={mutedText}>{fmtDateNice(log.date || log.timestamp)}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: B.accent }}>
@@ -1009,36 +1033,39 @@ export default function ClientPortal() {
   const handleCancel = (classId) => {
     if (!member) return;
     const cls = classes.find(c => c.id === classId);
-    const nsSettings = (() => { try { return JSON.parse(localStorage.getItem("hf_noshow_settings") || "{}"); } catch { return {}; } })();
+    const nsSettings = noShowSettings || {};
     const cancelWindowHours = nsSettings.cancelWindowHours ?? 12;
     const penaltyEnabled = nsSettings.penaltyEnabled !== false;
 
-    // Don't allow cancelling past sessions
-    if (cls) {
+    // Late-cancel check against the NEXT occurrence of this class (not just same-day)
+    if (cls && cls.startTime && cls.dayOfWeek != null) {
       const now = new Date();
       const todayDow = now.getDay() === 0 ? 6 : now.getDay() - 1;
-      if (cls.dayOfWeek === todayDow && cls.startTime) {
-        const [h, m] = cls.startTime.split(":").map(Number);
-        const sessionTime = new Date(now);
-        sessionTime.setHours(h, m, 0, 0);
-        if (now > sessionTime) { alert("This session has already started or passed."); return; }
+      const [h, m] = cls.startTime.split(":").map(Number);
+      const sessionTime = new Date(now);
+      sessionTime.setDate(sessionTime.getDate() + ((cls.dayOfWeek - todayDow + 7) % 7));
+      sessionTime.setHours(h, m, 0, 0);
+      if (now > sessionTime) {
+        const [eh, em] = (cls.endTime || "23:59").split(":").map(Number);
+        const sessionEnd = new Date(sessionTime);
+        sessionEnd.setHours(eh, em, 0, 0);
+        if (now <= sessionEnd) { alert("This session has already started."); return; }
+        // Today's occurrence is over — the cancellation applies to next week's occurrence
+        sessionTime.setDate(sessionTime.getDate() + 7);
+      }
 
-        // Check penalty window
-        const hoursUntil = (sessionTime - now) / (1000 * 60 * 60);
-        if (hoursUntil <= cancelWindowHours && penaltyEnabled) {
-          if (!window.confirm(`You are cancelling within ${cancelWindowHours} hours of your session. This will still count against your session allotment. Continue?`)) return;
-          const att = JSON.parse(localStorage.getItem("hf_attendance") || "[]");
-          att.push({ id: crypto.randomUUID(), memberId: member.id, checkInTime: new Date().toISOString(), method: "late-cancel", classId, noShow: true });
-          localStorage.setItem("hf_attendance", JSON.stringify(att));
-          if (nsSettings.lateCancelFeeEnabled && nsSettings.feeAmount) {
-            const thisMonth = new Date().toISOString().slice(0, 7);
-            const monthLateCancels = att.filter(a => a.memberId === member.id && a.method === "late-cancel" && a.checkInTime?.slice(0, 7) === thisMonth).length;
-            if (monthLateCancels >= (nsSettings.lateCancelFeeThreshold || 3)) {
-              const pays = JSON.parse(localStorage.getItem("hf_payments") || "[]");
-              pays.push({ id: "pay_" + Date.now(), member: `${member.firstName} ${member.lastName}`, memberId: member.id, amount: nsSettings.feeAmount, date: new Date().toISOString().slice(0, 10), status: "paid", method: "Late Cancel Fee", description: `Late cancel fee (${monthLateCancels} this month)` });
-              localStorage.setItem("hf_payments", JSON.stringify(pays));
-              alert(`Late cancellation fee of $${nsSettings.feeAmount} has been charged (${monthLateCancels} late cancels this month).`);
-            }
+      // Check penalty window
+      const hoursUntil = (sessionTime - now) / (1000 * 60 * 60);
+      if (hoursUntil <= cancelWindowHours && penaltyEnabled) {
+        if (!window.confirm(`You are cancelling within ${cancelWindowHours} hours of your session. This will still count against your session allotment. Continue?`)) return;
+        const lateCancel = { id: crypto.randomUUID(), memberId: member.id, checkInTime: new Date().toISOString(), method: "late-cancel", classId, noShow: true };
+        setAttendance(prev => [...prev, lateCancel]);
+        if (nsSettings.lateCancelFeeEnabled && nsSettings.feeAmount) {
+          const thisMonth = lateCancel.checkInTime.slice(0, 7);
+          const monthLateCancels = [...attendance, lateCancel].filter(a => a.memberId === member.id && a.method === "late-cancel" && a.checkInTime?.slice(0, 7) === thisMonth).length;
+          if (monthLateCancels >= (nsSettings.lateCancelFeeThreshold || 3)) {
+            setPayments(prev => [...prev, { id: "pay_" + Date.now(), member: `${member.firstName} ${member.lastName}`, memberId: member.id, amount: nsSettings.feeAmount, date: todayISO(), status: "paid", method: "Late Cancel Fee", description: `Late cancel fee (${monthLateCancels} this month)` }]);
+            alert(`Late cancellation fee of $${nsSettings.feeAmount} has been charged (${monthLateCancels} late cancels this month).`);
           }
         }
       }
@@ -1093,9 +1120,9 @@ export default function ClientPortal() {
           scrollbarWidth: "none", msOverflowStyle: "none",
         }}>
           {weekDates.map((d, i) => {
-            const isToday = d.toISOString().slice(0, 10) === todayISO();
-            const dayClasses = classes.filter(c => c.dayOfWeek === i);
-            const isDayPast = d.toISOString().slice(0, 10) < todayISO();
+            const isToday = localISO(d) === todayISO();
+            const dayClasses = classes.filter(c => c.dayOfWeek === i && !c.exceptions?.includes(localISO(d)));
+            const isDayPast = localISO(d) < todayISO();
             return (
               <div key={i} style={{
                 textAlign: "center", padding: "10px 14px", borderRadius: 14,
@@ -1119,8 +1146,9 @@ export default function ClientPortal() {
 
         {/* Classes by day */}
         {DAYS_SHORT.map((day, dayIdx) => {
+          const dayISO = localISO(weekDates[dayIdx]);
           const dayClasses = classes
-            .filter(c => c.dayOfWeek === dayIdx)
+            .filter(c => c.dayOfWeek === dayIdx && !c.exceptions?.includes(dayISO))
             .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
           if (dayClasses.length === 0) return null;
 
@@ -1246,12 +1274,18 @@ export default function ClientPortal() {
         if (!text) return;
         setCommunityPosts(prev => prev.map(p => {
           if (p.id !== postId) return p;
+          const nowISO = new Date().toISOString();
+          // Write BOTH shapes (text/content, createdAt/timestamp) so staff + client renderers agree
           const comment = {
             id: crypto.randomUUID(),
             authorId: myId,
             authorName: `${member.firstName || "Member"} ${member.lastName || ""}`.trim(),
+            text,
             content: text,
-            createdAt: new Date().toISOString(),
+            createdAt: nowISO,
+            timestamp: nowISO,
+            likes: [],
+            replies: [],
           };
           return { ...p, comments: [...(p.comments || []), comment] };
         }));
@@ -1389,9 +1423,9 @@ export default function ClientPortal() {
                         <div style={{ flex: 1 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span style={{ fontSize: 12, fontWeight: 600, color: B.text }}>{c.authorName}</span>
-                            <span style={{ fontSize: 10, color: B.dim }}>{timeAgo(c.createdAt)}</span>
+                            <span style={{ fontSize: 10, color: B.dim }}>{timeAgo(c.createdAt ?? c.timestamp)}</span>
                           </div>
-                          <p style={{ fontSize: 13, color: B.text, margin: "2px 0 0", lineHeight: 1.5 }}>{c.content}</p>
+                          <p style={{ fontSize: 13, color: B.text, margin: "2px 0 0", lineHeight: 1.5 }}>{c.text ?? c.content ?? ""}</p>
                         </div>
                       </div>
                     ))}
@@ -1974,8 +2008,8 @@ export default function ClientPortal() {
     const startDow = firstDay.getDay(); // 0=Sun
     const attendanceDates = new Set(
       myAttendance
-        .filter(a => { const d = new Date(a.date || a.timestamp); return d.getFullYear() === year && d.getMonth() === month; })
-        .map(a => new Date(a.date || a.timestamp).getDate())
+        .filter(a => { const d = new Date(a.checkInTime || a.date || a.timestamp); return d.getFullYear() === year && d.getMonth() === month; })
+        .map(a => new Date(a.checkInTime || a.date || a.timestamp).getDate())
     );
 
     return (
@@ -2245,18 +2279,7 @@ export default function ClientPortal() {
 
         {/* Message Coach */}
         <button
-          onClick={() => {
-            // Find or create a conversation with the coach for this client
-            const myMemberId = currentUser?.memberId;
-            if (!myMemberId) return;
-            const convs = Array.isArray(messages) ? messages : [];
-            let myConv = convs.find(c => c.participants?.includes(myMemberId));
-            if (!myConv) {
-              myConv = { id: crypto.randomUUID(), participants: [myMemberId], messages: [], lastActivity: new Date().toISOString() };
-              setMessages([...convs, myConv]);
-            }
-            setClientChatOpen(myConv.id);
-          }}
+          onClick={openCoachChat}
           style={{
             ...touchBtn(B.card, B.text, { width: "100%", marginTop: 8, border: `1px solid ${B.border}`, gap: 10 }),
             boxSizing: "border-box",
@@ -2282,18 +2305,6 @@ export default function ClientPortal() {
         >
           <span style={{ fontSize: 18 }}>&#x270F;&#xFE0F;</span>
           Edit Profile
-        </button>
-
-        {/* Payment Methods */}
-        <button
-          onClick={() => { /* TODO: payment modal */ }}
-          style={{
-            ...touchBtn(B.card, B.text, { width: "100%", marginTop: 8, border: `1px solid ${B.border}`, gap: 10 }),
-            boxSizing: "border-box",
-          }}
-        >
-          <span style={{ fontSize: 18 }}>&#x1F4B3;</span>
-          My Payment Methods
         </button>
 
         {/* Sign Out */}
@@ -2372,10 +2383,8 @@ export default function ClientPortal() {
     setRwShowDrawer(false);
   }, [resolveRemoteExercises]);
 
-  // Request notification permission on first load of client portal
-  useEffect(() => {
-    requestPermission();
-  }, []);
+  // NOTE: notification permission is intentionally NOT requested on mount —
+  // browsers auto-deny permission prompts that lack a user gesture.
 
   // Timer for remote workout
   useEffect(() => {
@@ -3055,14 +3064,14 @@ export default function ClientPortal() {
   /* ─────────── QUICK CHECK-IN ─────────── */
   const [checkInMsg, setCheckInMsg] = useState(null);
 
-  const [clientAttendance, setClientAttendance] = useLocalStorage("hf_attendance", []);
+  // P5: reuse the single hf_attendance hook instance declared at the top of the component
 
   const isCheckedInForClass = (classId) => {
     const today = todayISO();
-    return clientAttendance.some(a => a.memberId === member?.id && (a.checkInTime || a.timestamp || a.date || "").slice(0, 10) === today && a.classId === classId && !a.noShow);
+    return attendance.some(a => a.memberId === member?.id && (a.checkInTime || a.timestamp || a.date || "").slice(0, 10) === today && a.classId === classId && !a.noShow);
   };
 
-  const isCheckedInToday = clientAttendance.some(a => a.memberId === member?.id && (a.checkInTime || a.timestamp || a.date || "").slice(0, 10) === todayISO() && !a.noShow);
+  const isCheckedInToday = attendance.some(a => a.memberId === member?.id && (a.checkInTime || a.timestamp || a.date || "").slice(0, 10) === todayISO() && !a.noShow);
 
   const handleQuickCheckIn = (cls) => {
     if (isCheckedInForClass(cls?.id)) {
@@ -3070,7 +3079,7 @@ export default function ClientPortal() {
       setTimeout(() => setCheckInMsg(null), 2500);
       return;
     }
-    setClientAttendance(prev => [...prev, {
+    setAttendance(prev => [...prev, {
       id: crypto.randomUUID(),
       memberId: member.id,
       checkInTime: new Date().toISOString(),
@@ -3142,7 +3151,9 @@ export default function ClientPortal() {
     );
   }
 
-  if (member && !member.membershipPlanId) {
+  // P8: only hard-lock members whose membership is explicitly inactive/cancelled \u2014
+  // plan-less active members (e.g. empty membershipPlanId) keep full portal access
+  if (member && ["inactive", "cancelled"].includes(member.membershipStatus)) {
     return (
       <div style={{ ...shell, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <div style={{ textAlign: "center", padding: 40, maxWidth: 400 }}>
@@ -3153,7 +3164,7 @@ export default function ClientPortal() {
             Welcome, {member.firstName}!
           </h2>
           <p style={{ color: B.muted, fontSize: 15, lineHeight: 1.6, margin: "0 0 24px" }}>
-            You don't have an active membership yet. Sign up for a plan to get full access to your workouts, booking, progress tracking, and more.
+            You don't have an active membership right now. Sign up for a plan to get full access to your workouts, booking, progress tracking, and more.
           </p>
           <p style={{ color: B.muted, fontSize: 13, margin: "0 0 24px" }}>
             Contact your gym to get started with a membership plan.
@@ -3176,10 +3187,12 @@ export default function ClientPortal() {
         if (!conv) return null;
         const myMemberId = currentUser?.memberId;
         const chatMsgs = conv.messages || [];
-        const sendClientMsg = () => {
-          if (!clientChatText.trim()) return;
-          const msg = { id: crypto.randomUUID(), senderId: myMemberId, text: clientChatText.trim(), timestamp: new Date().toISOString(), read: false };
-          setMessages(prev => (Array.isArray(prev) ? prev : []).map(c => c.id === clientChatOpen ? { ...c, messages: [...c.messages, msg], lastActivity: msg.timestamp } : c));
+        const sendClientMsg = (textOverride) => {
+          const text = (typeof textOverride === "string" ? textOverride : clientChatText).trim();
+          if (!text) return;
+          const nowISO = new Date().toISOString();
+          const msg = { id: crypto.randomUUID(), senderId: myMemberId, text, content: text, timestamp: nowISO, createdAt: nowISO, read: false };
+          setMessages(prev => (Array.isArray(prev) ? prev : []).map(c => c.id === clientChatOpen ? { ...c, messages: [...(c.messages || []), msg], lastActivity: msg.timestamp } : c));
           setClientChatText("");
         };
         return (
@@ -3209,9 +3222,9 @@ export default function ClientPortal() {
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", background: B.card, borderTop: "1px solid " + B.border }}>
               <input value={clientChatText} onChange={e => setClientChatText(e.target.value)} onKeyDown={e => { if (e.key === "Enter") sendClientMsg(); }} placeholder="Aa" style={{ flex: 1, background: B.darker, border: "1px solid " + B.border, borderRadius: 20, padding: "10px 16px", color: B.text, fontSize: 14, outline: "none" }} />
               {clientChatText.trim() ? (
-                <button onClick={sendClientMsg} style={{ background: B.accent, color: "#fff", border: "none", borderRadius: "50%", width: 38, height: 38, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{"\u27A4"}</button>
+                <button onClick={() => sendClientMsg()} style={{ background: B.accent, color: "#fff", border: "none", borderRadius: "50%", width: 38, height: 38, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{"\u27A4"}</button>
               ) : (
-                <button onClick={() => { setClientChatText("\uD83D\uDC4D"); setTimeout(sendClientMsg, 50); }} style={{ background: "none", border: "none", fontSize: 26, cursor: "pointer", color: B.accent }}>{"\uD83D\uDC4D"}</button>
+                <button onClick={() => sendClientMsg("\uD83D\uDC4D")} style={{ background: "none", border: "none", fontSize: 26, cursor: "pointer", color: B.accent }}>{"\uD83D\uDC4D"}</button>
               )}
             </div>
           </div>

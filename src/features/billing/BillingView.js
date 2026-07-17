@@ -316,9 +316,11 @@ export default function BillingView() {
   const kpi = useMemo(() => {
     const now = new Date();
     const thisMonth = now.toISOString().slice(0, 7);
+    // Partial refunds keep the payment "paid" with a refundedAmount — count only the net.
+    const netAmount = (p) => p.amount - (p.refundedAmount || 0);
     const monthPayments = payments.filter(p => p.date.startsWith(thisMonth) && p.status === "paid");
-    const totalRevenue = monthPayments.reduce((s, p) => s + p.amount, 0);
-    const allRevenue = payments.filter(p => p.status === "paid").reduce((s, p) => s + p.amount, 0);
+    const totalRevenue = monthPayments.reduce((s, p) => s + netAmount(p), 0);
+    const allRevenue = payments.filter(p => p.status === "paid").reduce((s, p) => s + netAmount(p), 0);
     const activeCount = members.filter(m => m.membershipPlanId).length;
     const overdueCount = payments.filter(p => p.status === "overdue").length;
     const mrr = members.reduce((sum, m) => {
@@ -350,9 +352,14 @@ export default function BillingView() {
   const markPaid = (id) => setPayments(prev => prev.map(p => p.id === id ? { ...p, status: "paid" } : p));
   const [refundTarget, setRefundTarget] = useState(null);
   const processRefund = (payment, refundAmount, reason) => {
+    if (!(refundAmount > 0)) return;
     setPayments(prev => {
-      const updated = prev.map(p => p.id === payment.id ? { ...p, status: "refunded", refundedAt: new Date().toISOString(), refundAmount, refundReason: reason } : p);
-      // Add a refund record
+      // G8: partial refunds keep the payment "paid" and just accumulate refundedAmount,
+      // so revenue sums only lose the refunded portion. Full refunds flip to "refunded".
+      const totalRefunded = (payment.refundedAmount || 0) + refundAmount;
+      const isFullyRefunded = totalRefunded >= payment.amount;
+      const updated = prev.map(p => p.id === payment.id ? { ...p, status: isFullyRefunded ? "refunded" : "paid", refundedAt: new Date().toISOString(), refundedAmount: totalRefunded, refundReason: reason } : p);
+      // Add a refund record (status "refund" — excluded from revenue sums, shown in history)
       const refundRecord = {
         id: "ref_" + Date.now(),
         date: new Date().toISOString().slice(0, 10),
@@ -374,18 +381,21 @@ export default function BillingView() {
   const handlePaymentSuccess = (detail) => {
     const target = paymentTarget;
     if (!target) return;
+    const methodLabel = detail.method === "cash" ? "Cash" : detail.method === "check" ? ("Check" + (detail.checkNumber ? " #" + detail.checkNumber : "")) : detail.method === "ach" ? "ACH" : (detail.label || "Card");
     if (target.paymentId) {
-      markPaid(target.paymentId);
+      // G5/G6: record what was actually charged (post-discount) and the FEO flag
+      setPayments(prev => prev.map(p => p.id === target.paymentId ? { ...p, status: "paid", amount: detail.amount || p.amount, method: methodLabel, isFEO: !!detail.isFEO } : p));
     } else {
-      const methodLabel = detail.method === "cash" ? "Cash" : detail.method === "check" ? ("Check" + (detail.checkNumber ? " #" + detail.checkNumber : "")) : detail.method === "ach" ? "ACH" : (detail.label || "Card");
       const newPayment = {
         id: "pay_" + Date.now(),
         date: new Date().toISOString().slice(0, 10),
         member: target.memberName || "Manual",
+        memberId: target.memberId || null,
         plan: target.planName || "---",
         amount: detail.amount || target.amount,
         status: "paid",
         method: methodLabel,
+        isFEO: !!detail.isFEO,
       };
       setPayments(prev => [newPayment, ...prev]);
 
@@ -517,7 +527,8 @@ export default function BillingView() {
       {/* Refund Modal */}
       {refundTarget && (() => {
         const RefundModal = () => {
-          const [refundAmount, setRefundAmount] = useState(refundTarget.amount);
+          const maxRefundable = refundTarget.amount - (refundTarget.refundedAmount || 0);
+          const [refundAmount, setRefundAmount] = useState(maxRefundable);
           const [reason, setReason] = useState("");
           const [refundType, setRefundType] = useState("full");
           return (
@@ -531,7 +542,7 @@ export default function BillingView() {
                 </div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
                   {[{ key: "full", label: "Full Refund" }, { key: "partial", label: "Partial Refund" }].map(t => (
-                    <button key={t.key} onClick={() => { setRefundType(t.key); if (t.key === "full") setRefundAmount(refundTarget.amount); }}
+                    <button key={t.key} onClick={() => { setRefundType(t.key); if (t.key === "full") setRefundAmount(maxRefundable); }}
                       style={{ flex: 1, padding: "10px 0", borderRadius: 8, cursor: "pointer", border: refundType === t.key ? `2px solid ${B.red}` : "1px solid " + B.border, background: refundType === t.key ? B.red + "15" : B.dark, color: refundType === t.key ? B.red : B.muted, fontWeight: 700, fontSize: 13, transition: "all 0.15s" }}>
                       {t.label}
                     </button>
@@ -540,7 +551,7 @@ export default function BillingView() {
                 {refundType === "partial" && (
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ fontSize: 12, color: B.muted, marginBottom: 4, fontWeight: 600 }}>Refund Amount ($)</div>
-                    <input type="number" step="0.01" min="0.01" max={refundTarget.amount} value={refundAmount} onChange={e => setRefundAmount(Math.min(parseFloat(e.target.value) || 0, refundTarget.amount))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 16, fontWeight: 700, outline: "none", boxSizing: "border-box", textAlign: "center" }} />
+                    <input type="number" step="0.01" min="0.01" max={maxRefundable} value={refundAmount} onChange={e => setRefundAmount(Math.min(parseFloat(e.target.value) || 0, maxRefundable))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 16, fontWeight: 700, outline: "none", boxSizing: "border-box", textAlign: "center" }} />
                   </div>
                 )}
                 <div style={{ marginBottom: 16 }}>
@@ -671,7 +682,6 @@ export default function BillingView() {
           memberEmail={paymentTarget.memberEmail}
           description={paymentTarget.description}
           memberId={paymentTarget.memberId}
-          savedMethods={paymentTarget.memberId ? getMemberPaymentMethods(paymentTarget.memberId) : []}
           onSuccess={handlePaymentSuccess}
         />
       )}
@@ -990,7 +1000,7 @@ export default function BillingView() {
                           {(p.status === "overdue" || p.status === "pending") && (
                             <>
                               <button onClick={() => sendReminder(p.member)} style={btnSmall(B.orange)}>Remind</button>
-                              <button onClick={() => setPaymentTarget({ amount: p.amount, memberName: p.member, memberEmail: "", description: p.plan + " - " + p.member, paymentId: p.id, memberId: null, planName: p.plan })} style={btnSmall(B.accent)}>Collect</button>
+                              <button onClick={() => setPaymentTarget({ amount: p.amount, memberName: p.member, memberEmail: "", description: p.plan + " - " + p.member, paymentId: p.id, memberId: p.memberId || null, planName: p.plan })} style={btnSmall(B.accent)}>Collect</button>
                               <button onClick={() => markPaid(p.id)} style={btnSmall(B.green)}>Mark Paid</button>
                             </>
                           )}

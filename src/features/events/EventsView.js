@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useAuth } from "../../context/AuthContext";
+import { localISO, parseLocalDate } from "../../utils/dates";
 import PlanAccessPicker, { PlanLockBadge } from "../../components/ui/PlanAccessPicker";
 import { ImageUploadZone } from "../../components/shared/ImageUpload";
 
@@ -16,14 +18,14 @@ function fmtTime(t) {
   const ampm = +h < 12 ? "AM" : "PM";
   return `${hr}:${m} ${ampm}`;
 }
-function today() { return new Date().toISOString().slice(0, 10); }
+function today() { return localISO(); }
 
 function generateDemoEvents() {
   const now = new Date();
   const d = (offset) => {
     const dt = new Date(now);
     dt.setDate(dt.getDate() + offset);
-    return dt.toISOString().slice(0, 10);
+    return localISO(dt);
   };
   return [
     { id: uuid(), title: "Community Workout", description: "Join us for a full-body workout anyone can do. All fitness levels welcome! We'll break into groups and scale appropriately. Bring water and a towel.", date: d(3), startTime: "09:00", endTime: "10:00", locationType: "in-person", locationUrl: "123 Fitness Ave, Suite 200", coverImage: "", recurring: { frequency: "weekly", dayOfWeek: new Date(now.getTime() + 3 * 86400000).getDay() }, rsvps: ["m1", "m2", "m3", "m4", "m5", "m6", "m7"], createdBy: "coach", createdAt: new Date(now.getTime() - 7 * 86400000).toISOString(), allowedPlanIds: [] },
@@ -36,7 +38,20 @@ function generateDemoEvents() {
 }
 
 const MEMBER_NAMES = { m1: "Alex R.", m2: "Jordan T.", m3: "Sam K.", m4: "Morgan L.", m5: "Casey P.", m6: "Riley W.", m7: "Jamie D.", m8: "Quinn B.", m9: "Avery N.", m10: "Drew M.", m11: "Taylor S.", m12: "Charlie F." };
-const CURRENT_USER = "m1";
+
+// When a recurring event's date has passed, show the next occurrence instead of moving it to Past.
+function nextOccurrenceDate(ev, todayStr) {
+  const freq = ev.recurring?.frequency;
+  if ((freq !== "weekly" && freq !== "monthly") || ev.date >= todayStr) return ev.date;
+  const d = parseLocalDate(ev.date);
+  const t = parseLocalDate(todayStr);
+  if (!d || !t) return ev.date;
+  while (d < t) {
+    if (freq === "weekly") d.setDate(d.getDate() + 7);
+    else d.setMonth(d.getMonth() + 1);
+  }
+  return localISO(d);
+}
 
 const ACCENT_COLORS = ["#8fbf3b", "#3b82f6", "#f59e0b", "#ef4444", "#a855f7", "#06b6d4"];
 function eventColor(id) { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0; return ACCENT_COLORS[Math.abs(h) % ACCENT_COLORS.length]; }
@@ -93,13 +108,13 @@ function MiniCalendar({ events, month, year, onChangeMonth, B }) {
 }
 
 /* ---- Avatar Row ---- */
-function AvatarRow({ rsvps, B, max = 5 }) {
+function AvatarRow({ rsvps, B, max = 5, names = MEMBER_NAMES }) {
   const shown = rsvps.slice(0, max);
   const extra = rsvps.length - max;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
       {shown.map((id, i) => {
-        const name = MEMBER_NAMES[id] || id;
+        const name = names[id] || id;
         return (
           <div key={id} title={name} style={{ width: 28, height: 28, borderRadius: "50%", background: ACCENT_COLORS[i % ACCENT_COLORS.length], color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", border: `2px solid ${B.card}`, marginLeft: i > 0 ? -8 : 0, zIndex: max - i }}>
             {name.charAt(0)}
@@ -112,8 +127,8 @@ function AvatarRow({ rsvps, B, max = 5 }) {
 }
 
 /* ---- Event Card ---- */
-function EventCard({ ev, B, onRsvp, onClick }) {
-  const isGoing = ev.rsvps.includes(CURRENT_USER);
+function EventCard({ ev, B, onRsvp, onClick, meId, names }) {
+  const isGoing = ev.rsvps.includes(meId);
   const color = eventColor(ev.id);
   return (
     <div
@@ -149,7 +164,7 @@ function EventCard({ ev, B, onRsvp, onClick }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <AvatarRow rsvps={ev.rsvps} B={B} />
+            <AvatarRow rsvps={ev.rsvps} B={B} names={names} />
             <span style={{ fontSize: 11, color: B.muted }}>{ev.rsvps.length} going</span>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
@@ -172,9 +187,9 @@ function EventCard({ ev, B, onRsvp, onClick }) {
 }
 
 /* ---- Event Detail Modal ---- */
-function EventDetailModal({ ev, B, onClose, onRsvp }) {
+function EventDetailModal({ ev, B, onClose, onRsvp, meId, names }) {
   if (!ev) return null;
-  const isGoing = ev.rsvps.includes(CURRENT_USER);
+  const isGoing = ev.rsvps.includes(meId);
   const color = eventColor(ev.id);
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -227,7 +242,7 @@ function EventDetailModal({ ev, B, onClose, onRsvp }) {
             <div style={{ fontSize: 12, color: B.muted, fontWeight: 600, marginBottom: 8 }}>Attendees ({ev.rsvps.length})</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {ev.rsvps.map((id) => {
-                const name = MEMBER_NAMES[id] || id;
+                const name = names[id] || id;
                 return (
                   <div key={id} style={{ display: "flex", alignItems: "center", gap: 6, background: B.dark, borderRadius: 99, padding: "4px 12px 4px 4px" }}>
                     <div style={{ width: 24, height: 24, borderRadius: "50%", background: B.accent, color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{name.charAt(0)}</div>
@@ -360,18 +375,34 @@ function NewEventModal({ B, onClose, onSave }) {
 /* ==== MAIN VIEW ==== */
 export default function EventsView() {
   const B = useTheme();
+  const { currentUser } = useAuth();
   const [events, setEvents] = useLocalStorage("hf_community_events", []);
+  const [members] = useLocalStorage("hf_members", []);
   const [tab, setTab] = useState("upcoming");
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear());
 
+  const meId = currentUser?.memberId || currentUser?.id || "m1";
+  const memberNames = useMemo(() => {
+    const map = { ...MEMBER_NAMES };
+    (Array.isArray(members) ? members : []).forEach((m) => {
+      map[m.id] = `${m.firstName || ""} ${m.lastName || ""}`.trim() || m.email || m.id;
+    });
+    if (currentUser?.id) map[currentUser.id] = currentUser.displayName || currentUser.username || map[currentUser.id] || "Coach";
+    return map;
+  }, [members, currentUser]);
+
   const todayStr = today();
   const safeEvents = Array.isArray(events) ? events : [];
   const { upcoming, past } = useMemo(() => {
     const u = [], p = [];
-    safeEvents.forEach((ev) => (ev.date >= todayStr ? u : p).push(ev));
+    safeEvents.forEach((ev) => {
+      const effDate = nextOccurrenceDate(ev, todayStr);
+      const shown = effDate !== ev.date ? { ...ev, date: effDate } : ev;
+      (shown.date >= todayStr ? u : p).push(shown);
+    });
     u.sort((a, b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime));
     p.sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime));
     return { upcoming: u, past: p };
@@ -383,15 +414,15 @@ export default function EventsView() {
     setEvents((prev) =>
       prev.map((ev) => {
         if (ev.id !== id) return ev;
-        const has = ev.rsvps.includes(CURRENT_USER);
-        return { ...ev, rsvps: has ? ev.rsvps.filter((r) => r !== CURRENT_USER) : [...ev.rsvps, CURRENT_USER] };
+        const has = ev.rsvps.includes(meId);
+        return { ...ev, rsvps: has ? ev.rsvps.filter((r) => r !== meId) : [...ev.rsvps, meId] };
       })
     );
     // Update selectedEvent if open
     setSelectedEvent((prev) => {
       if (!prev || prev.id !== id) return prev;
-      const has = prev.rsvps.includes(CURRENT_USER);
-      return { ...prev, rsvps: has ? prev.rsvps.filter((r) => r !== CURRENT_USER) : [...prev.rsvps, CURRENT_USER] };
+      const has = prev.rsvps.includes(meId);
+      return { ...prev, rsvps: has ? prev.rsvps.filter((r) => r !== meId) : [...prev.rsvps, meId] };
     });
   };
 
@@ -434,7 +465,7 @@ export default function EventsView() {
       </div>
 
       {/* Mini Calendar */}
-      <MiniCalendar events={safeEvents} month={calMonth} year={calYear} onChangeMonth={changeMonth} B={B} />
+      <MiniCalendar events={[...upcoming, ...past]} month={calMonth} year={calYear} onChangeMonth={changeMonth} B={B} />
 
       {/* Event List */}
       {displayed.length === 0 ? (
@@ -442,13 +473,13 @@ export default function EventsView() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {displayed.map((ev) => (
-            <EventCard key={ev.id} ev={ev} B={B} onRsvp={handleRsvp} onClick={setSelectedEvent} />
+            <EventCard key={ev.id} ev={ev} B={B} onRsvp={handleRsvp} onClick={setSelectedEvent} meId={meId} names={memberNames} />
           ))}
         </div>
       )}
 
       {/* Detail Modal */}
-      {selectedEvent && <EventDetailModal ev={selectedEvent} B={B} onClose={() => setSelectedEvent(null)} onRsvp={handleRsvp} />}
+      {selectedEvent && <EventDetailModal ev={selectedEvent} B={B} onClose={() => setSelectedEvent(null)} onRsvp={handleRsvp} meId={meId} names={memberNames} />}
 
       {/* New Event Modal */}
       {showNew && <NewEventModal B={B} onClose={() => setShowNew(false)} onSave={handleNewEvent} />}

@@ -10,13 +10,15 @@ import { sendEmail } from "../../utils/messaging";
 const STATUS_COLORS = (B) => ({ active: B.green, trial: B.orange, frozen: B.blue, inactive: B.red });
 const STATUS_OPTIONS = ["All", "Active", "Trial", "Frozen", "Inactive"];
 
-// Derive effective status: no plan = inactive, trial plan = trial, otherwise use stored status
+// Derive effective status: no plan or stored inactive = inactive, trial plan/status = trial, otherwise use stored status
 const getEffectiveStatus = (m, plans) => {
+  if (m.membershipStatus === "inactive") return "inactive";
   if (!m.membershipPlanId) return "inactive";
   if (plans) {
     const plan = plans.find(p => p.id === m.membershipPlanId);
     if (plan?.isTrial) return "trial";
   }
+  if (m.membershipStatus === "trial") return "trial";
   if (m.membershipStatus === "frozen") return "frozen";
   return "active";
 };
@@ -47,6 +49,7 @@ export default function MembersView() {
   const { log: changelog, markUndone, logChange } = useMemberChangelog();
   const [plans] = useLocalStorage("hf_plans", []);
   const [attendance] = useLocalStorage("hf_attendance", []);
+  const [, setSchedule] = useLocalStorage("hf_schedule", []);
   const sc = STATUS_COLORS(B);
   const [showHistory, setShowHistory] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
@@ -55,7 +58,9 @@ export default function MembersView() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [sortBy, setSortBy] = useState("name-az"); // name-az, name-za, date-new, date-old, birthday, plan
+  const [sortBy, setSortBy] = useState("name-az");
+  const [showAdvFilters, setShowAdvFilters] = useState(false);
+  const [filters, setFilters] = useState({ plan: "", birthMonth: "", gender: "", ageMin: "", ageMax: "", joinedAfter: "", joinedBefore: "", absentDays: "", minAttendance: "", maxAttendance: "" });
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState(emptyForm());
@@ -206,6 +211,24 @@ export default function MembersView() {
     }
   };
 
+  // Attendance counts per member (for filters)
+  const attendanceCounts = useMemo(() => {
+    const counts = {};
+    attendance.forEach(a => { if (!a.noShow && a.memberId) counts[a.memberId] = (counts[a.memberId] || 0) + 1; });
+    return counts;
+  }, [attendance]);
+
+  const lastAttendanceDate = useMemo(() => {
+    const dates = {};
+    attendance.forEach(a => {
+      if (!a.noShow && a.memberId && a.checkInTime) {
+        const d = a.checkInTime.slice(0, 10);
+        if (!dates[a.memberId] || d > dates[a.memberId]) dates[a.memberId] = d;
+      }
+    });
+    return dates;
+  }, [attendance]);
+
   // filtering + sorting
   const filtered = members.filter((m) => {
     const q = search.toLowerCase();
@@ -213,7 +236,36 @@ export default function MembersView() {
       `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) ||
       (m.email || "").toLowerCase().includes(q);
     const matchesStatus = statusFilter === "All" || getEffectiveStatus(m, plans) === statusFilter.toLowerCase();
-    return matchesSearch && matchesStatus;
+    if (!matchesSearch || !matchesStatus) return false;
+
+    // Advanced filters
+    if (filters.plan && m.membershipPlanId !== filters.plan) return false;
+    if (filters.birthMonth) {
+      const dob = m.dob ? new Date(m.dob) : null;
+      if (!dob || dob.getMonth() !== Number(filters.birthMonth) - 1) return false;
+    }
+    if (filters.gender && (m.gender || "").toLowerCase() !== filters.gender.toLowerCase()) return false;
+    if (filters.ageMin || filters.ageMax) {
+      const dob = m.dob ? new Date(m.dob) : null;
+      if (!dob) return false;
+      const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+      if (filters.ageMin && age < Number(filters.ageMin)) return false;
+      if (filters.ageMax && age > Number(filters.ageMax)) return false;
+    }
+    if (filters.joinedAfter && (m.startDate || m.createdAt || "") < filters.joinedAfter) return false;
+    if (filters.joinedBefore && (m.startDate || m.createdAt || "") > filters.joinedBefore) return false;
+    if (filters.absentDays) {
+      const last = lastAttendanceDate[m.id];
+      if (!last) { if (Number(filters.absentDays) > 0) { /* no attendance = always absent, passes */ } }
+      else {
+        const daysSince = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+        if (daysSince < Number(filters.absentDays)) return false;
+      }
+    }
+    if (filters.minAttendance && (attendanceCounts[m.id] || 0) < Number(filters.minAttendance)) return false;
+    if (filters.maxAttendance && (attendanceCounts[m.id] || 0) > Number(filters.maxAttendance)) return false;
+
+    return true;
   }).sort((a, b) => {
     switch (sortBy) {
       case "name-az": return `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`);
@@ -244,6 +296,7 @@ export default function MembersView() {
       street: m.address?.street || "", city: m.address?.city || "",
       state: m.address?.state || "", zip: m.address?.zip || "",
       holdStartDate: m.holdStartDate || "", holdEndDate: m.holdEndDate || "",
+      usePassword: !!(m.pin && !/^\d{1,4}$/.test(m.pin)),
     });
     setModalOpen(true);
   };
@@ -263,6 +316,11 @@ export default function MembersView() {
     };
     if (!data.firstName || !data.lastName) return;
     if (!editId && !data.dob) { showToast("Date of birth is required", "error"); return; }
+    // Never save a member without a credential — empty pin would allow blank-password logins
+    if (!data.pin) {
+      const existingPin = editId ? members.find(m => m.id === editId)?.pin : "";
+      data.pin = existingPin || String(Math.floor(1000 + Math.random() * 9000));
+    }
     const fullName = data.firstName + " " + data.lastName;
     if (editId) {
       // Only include status changes for edits (frozen/unfrozen)
@@ -277,30 +335,14 @@ export default function MembersView() {
           data.holdStartDate = holdStart;
           data.holdEndDate = holdEnd;
           logEvent(editId, fullName, "freeze", { oldStatus, newStatus, holdStartDate: holdStart, holdEndDate: holdEnd });
-          // Remove bookings ONLY during the hold period (not after holdEndDate)
-          try {
-            const sched = JSON.parse(localStorage.getItem("hf_schedule") || "[]");
-            const updated = sched.map(c => {
-              // If hold has an end date, only remove bookings for sessions on days within the hold period
-              // Sessions are recurring by day-of-week, so we remove from all if no end date
-              if (holdEnd) {
-                // Keep bookings — they can re-book for after hold ends
-                // Only remove if it's a current/upcoming session during hold
-                return {
-                  ...c,
-                  bookings: (c.bookings || []).filter(id => id !== editId),
-                  waitlist: (c.waitlist || []).filter(id => id !== editId),
-                };
-              }
-              return {
-                ...c,
-                bookings: (c.bookings || []).filter(id => id !== editId),
-                waitlist: (c.waitlist || []).filter(id => id !== editId),
-              };
-            });
-            localStorage.setItem("hf_schedule", JSON.stringify(updated));
-          } catch {}
-        } else if (oldStatus === "frozen" && newStatus === "active") {
+          // Sessions recur by day-of-week (not tied to dates), so remove the member from
+          // all bookings/waitlists for the hold; they can re-book once the hold ends.
+          setSchedule(prev => (Array.isArray(prev) ? prev : []).map(c => ({
+            ...c,
+            bookings: (c.bookings || []).filter(id => id !== editId),
+            waitlist: (c.waitlist || []).filter(id => id !== editId),
+          })));
+        } else if (oldStatus === "frozen") {
           data.holdStartDate = null;
           data.holdEndDate = null;
           logEvent(editId, fullName, "unfreeze", { oldStatus, newStatus });
@@ -346,7 +388,7 @@ export default function MembersView() {
     searchInput: { flex: 1, minWidth: 200, background: B.darker, border: "1px solid " + B.border, borderRadius: 8, padding: "10px 14px", color: B.text, fontSize: 14, outline: "none" },
     pills: { display: "flex", gap: 6, flexWrap: "wrap" },
     pill: (active) => ({ padding: "6px 14px", borderRadius: 20, border: "1px solid " + (active ? B.accent : B.border), background: active ? B.accent : "transparent", color: active ? "#fff" : B.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .15s" }),
-    grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340, 1fr))", gap: 14 },
+    grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 14 },
     card: { background: B.card, borderRadius: 12, border: "1px solid " + B.border, padding: 18, display: "flex", flexDirection: "column", gap: 10 },
     cardTop: { display: "flex", alignItems: "center", gap: 14 },
     avatar: (color) => ({ width: 46, height: 46, borderRadius: "50%", background: color + "22", color: color, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, flexShrink: 0 }),
@@ -434,7 +476,56 @@ export default function MembersView() {
             <button key={st} style={s.pill(statusFilter === st)} onClick={() => setStatusFilter(st)}>{st}</button>
           ))}
         </div>
+        <button onClick={() => setShowAdvFilters(!showAdvFilters)} style={{
+          padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
+          border: "1px solid " + (showAdvFilters || Object.values(filters).some(v => v) ? B.accent : B.border),
+          background: showAdvFilters ? B.accent + "15" : "transparent",
+          color: showAdvFilters || Object.values(filters).some(v => v) ? B.accent : B.muted,
+        }}>
+          {"\u2699\uFE0F"} Filters {Object.values(filters).filter(v => v).length > 0 ? `(${Object.values(filters).filter(v => v).length})` : ""}
+        </button>
       </div>
+
+      {/* Advanced Filters */}
+      {showAdvFilters && (() => {
+        const fInput = (label, key, type = "text", opts) => (
+          <div style={{ minWidth: 120 }}>
+            <label style={{ fontSize: 10, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 3 }}>{label}</label>
+            {opts ? (
+              <select value={filters[key]} onChange={e => setFilters(p => ({ ...p, [key]: e.target.value }))}
+                style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 12, outline: "none" }}>
+                <option value="">All</option>
+                {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            ) : (
+              <input type={type} value={filters[key]} onChange={e => setFilters(p => ({ ...p, [key]: e.target.value }))}
+                style={{ width: "100%", padding: "6px 8px", borderRadius: 6, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 12, outline: "none", boxSizing: "border-box" }} />
+            )}
+          </div>
+        );
+        const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        return (
+          <div style={{ background: B.card, border: "1px solid " + B.border, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+              {fInput("Plan", "plan", "text", plans.filter(p => p.active).map(p => ({ value: p.id, label: p.name })))}
+              {fInput("Birth Month", "birthMonth", "text", MONTHS.map((m, i) => ({ value: String(i + 1), label: m })))}
+              {fInput("Gender", "gender", "text", [{ value: "male", label: "Male" }, { value: "female", label: "Female" }])}
+              {fInput("Age Min", "ageMin", "number")}
+              {fInput("Age Max", "ageMax", "number")}
+              {fInput("Joined After", "joinedAfter", "date")}
+              {fInput("Joined Before", "joinedBefore", "date")}
+              {fInput("Absent 7+ Days", "absentDays", "number")}
+              {fInput("Min Attendance", "minAttendance", "number")}
+              {fInput("Max Attendance", "maxAttendance", "number")}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: B.dim }}>{filtered.length} matching</span>
+              <button onClick={() => setFilters({ plan: "", birthMonth: "", gender: "", ageMin: "", ageMax: "", joinedAfter: "", joinedBefore: "", absentDays: "", minAttendance: "", maxAttendance: "" })}
+                style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 11, cursor: "pointer" }}>Clear All</button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Merge Duplicates Panel */}
       {showMerge && duplicateGroups.length > 0 && (
@@ -451,7 +542,7 @@ export default function MembersView() {
                   </div>
                   <div style={{ fontSize: 11, color: B.muted, marginTop: 2 }}>
                     {g.reasons.join(" \u2022 ")}
-                    {g.a.email && <span> \u2022 {g.a.email}</span>}
+                    {g.a.email && <span>{" \u2022 "}{g.a.email}</span>}
                   </div>
                 </div>
                 <button onClick={() => startMerge(g)} style={{
@@ -574,9 +665,12 @@ export default function MembersView() {
           const m = members.find(x => x.id === entry.memberId);
           if (!m) return;
           if (entry.field === "membershipPlanId") {
-            updateMember(m.id, { membershipPlanId: entry.oldValue, cancelScheduled: null });
-            if (entry.action === "plan_assigned" || entry.action === "plan_changed") {
+            updateMember(m.id, { membershipPlanId: entry.oldValue, cancelScheduled: null, planEndDate: entry.oldPlanEndDate || null });
+            if (entry.action === "plan_assigned") {
               removeLatestEvent(m.id, "join");
+            } else if (entry.action === "plan_changed") {
+              const changeEvent = [...events].reverse().find(ev => ev.memberId === m.id && ["upgrade", "downgrade", "plan_change"].includes(ev.type));
+              if (changeEvent) removeLatestEvent(m.id, changeEvent.type);
             } else if (entry.action === "plan_removed" || entry.action === "cancel_instant") {
               removeLatestEvent(m.id, "cancel");
             }
@@ -825,7 +919,9 @@ export default function MembersView() {
                   <label style={s.label}>Status</label>
                   <select style={s.select} value={form.membershipStatus} onChange={(e) => set("membershipStatus", e.target.value)}>
                     <option value="active">Active</option>
+                    {form.membershipStatus === "trial" && <option value="trial">Trial</option>}
                     <option value="frozen">Frozen (Hold)</option>
+                    <option value="inactive">Inactive</option>
                   </select>
                 </div>
             </div>

@@ -5,6 +5,7 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
 import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
+import { localISO } from "../../utils/dates";
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 // Calendar hours — made dynamic via settings
@@ -81,7 +82,7 @@ export default function ScheduleView() {
   const HOURS = Array.from({length: scheduleSettings.endHour - scheduleSettings.startHour + 1}, (_, i) => i + scheduleSettings.startHour);
   const [privateSessions, setPrivateSessions] = useLocalStorage("hf_private_sessions", []);
   const [showPrivateLog, setShowPrivateLog] = useState(false);
-  const [privateForm, setPrivateForm] = useState({ memberId: "", coachId: "", date: new Date().toISOString().slice(0, 10), startTime: "", endTime: "", notes: "" });
+  const [privateForm, setPrivateForm] = useState({ memberId: "", coachId: "", date: localISO(), startTime: "", endTime: "", notes: "" });
 
   const monday = useMemo(() => {
     const m = getMonday(new Date());
@@ -104,7 +105,7 @@ export default function ScheduleView() {
   const getWorkoutSummary = (workout) => {
     if (!workout) return null;
     const sections = workout.sections || [];
-    const exerciseCount = sections.reduce((sum, s) => sum + (s.exercises ? s.exercises.length : 0), 0);
+    const exerciseCount = sections.reduce((sum, s) => sum + (s.slots ? s.slots.length : 0), 0);
     return { name: workout.name, phase: workout.phase || "", sections: sections.length, exercises: exerciseCount };
   };
 
@@ -133,7 +134,16 @@ export default function ScheduleView() {
 
   const handleSaveEdit = () => {
     if (!form.name.trim()) return;
-    setClasses(prev => prev.map(c => c.id === editingClassId ? { ...c, name: form.name, instructor: form.instructor, dayOfWeek: form.selectedDays.length > 0 ? form.selectedDays[0] : form.dayOfWeek, startTime: form.startTime, endTime: form.endTime, capacity: Number(form.capacity) || 8, recurring: form.recurring, workoutId: form.workoutId } : c));
+    const days = form.selectedDays.length > 0 ? form.selectedDays : [form.dayOfWeek];
+    const formFields = { name: form.name, instructor: form.instructor, startTime: form.startTime, endTime: form.endTime, capacity: Number(form.capacity) || 8, recurring: form.recurring, workoutId: form.workoutId };
+    setClasses(prev => {
+      // Update the edited class to the first selected day, then create one class per additional day (like creation does)
+      const updated = prev.map(c => c.id === editingClassId ? { ...c, ...formFields, dayOfWeek: days[0] } : c);
+      const extras = days.slice(1).map(day => ({
+        ...formFields, id: crypto.randomUUID(), dayOfWeek: day, bookings: [], waitlist: [],
+      }));
+      return [...updated, ...extras];
+    });
     setEditingClassId(null);
     setForm({...EMPTY_FORM});
     setShowNewModal(false);
@@ -142,7 +152,8 @@ export default function ScheduleView() {
   const handleDeleteClass = (id) => {
     const cls = classes.find(c => c.id === id);
     if (cls && cls.recurring) {
-      setDeleteConfirm({ id, name: cls.name, recurring: true });
+      // The instance being viewed is this class's day within the currently displayed week
+      setDeleteConfirm({ id, name: cls.name, recurring: true, date: localISO(weekDates[cls.dayOfWeek]) });
     } else {
       setClasses(prev => prev.filter(c => c.id !== id));
       setSelectedClass(null);
@@ -155,8 +166,8 @@ export default function ScheduleView() {
       // Delete this session (which represents all recurring instances)
       setClasses(prev => prev.filter(c => c.id !== deleteConfirm.id));
     } else {
-      // "Just this one" — mark it as non-recurring (single instance remains)
-      setClasses(prev => prev.map(c => c.id === deleteConfirm.id ? { ...c, recurring: false } : c));
+      // "Just this one" — add a per-date exception; recurrence continues on other dates
+      setClasses(prev => prev.map(c => c.id === deleteConfirm.id ? { ...c, exceptions: [...(c.exceptions || []), deleteConfirm.date] } : c));
     }
     setSelectedClass(null);
     setDeleteConfirm(null);
@@ -212,12 +223,12 @@ export default function ScheduleView() {
     const m = getMember(memberId);
     const cls = classes.find(c => c.id === classId);
     const memberName = m ? `${m.firstName} ${m.lastName}` : "Unknown";
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localISO();
 
     if (noShowSettings.autoCheckIn) {
-      // Auto check-in mode: remove the auto check-in record, mark as no-show WITHOUT counting against allotment
+      // Auto check-in mode: remove the auto check-in record, mark as no-show flagged to NOT count against allotment
       setAttendance(prev => {
-        const withoutAutoCheckin = prev.filter(a => !(a.memberId === memberId && a.classId === classId && a.checkInTime?.slice(0, 10) === todayStr && a.method === "auto"));
+        const withoutAutoCheckin = prev.filter(a => !(a.memberId === memberId && a.classId === classId && a.checkInTime && localISO(new Date(a.checkInTime)) === todayStr && a.method === "auto"));
         return [...withoutAutoCheckin, {
           id: crypto.randomUUID(),
           memberId,
@@ -229,7 +240,7 @@ export default function ScheduleView() {
         }];
       });
     } else {
-      // Standard mode: record as no-show (counts against allotment)
+      // Standard mode: record as no-show flagged to count against allotment
       setAttendance(prev => [...prev, {
         id: crypto.randomUUID(),
         memberId,
@@ -237,6 +248,7 @@ export default function ScheduleView() {
         method: "no-show",
         classId,
         noShow: true,
+        countsAgainstAllotment: true,
       }]);
     }
 
@@ -250,7 +262,7 @@ export default function ScheduleView() {
         member: memberName,
         memberId,
         amount: noShowSettings.feeAmount,
-        date: new Date().toISOString().slice(0, 10),
+        date: localISO(),
         status: "paid",
         method: "No-Show Fee",
         description: `No-show fee — ${cls?.name || "Session"}`,
@@ -357,8 +369,10 @@ export default function ScheduleView() {
               </div>
               {/* Day cells */}
               {DAYS.map((_, dayIdx) => {
+                const cellDate = localISO(weekDates[dayIdx]);
                 const dayClasses = classes.filter(c =>
                   c.dayOfWeek === dayIdx &&
+                  !(c.exceptions || []).includes(cellDate) &&
                   timeToMinutes(c.startTime) >= hour * 60 &&
                   timeToMinutes(c.startTime) < (hour + 1) * 60
                 );
@@ -370,18 +384,21 @@ export default function ScheduleView() {
                     {dayClasses.map((cls, ci) => {
                       const color = getSessionColor(cls.name);
                       const hasWorkout = cls.workoutId && getWorkout(cls.workoutId);
-                      const minuteOffset = timeToMinutes(cls.startTime) - hour * 60;
-                      const topPx = (minuteOffset / 60) * 48;
+                      const minuteOffset = timeToMinutes(cls.startTime) % 60;
+                      const isMidHour = minuteOffset > 0;
                       return (
                         <div key={cls.id} onClick={()=>setSelectedClass(cls)} style={{
                           background:color+"22",border:`1px solid ${color}55`,borderLeft:`3px solid ${color}`,
                           borderRadius:6,padding:"4px 6px",marginBottom:2,cursor:"pointer",
                           transition:"transform 0.1s",
-                          position:"absolute",top:topPx,left:2,right:2,
+                          marginLeft: isMidHour ? 8 : 0,
                         }}
                         onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
                         onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
                         >
+                          {isMidHour && (
+                            <div style={{height:2,width:12,background:color,borderRadius:1,marginBottom:2,opacity:0.7}} />
+                          )}
                           <div style={{display:"flex",alignItems:"center",gap:3}}>
                             <div style={{fontSize:11,fontWeight:700,color:B.text,lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1}}>{cls.name}</div>
                             {hasWorkout && (
@@ -391,7 +408,7 @@ export default function ScheduleView() {
                               }}>WOD</span>
                             )}
                           </div>
-                          <div style={{fontSize:9,color:B.muted}}>{fmtTime(cls.startTime)}-{fmtTime(cls.endTime)}</div>
+                          <div style={{fontSize: isMidHour ? 10 : 9,fontWeight: isMidHour ? 700 : 400,color: isMidHour ? color : B.muted}}>{fmtTime(cls.startTime)}-{fmtTime(cls.endTime)}</div>
                           <div style={{fontSize:9,color:B.muted}}>{cls.instructor}</div>
                           <div style={{fontSize:9,fontWeight:600,color:(cls.bookings?.length || 0)>=cls.capacity?B.orange:color}}>
                             {cls.bookings?.length || 0}/{cls.capacity} booked
@@ -498,7 +515,7 @@ export default function ScheduleView() {
                   </label>
                   {noShowSettings.autoCheckIn && (
                     <div style={{paddingLeft:24,fontSize:12,color:B.muted,lineHeight:1.5}}>
-                      When enabled, no-shows will NOT count against session allotment since the member was auto-checked in and then marked absent.
+                      When enabled, no-show records are flagged as exempt from session allotment since the member was auto-checked in and then marked absent.
                     </div>
                   )}
                   <div style={{borderTop:"1px solid "+B.border+"44",paddingTop:10}}></div>
@@ -549,8 +566,8 @@ export default function ScheduleView() {
               )}
               {(activeClass.bookings || []).map(mid => {
                 const m = getMember(mid);
-                const todayStr = new Date().toISOString().slice(0, 10);
-                const isAutoCheckedIn = noShowSettings.autoCheckIn && attendance.some(a => a.memberId === mid && a.classId === activeClass.id && a.checkInTime?.slice(0, 10) === todayStr && a.method === "auto");
+                const todayStr = localISO();
+                const isAutoCheckedIn = noShowSettings.autoCheckIn && attendance.some(a => a.memberId === mid && a.classId === activeClass.id && a.checkInTime && localISO(new Date(a.checkInTime)) === todayStr && a.method === "auto");
                 return (
                   <div key={mid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderRadius:8,background:isAutoCheckedIn ? B.green + "12" : B.darker,marginBottom:4,border:isAutoCheckedIn ? "1px solid " + B.green + "30" : "none"}}>
                     <span style={{fontSize:13,color:B.text,fontWeight:500}}>
@@ -606,7 +623,7 @@ export default function ScheduleView() {
                   {bookingDropdownOpen && bookingSearch.trim() && (() => {
                     const q = bookingSearch.toLowerCase();
                     const results = members
-                      .filter(m => !activeClass.bookings.includes(m.id) && !activeClass.waitlist.includes(m.id))
+                      .filter(m => !(activeClass.bookings || []).includes(m.id) && !(activeClass.waitlist || []).includes(m.id))
                       .filter(m => `${m.firstName} ${m.lastName}`.toLowerCase().includes(q))
                       .slice(0, 8);
                     if (results.length === 0) return null;
@@ -629,7 +646,7 @@ export default function ScheduleView() {
                   style={btn({background:B.accent,color:B.darker,padding:"10px 16px",opacity:bookingMemberId?"1":"0.5"})}
                   disabled={!bookingMemberId}
                 >
-                  {activeClass.bookings.length >= activeClass.capacity ? "Add to Waitlist" : "Book Member"}
+                  {(activeClass.bookings?.length || 0) >= activeClass.capacity ? "Add to Waitlist" : "Book Member"}
                 </button>
               </div>
             </div>
@@ -672,7 +689,7 @@ export default function ScheduleView() {
                 <label style={labelStyle}>Coach</label>
                 <select value={privateForm.coachId} onChange={e=>setPrivateForm(p=>({...p,coachId:e.target.value}))} style={{...inputStyle,width:140}}>
                   <option value="">Select...</option>
-                  {coaches.map(c=><option key={c.id} value={c.id}>{c.displayName||c.username}</option>)}
+                  {staffUsers.map(c=><option key={c.id} value={c.id}>{c.displayName||c.username}</option>)}
                 </select>
               </div>
               <div>
@@ -694,11 +711,11 @@ export default function ScheduleView() {
               <button onClick={()=>{
                 if(!privateForm.memberId||!privateForm.date) return;
                 const m=getMember(privateForm.memberId);
-                const c=coaches.find(x=>x.id===privateForm.coachId);
+                const c=staffUsers.find(x=>x.id===privateForm.coachId);
                 setPrivateSessions(prev=>[{id:crypto.randomUUID(),memberId:privateForm.memberId,memberName:m?`${m.firstName} ${m.lastName}`:"Unknown",coachId:privateForm.coachId,coachName:c?.displayName||c?.username||"",date:privateForm.date,startTime:privateForm.startTime,endTime:privateForm.endTime,notes:privateForm.notes,createdAt:new Date().toISOString()},...prev]);
                 // Also log as attendance
                 setAttendance(prev=>[...prev,{id:crypto.randomUUID(),memberId:privateForm.memberId,checkInTime:new Date(`${privateForm.date}T${privateForm.startTime||"09:00"}`).toISOString(),method:"private",classId:null}]);
-                setPrivateForm({memberId:"",coachId:"",date:new Date().toISOString().slice(0,10),startTime:"",endTime:"",notes:""});
+                setPrivateForm({memberId:"",coachId:"",date:localISO(),startTime:"",endTime:"",notes:""});
               }} style={btn({background:B.accent,color:"#fff",padding:"8px 16px",fontSize:13})}>
                 Log Session
               </button>
@@ -745,7 +762,7 @@ export default function ScheduleView() {
                 textAlign:"left",transition:"all 0.15s"
               }}>
                 <div style={{fontWeight:700}}>Delete only this instance</div>
-                <div style={{fontSize:12,color:B.muted,marginTop:2}}>The session will stop recurring but this single instance stays on the schedule</div>
+                <div style={{fontSize:12,color:B.muted,marginTop:2}}>Removes the session from this date only — other weeks stay on the schedule</div>
               </button>
               <button onClick={()=>confirmDelete("all")} style={{
                 padding:"12px 20px",borderRadius:10,border:`1px solid ${B.red}40`,
@@ -774,7 +791,7 @@ export default function ScheduleView() {
               <strong>{noShowConfirm.memberName}</strong> did not attend this session.
             </p>
             <p style={{color:B.dim,fontSize:12,margin:"0 0 16px",lineHeight:1.5}}>
-              This will count against their session allotment but will NOT count as attendance.
+              This will be recorded as a no-show and will NOT count as attendance.
               {noShowSettings.feeEnabled && ` A $${noShowSettings.feeAmount} no-show fee will be charged.`}
             </p>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>

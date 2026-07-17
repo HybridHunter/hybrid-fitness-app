@@ -88,7 +88,7 @@ export default function RemoteWorkoutsView() {
     if (assignType === "custom" && customExercises.every(e => !e.name.trim())) return;
 
     const member = members.find(m => m.id === assignMemberId);
-    const workout = assignType === "template" ? workouts.find(w => w.id === assignWorkoutId) : null;
+    const workout = assignType === "template" ? workouts.find(w => String(w.id) === String(assignWorkoutId)) : null;
 
     const newRemote = {
       id: uid(),
@@ -145,7 +145,7 @@ export default function RemoteWorkoutsView() {
     const sc = STATUS_COLORS[detailItem.status] || STATUS_COLORS.active;
     const totalDays = daysBetween(detailItem.startDate, detailItem.endDate);
     const completedDays = detailItem.completions?.length || 0;
-    const templateWorkout = detailItem.workoutId ? workouts.find(w => w.id === detailItem.workoutId) : null;
+    const templateWorkout = detailItem.workoutId ? workouts.find(w => String(w.id) === String(detailItem.workoutId)) : null;
     const exercises = detailItem.customExercises || [];
     const templateExercises = templateWorkout?.sections?.flatMap(s => (s.slots || s.exercises || []).map(sl => sl.exercise || sl)) || [];
 
@@ -293,7 +293,7 @@ export default function RemoteWorkoutsView() {
           <select value={assignMemberId} onChange={e => setAssignMemberId(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
             <option value="">Select a client...</option>
             {members
-              .filter(m => !!m.membershipPlanId)
+              .filter(m => m.membershipStatus !== "inactive")
               .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`))
               .map(m => (
                 <option key={m.id} value={m.id}>
