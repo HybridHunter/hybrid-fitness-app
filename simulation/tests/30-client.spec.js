@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { test } = require('@playwright/test');
 const { store } = require('../lib/mockBackend');
+const { ensureCreds } = require('../lib/seed');
 const { newPersona, login, clickIfVisible } = require('../lib/helpers');
 const { checkNotBlank, reportFlow, setScenario, flush } = require('../lib/collector');
 
@@ -17,7 +18,7 @@ test.describe('client journey (mobile)', () => {
   test.beforeAll(() => {
     setScenario('30-client');
     store.load();
-    creds = JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'));
+    creds = ensureCreds(store);
   });
   test.afterAll(() => { flush(); store.save(); });
 

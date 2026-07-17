@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { test } = require('@playwright/test');
 const { store } = require('../lib/mockBackend');
+const { ensureCreds } = require('../lib/seed');
 const { newPersona } = require('../lib/helpers');
 const { checkNotBlank, reportFlow, setScenario, flush } = require('../lib/collector');
 
@@ -17,7 +18,7 @@ test.describe('station display', () => {
   test.beforeAll(() => {
     setScenario('40-station');
     store.load();
-    creds = JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'));
+    creds = ensureCreds(store);
     // Seed a station for the gym (as StationSetup would)
     const stations = store.get(creds.gymId, 'hf_stations');
     if (!Array.isArray(stations) || stations.length === 0) {

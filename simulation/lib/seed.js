@@ -43,6 +43,11 @@ function seedGym(store, { gymId = 'sim-gym-seed', gymName = 'Sim Gym (Seeded)', 
   store.upsert(gymId, 'hf_schedule', [
     { id: uid(), name: '6AM Semi-Private', instructor: 'Coach', dayOfWeek: 1, startTime: '06:00', endTime: '06:45', capacity: 8, bookings: [], waitlist: [], recurring: true },
     { id: uid(), name: '5PM Evening', instructor: 'Coach', dayOfWeek: 3, startTime: '17:00', endTime: '17:45', capacity: 8, bookings: [], waitlist: [], recurring: true },
+    // One late class every day so booking specs always have a future session
+    ...Array.from({ length: 7 }, (_, dow) => ({
+      id: uid(), name: 'Late Night Open Gym', instructor: 'Coach', dayOfWeek: dow,
+      startTime: '23:00', endTime: '23:45', capacity: 12, bookings: [], waitlist: [], recurring: true,
+    })),
   ]);
 
   store.upsert(gymId, 'hf_plans', [
@@ -57,4 +62,30 @@ function seedGym(store, { gymId = 'sim-gym-seed', gymName = 'Sim Gym (Seeded)', 
   return gymId;
 }
 
-module.exports = { seedGym };
+const fs = require('fs');
+const path = require('path');
+const CREDS_FILE = path.join(__dirname, '..', 'fixtures', 'creds.json');
+
+/**
+ * Load creds saved by earlier specs; if missing (e.g. single-spec run after
+ * global-setup wiped fixtures), direct-seed a gym and write fresh creds.
+ */
+function ensureCreds(store) {
+  try {
+    const creds = JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'));
+    if (creds?.gymId && store.get(creds.gymId, 'hf_users')) return creds;
+  } catch {}
+  const gymId = seedGym(store);
+  const creds = {
+    gymId,
+    admin: { username: 'simadmin', password: 'simpass123' },
+    coach: { username: 'simcoach', password: 'coachpass123' },
+    demoClient: { email: 'sarah@example.com', pin: '1234' },
+    seeded: true,
+  };
+  fs.mkdirSync(path.dirname(CREDS_FILE), { recursive: true });
+  fs.writeFileSync(CREDS_FILE, JSON.stringify(creds, null, 2));
+  return creds;
+}
+
+module.exports = { seedGym, ensureCreds };

@@ -10,6 +10,7 @@ import { DEFAULT_MATRIX } from "../../data/movementMatrix";
 import { EX } from "../../data/exercises";
 import { getYTId, getYTThumb } from "../../utils/youtube";
 import { localISO } from "../../utils/dates";
+import { resizeImage } from "../../components/shared/ImageUpload";
 import ProgressPhotos from "../members/ProgressPhotos";
 
 /* ═══════════════════════════════════════════════════════════
@@ -131,12 +132,14 @@ const formatRWTimer = (seconds) => {
 export default function ClientPortal() {
   const B = useTheme();
   const { currentUser, logout } = useAuth();
-  const { getMember, members, membersLoaded } = useMembers();
+  const { getMember, members, membersLoaded, updateMember } = useMembers();
+  const avatarFileRef = useRef(null);
   const [activeTab, setActiveTab] = useState("home");
   const [prevTab, setPrevTab] = useState("home");
   const [transitioning, setTransitioning] = useState(false);
   const [clientChatOpen, setClientChatOpen] = useState(null);
   const [clientChatText, setClientChatText] = useState("");
+  const [showPastSessions, setShowPastSessions] = useState(false);
 
   // Data stores
   const [classes, setClasses] = useLocalStorage("hf_schedule", []);
@@ -1144,12 +1147,45 @@ export default function ClientPortal() {
           })}
         </div>
 
+        {/* Past-sessions toggle — only when this week actually has past sessions */}
+        {(() => {
+          const sessionEnded = (cls, d) => {
+            const [eh, em] = (cls.endTime || "23:59").split(":").map(Number);
+            const end = new Date(d); end.setHours(eh, em, 0, 0);
+            return new Date() > end;
+          };
+          const hasPast = weekDates.some((d, i) =>
+            (localISO(d) < todayISO() || localISO(d) === todayISO()) &&
+            classes.some(c => c.dayOfWeek === i && !c.exceptions?.includes(localISO(d)) && sessionEnded(c, d))
+          );
+          if (!hasPast) return null;
+          return (
+            <button
+              onClick={() => setShowPastSessions(s => !s)}
+              style={{ background: "none", border: "none", color: B.muted, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: "4px 0 0", textDecoration: "underline" }}
+            >
+              {showPastSessions ? "Hide past sessions" : "Show past sessions"}
+            </button>
+          );
+        })()}
+
         {/* Classes by day */}
         {DAYS_SHORT.map((day, dayIdx) => {
           const dayISO = localISO(weekDates[dayIdx]);
-          const dayClasses = classes
+          // Past days are hidden unless the user opts in
+          if (dayISO < todayISO() && !showPastSessions) return null;
+          let dayClasses = classes
             .filter(c => c.dayOfWeek === dayIdx && !c.exceptions?.includes(dayISO))
             .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
+          // On today, hide sessions that already ended unless opted in
+          if (dayISO === todayISO() && !showPastSessions) {
+            const now = new Date();
+            dayClasses = dayClasses.filter(cls => {
+              const [eh, em] = (cls.endTime || "23:59").split(":").map(Number);
+              const end = new Date(weekDates[dayIdx]); end.setHours(eh, em, 0, 0);
+              return now <= end;
+            });
+          }
           if (dayClasses.length === 0) return null;
 
           const dateLabel = `${DAYS_FULL[dayIdx]}, ${MONTHS[weekDates[dayIdx].getMonth()]} ${weekDates[dayIdx].getDate()}`;
@@ -2195,17 +2231,55 @@ export default function ClientPortal() {
           <div style={{ width: 36, height: 4, borderRadius: 2, background: B.muted, margin: "0 auto" }} />
         </div>
 
-        {/* Avatar + Name */}
+        {/* Avatar + Name — tap the avatar to change the photo */}
         <div style={{ textAlign: "center", padding: "28px 0 20px" }}>
-          <div style={{
-            width: 88, height: 88, borderRadius: 28, margin: "0 auto 16px",
-            background: `linear-gradient(135deg, ${B.accent}, ${B.accent}88)`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 32, fontWeight: 800, color: "#fff",
-            boxShadow: `0 8px 24px ${B.accent}33`,
-          }}>
-            {getInitials(currentUser?.displayName || member.firstName)}
+          <div
+            onClick={() => avatarFileRef.current?.click()}
+            title="Change profile photo"
+            style={{ position: "relative", width: 88, margin: "0 auto 16px", cursor: "pointer" }}
+          >
+            {member.photo ? (
+              <img src={member.photo} alt="" style={{
+                width: 88, height: 88, borderRadius: 28, objectFit: "cover",
+                display: "block", boxShadow: `0 8px 24px ${B.accent}33`,
+              }} />
+            ) : (
+              <div style={{
+                width: 88, height: 88, borderRadius: 28,
+                background: `linear-gradient(135deg, ${B.accent}, ${B.accent}88)`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 32, fontWeight: 800, color: "#fff",
+                boxShadow: `0 8px 24px ${B.accent}33`,
+              }}>
+                {getInitials(currentUser?.displayName || member.firstName)}
+              </div>
+            )}
+            <div style={{
+              position: "absolute", bottom: -4, right: -4, width: 30, height: 30,
+              borderRadius: 15, background: B.card, border: `2px solid ${B.border}`,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14,
+            }}>
+              {"📷"}
+            </div>
           </div>
+          <input
+            ref={avatarFileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file || !member) return;
+              try {
+                // Keep avatars small — they live inside the shared members blob
+                const dataUrl = await resizeImage(file, 256);
+                updateMember(member.id, { photo: dataUrl });
+              } catch {
+                alert("Could not process that image file.");
+              }
+            }}
+          />
           <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "0 0 4px" }}>
             {member.firstName} {member.lastName}
           </h1>
