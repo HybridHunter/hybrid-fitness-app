@@ -88,10 +88,116 @@ const emptyReport = (memberId, coachName) => ({
   id: crypto.randomUUID(),
   memberId,
   weekOf: mondayOfThisWeek(),
-  goal: "", wins: "", improvements: "", actionSteps: "", notes: "",
+  goal: "", targetReview: "", wins: "", improvements: "", actionSteps: "", notes: "",
   coachName, status: "draft",
   createdAt: new Date().toISOString(),
 });
+
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:3002";
+
+/* One voice memo → AI drafts the whole report. Records via the Web Speech API
+   (transcript is editable), then the server turns it into structured fields. */
+function VoiceMemoPanel({ B, member, previousGoal, previousActionSteps, onGenerated }) {
+  const [transcript, setTranscript] = useState("");
+  const [listening, setListening] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState("");
+  const recRef = useRef(null);
+
+  const toggleRecord = () => {
+    if (!SR) return;
+    if (listening) { recRef.current?.stop(); return; }
+    const rec = new SR();
+    recRef.current = rec;
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+    rec.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          const t = e.results[i][0].transcript.trim();
+          if (t) setTranscript(prev => (prev ? prev + " " : "") + t);
+        }
+      }
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    rec.start();
+    setListening(true);
+  };
+
+  const generate = async () => {
+    if (!transcript.trim()) { setError("Record or type your memo first."); return; }
+    setGenerating(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/api/ai/progress-report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript,
+          memberName: `${member.firstName} ${member.lastName}`,
+          previousGoal: previousGoal || undefined,
+          previousActionSteps: previousActionSteps || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
+      onGenerated(data, transcript);
+    } catch (e) {
+      setError(e.message || "Generation failed");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div style={{
+      background: B.accent + "10", border: `1px dashed ${B.accent}66`, borderRadius: 12,
+      padding: "14px 16px", marginBottom: 18,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: B.text }}>{"🎙️"} One voice memo — AI writes the report</div>
+          <div style={{ fontSize: 11, color: B.muted, marginTop: 2 }}>
+            Just talk about {member.firstName}'s week: how they did on last week's targets, wins, struggles, what's next.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {SR && (
+            <button type="button" onClick={toggleRecord} style={{
+              background: listening ? "#ef4444" : B.accent, color: "#fff", border: "none",
+              borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 800, cursor: "pointer",
+            }}>
+              {listening ? "◼ Stop Recording" : "● Record"}
+            </button>
+          )}
+          <button type="button" onClick={generate} disabled={generating || !transcript.trim()} style={{
+            background: transcript.trim() ? "#111" : B.border, color: "#fff", border: "none",
+            borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 800,
+            cursor: transcript.trim() ? "pointer" : "default", opacity: generating ? 0.6 : 1,
+          }}>
+            {generating ? "Generating..." : "✨ Generate Report"}
+          </button>
+        </div>
+      </div>
+      <textarea
+        value={transcript}
+        onChange={(e) => setTranscript(e.target.value)}
+        rows={3}
+        placeholder={SR
+          ? "Hit Record and talk — your memo transcript lands here (or just type it), then Generate"
+          : "Voice input isn't supported in this browser — type or paste your memo here, then Generate"}
+        style={{
+          width: "100%", boxSizing: "border-box", marginTop: 10, background: B.dark, color: B.text,
+          border: `1px solid ${B.border}`, borderRadius: 8, padding: "8px 10px",
+          fontSize: 12, outline: "none", resize: "vertical", fontFamily: "inherit", lineHeight: 1.5,
+        }}
+      />
+      {error && <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444", fontWeight: 600 }}>{error}</div>}
+    </div>
+  );
+}
 
 export default function ProgressReportsTab({ member }) {
   const B = useTheme();
@@ -119,8 +225,11 @@ export default function ProgressReportsTab({ member }) {
   const startNew = () => {
     const last = myReports[0];
     const rep = emptyReport(member.id, currentUser?.displayName || "Coach");
-    // Carry the overarching goal forward from the last report
+    // Carry the overarching goal forward, and seed last week's targets for review
     if (last?.goal) rep.goal = last.goal;
+    if (last?.actionSteps) {
+      rep.targetReview = String(last.actionSteps).split("\n").map(t => t.trim()).filter(Boolean).map(t => `🟡 ${t} — `).join("\n");
+    }
     setEditing(rep);
   };
 
@@ -189,9 +298,32 @@ export default function ProgressReportsTab({ member }) {
           <button style={btn(B.border, B.muted)} onClick={() => setEditing(null)}>Close</button>
         </div>
 
+        <VoiceMemoPanel
+          B={B}
+          member={member}
+          previousGoal={myReports.find(r => r.id !== editing.id)?.goal}
+          previousActionSteps={myReports.find(r => r.id !== editing.id)?.actionSteps}
+          onGenerated={(data, transcript) => {
+            setEditing(p => ({
+              ...p,
+              goal: data.goal || p.goal,
+              targetReview: data.targetReview || p.targetReview,
+              wins: data.wins || p.wins,
+              improvements: data.improvements || p.improvements,
+              actionSteps: data.actionSteps || p.actionSteps,
+              notes: data.notes || p.notes,
+              memoTranscript: transcript,
+            }));
+            flash("Report drafted from your memo ✨ — review and adjust below");
+          }}
+        />
+
         <Field B={B} label="Reminder of overarching goal" rows={2}
           hint="What is this client working toward long-term?"
           value={editing.goal} onChange={(v) => setEditing(p => ({ ...p, goal: v }))} />
+        <Field B={B} label="Last week's targets — how'd we do?"
+          hint={"One per line, e.g.\n✅ Drink 80oz water daily — crushed it\n❌ Book Saturday session — didn't happen"}
+          value={editing.targetReview || ""} onChange={(v) => setEditing(p => ({ ...p, targetReview: v }))} />
         <Field B={B} label="Wins from this week"
           hint="One win per line — e.g. Hit all 3 scheduled sessions"
           value={editing.wins} onChange={(v) => setEditing(p => ({ ...p, wins: v }))} />
@@ -260,6 +392,13 @@ export default function ProgressReportsTab({ member }) {
             }}>
               {r.status === "delivered" ? "DELIVERED" : "DRAFT"}
             </span>
+            {(r.via || []).includes("app") ? (
+              <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 10, alignSelf: "center", background: B.border, color: B.muted }}>
+                IN APP ✓
+              </span>
+            ) : (
+              <button style={btn(B.accent, null, true)} onClick={() => handlePushToApp(r)}>{"📲"} Push</button>
+            )}
             <button style={btn("#3b82f6")} onClick={() => printProgressReport(r, member)}>PDF</button>
             <button style={btn(B.accent)} onClick={() => setEditing(r)}>{r.status === "delivered" ? "View" : "Edit"}</button>
           </div>

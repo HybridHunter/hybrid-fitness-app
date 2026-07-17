@@ -35,6 +35,7 @@ export function buildProgressReportHtml(report, member, branding = getBranding()
   const wins = toItems(report.wins);
   const improvements = toItems(report.improvements);
   const actions = toItems(report.actionSteps);
+  const targets = toItems(report.targetReview);
 
   // Logo sits on WHITE so any logo color works (never blends into the brand color)
   const logoBar = `
@@ -62,6 +63,23 @@ export function buildProgressReportHtml(report, member, branding = getBranding()
       <div style="font-size:19px;font-weight:800;color:#1a1a1a;margin-top:6px;line-height:1.4;">${esc(report.goal)}</div>
       <div style="font-size:12px;color:#888;margin-top:4px;">Every week is a step toward this. Keep it in sight.</div>
     </div>` : "";
+
+  const targetsBlock = targets.length === 0 ? "" : `
+    <div style="margin:28px 36px 0;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="font-size:22px;">📋</div>
+        <div style="font-size:17px;font-weight:900;color:#1a1a1a;">Last Week's Targets — How We Did</div>
+      </div>
+      ${targets.map(t => {
+        const hit = t.startsWith("✅"), partial = t.startsWith("🟡"), miss = t.startsWith("❌");
+        const border = hit ? color : partial ? "#f59e0b" : miss ? "#ef4444" : "#bbb";
+        return `
+        <div style="display:flex;align-items:center;gap:10px;border-left:4px solid ${border};background:#fafafa;border-radius:10px;padding:10px 14px;margin-top:8px;">
+          <div style="font-size:14px;color:#333;line-height:1.5;">${esc(t)}</div>
+        </div>`;
+      }).join("")}
+      <div style="font-size:11px;color:#999;margin-top:6px;">Accountability builds momentum — we track every target.</div>
+    </div>`;
 
   const winsBlock = `
     <div style="margin:28px 36px 0;">
@@ -114,6 +132,7 @@ export function buildProgressReportHtml(report, member, branding = getBranding()
       ${logoBar}
       ${hero}
       ${northStar}
+      ${targetsBlock}
       ${winsBlock}
       ${improveBlock}
       ${actionBlock}

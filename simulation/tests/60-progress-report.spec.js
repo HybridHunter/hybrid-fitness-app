@@ -37,6 +37,21 @@ test.describe('weekly progress reports', () => {
     await staff.page.locator('button:has-text("New Report")').first().click();
     await staff.page.waitForTimeout(600);
 
+    // AI voice-memo path: type a transcript (headless browsers have no mic) and generate
+    const memoBox = staff.page.locator('textarea[placeholder*="memo" i]').first();
+    if (await memoBox.isVisible().catch(() => false)) {
+      await memoBox.fill('Abigail had a great week, made every session and PRed her squat. Water was low on the weekend again. Next week keep three sessions and track water daily.');
+      await staff.page.locator('button:has-text("Generate Report")').click();
+      await staff.page.waitForTimeout(2000);
+      const goalVal = await staff.page.locator('textarea[placeholder*="working toward" i]').inputValue();
+      const winsVal = await staff.page.locator('textarea[placeholder*="Hit all 3" i]').inputValue();
+      if (!goalVal || !winsVal.includes('MOCK_AI_WIN')) {
+        reportFlow('coach@report', 'ai-memo', `AI memo generation did not populate the report fields (goal:"${goalVal.slice(0, 30)}" wins:"${winsVal.slice(0, 30)}").`);
+      }
+    } else {
+      reportFlow('coach@report', 'ai-memo', 'SIM-GAP: voice memo panel/transcript box not found in the report editor.', { simGap: true });
+    }
+
     const fill = async (hint, val) => staff.page.locator(`textarea[placeholder*="${hint}" i]`).fill(val);
     await fill('working toward', 'Lose 20 lbs by December and deadlift bodyweight');
     await fill('Hit all 3', 'Made all 3 sessions\nPR on goblet squat');

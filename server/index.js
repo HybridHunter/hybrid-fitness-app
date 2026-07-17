@@ -375,6 +375,72 @@ app.post('/api/subscription/change-plan', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── AI: voice memo → structured progress report (via OpenRouter) ──
+// Keeps the OpenRouter key server-side. Set OPENROUTER_API_KEY (and optionally
+// OPENROUTER_MODEL) as Fly secrets.
+app.post('/api/ai/progress-report', async (req, res) => {
+  try {
+    const { transcript, memberName, previousGoal, previousActionSteps } = req.body || {};
+    if (!transcript || !String(transcript).trim()) {
+      return res.status(400).json({ error: 'No transcript provided' });
+    }
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ error: 'AI not configured — set OPENROUTER_API_KEY on the server' });
+    }
+    const model = process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5';
+
+    const system = `You turn a fitness coach's rambling voice memo about a client's week into a structured weekly progress report. Respond with ONLY a JSON object (no markdown fences) with these string fields:
+- "goal": the client's overarching long-term goal. ${previousGoal ? `If the memo doesn't mention one, keep the previous goal: ${JSON.stringify(previousGoal)}` : 'If the memo does not state one, infer it briefly or leave "".'}
+- "targetReview": ${previousActionSteps ? `review of LAST week's targets, one per line. Last week's targets were: ${JSON.stringify(previousActionSteps)}. For each, state the target and how the client did based on the memo — start the line with "✅" (hit it), "🟡" (partial), or "❌" (missed). If the memo doesn't mention a target, use "🟡" and note "not mentioned this week".` : 'leave "" (there was no previous report).'}
+- "wins": the wins from this week, one per line (newline-separated). Written TO the client ("You hit all 3 sessions"), celebratory but factual.
+- "improvements": areas to improve, one per line, constructive and kind.
+- "actionSteps": specific action steps for the upcoming week, one per line, concrete and doable.
+- "notes": a short warm personal note from the coach to the client capturing anything else from the memo, or "".
+Only include things grounded in the memo. Keep each line under 100 characters.`;
+
+    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://gymkit-app.netlify.app',
+        'X-Title': 'GymKit Progress Reports',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: `Client: ${memberName || 'the client'}\n\nCoach's voice memo:\n${transcript}` },
+        ],
+        temperature: 0.4,
+        max_tokens: 900,
+      }),
+    });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => '');
+      return res.status(502).json({ error: `OpenRouter error ${r.status}`, detail: detail.slice(0, 300) });
+    }
+    const data = await r.json();
+    let text = data.choices?.[0]?.message?.content || '';
+    // Strip accidental markdown fences and parse
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+    let report;
+    try { report = JSON.parse(text); } catch {
+      const m = text.match(/\{[\s\S]*\}/);
+      if (m) { try { report = JSON.parse(m[0]); } catch {} }
+    }
+    if (!report || typeof report !== 'object') {
+      return res.status(502).json({ error: 'AI returned unparseable output', detail: text.slice(0, 300) });
+    }
+    const str = (v) => (typeof v === 'string' ? v : Array.isArray(v) ? v.join('\n') : '');
+    res.json({
+      goal: str(report.goal), targetReview: str(report.targetReview), wins: str(report.wins),
+      improvements: str(report.improvements), actionSteps: str(report.actionSteps), notes: str(report.notes),
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Health ──
 app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
 

@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { test } = require('@playwright/test');
 const { store } = require('../lib/mockBackend');
+const { ensureCreds } = require('../lib/seed');
 const { newPersona, login, visitRoute, clickIfVisible } = require('../lib/helpers');
 const { checkNotBlank, reportFlow, setScenario, flush } = require('../lib/collector');
 
@@ -17,7 +18,7 @@ test.describe('coach journey', () => {
   test.beforeAll(() => {
     setScenario('20-coach');
     store.load();
-    creds = JSON.parse(fs.readFileSync(CREDS_FILE, 'utf8'));
+    creds = ensureCreds(store);
     // Use the coach the admin created via the UI when it exists; otherwise seed one.
     const users = store.get(creds.gymId, 'hf_users');
     const existing = Array.isArray(users) && users.find(u => u.role === 'coach');

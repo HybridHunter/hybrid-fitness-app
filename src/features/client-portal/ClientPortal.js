@@ -647,7 +647,7 @@ export default function ClientPortal() {
           <div style={{
             ...cardStyle, background: `linear-gradient(135deg, #3b82f615 0%, ${B.card} 100%)`,
             border: `1px solid #3b82f640`, cursor: "pointer",
-          }} onClick={() => switchTab("profile")}>
+          }} onClick={openCoachChat}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{
                 width: 40, height: 40, borderRadius: 12, background: "#3b82f622",
@@ -3378,6 +3378,20 @@ export default function ClientPortal() {
                 <div style={{ ...cardStyle, border: `2px dashed ${B.accent}`, marginBottom: 12 }}>
                   <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase", color: B.accent }}>{"🧭"} Your North Star</div>
                   <div style={{ fontSize: 17, fontWeight: 800, color: B.text, marginTop: 6, lineHeight: 1.4 }}>{r.goal}</div>
+                </div>
+              )}
+              {items(r.targetReview).length > 0 && (
+                <div style={{ ...cardStyle, marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: B.text, marginBottom: 6 }}>{"📋"} Last Week's Targets — How We Did</div>
+                  {items(r.targetReview).map((t, i) => {
+                    const border = t.startsWith("✅") ? B.accent : t.startsWith("❌") ? "#ef4444" : "#f59e0b";
+                    return (
+                      <div key={i} style={{
+                        borderLeft: `4px solid ${border}`, background: B.dark, borderRadius: 10,
+                        padding: "9px 12px", marginBottom: 6, fontSize: 13, color: B.text, lineHeight: 1.5,
+                      }}>{t}</div>
+                    );
+                  })}
                 </div>
               )}
               {wins.length > 0 && (
