@@ -140,6 +140,8 @@ export default function ClientPortal() {
   const [clientChatOpen, setClientChatOpen] = useState(null);
   const [clientChatText, setClientChatText] = useState("");
   const [showPastSessions, setShowPastSessions] = useState(false);
+  const [progressReports] = useLocalStorage("hf_progress_reports", []);
+  const [viewingReport, setViewingReport] = useState(null);
 
   // Data stores
   const [classes, setClasses] = useLocalStorage("hf_schedule", []);
@@ -2287,6 +2289,73 @@ export default function ClientPortal() {
             Client since {memberSince ? fmtDateNice(memberSince) : "N/A"}
           </p>
         </div>
+
+        {/* Weekly progress reports from the coach */}
+        {(() => {
+          const myReports = (Array.isArray(progressReports) ? progressReports : [])
+            .filter(r => r.memberId === member.id && r.status === "delivered")
+            .sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""));
+          if (myReports.length === 0) return null;
+          return (
+            <div style={{ ...cardStyle, marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: B.text, marginBottom: 10 }}>
+                {"📈"} Progress Reports
+              </div>
+              {myReports.slice(0, 6).map(r => (
+                <div key={r.id} onClick={() => setViewingReport(r)} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "10px 0", borderTop: `1px solid ${B.border}`, cursor: "pointer",
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: B.text }}>Week of {r.weekOf}</div>
+                  <div style={{ fontSize: 12, color: B.accent, fontWeight: 700 }}>View {"→"}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Full-screen report viewer */}
+        {viewingReport && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 4000, background: B.darker,
+            overflowY: "auto", padding: "16px",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: B.text }}>Week of {viewingReport.weekOf}</div>
+              <button onClick={() => setViewingReport(null)} style={{
+                background: B.card, border: `1px solid ${B.border}`, borderRadius: 10,
+                color: B.text, fontSize: 13, fontWeight: 700, padding: "8px 16px", cursor: "pointer",
+              }}>Close</button>
+            </div>
+            {[
+              ["Your Overarching Goal", viewingReport.goal, false],
+              ["Wins From This Week", viewingReport.wins, true],
+              ["Areas To Improve", viewingReport.improvements, true],
+              ["Action Steps For The Upcoming Week", viewingReport.actionSteps, true],
+              ["Coach's Notes", viewingReport.notes, false],
+            ].map(([title, body, asList]) => {
+              if (!body) return null;
+              const items = String(body).split("\n").map(t => t.trim()).filter(Boolean);
+              return (
+                <div key={title} style={{ ...cardStyle, marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase", color: B.accent, marginBottom: 8 }}>{title}</div>
+                  {asList ? (
+                    items.map((t, i) => (
+                      <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 14, color: B.text, lineHeight: 1.5 }}>
+                        <span style={{ color: B.accent }}>{"•"}</span><span>{t}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p style={{ margin: 0, fontSize: 14, color: B.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{body}</p>
+                  )}
+                </div>
+              );
+            })}
+            <p style={{ ...mutedText, textAlign: "center", padding: "8px 0 24px" }}>
+              Prepared by {viewingReport.coachName || "your coach"}
+            </p>
+          </div>
+        )}
 
         {/* Status + Plan */}
         <div style={{

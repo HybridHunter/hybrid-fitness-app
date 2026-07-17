@@ -12,10 +12,11 @@ import { sendEmail } from "../../utils/messaging";
 import ProgressPhotos from "./ProgressPhotos";
 import ProfileAvatar from "../../components/shared/ProfileAvatar";
 import ImageUpload from "../../components/shared/ImageUpload";
+import ProgressReportsTab from "./ProgressReportsTab";
 
 const PATTERNS = ["Squat", "Hinge", "Lunge", "Push", "Pull", "Core", "Carry"];
 const SCORE_RANGE = [-3, -2, -1, 0, 1, 2, 3];
-const TABS = ["Overview", "Movement Scores", "Body Composition", "Progress Photos", "Gamification", "Billing", "Notes", "History"];
+const TABS = ["Overview", "Movement Scores", "Body Composition", "Progress Photos", "Progress Reports", "Gamification", "Billing", "Notes", "History"];
 
 const STATUS_COLORS = (B) => ({ active: B.green, trial: B.orange, frozen: B.blue, inactive: B.red });
 
@@ -1257,6 +1258,7 @@ export default function MemberProfile() {
           <ProgressPhotos memberId={member.id} />
         </div>
       )}
+      {tab === "Progress Reports" && <ProgressReportsTab member={member} />}
       {tab === "Gamification" && renderGamification()}
       {tab === "Billing" && renderBilling()}
       {tab === "Notes" && (() => {
