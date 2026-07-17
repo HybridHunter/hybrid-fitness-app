@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { localISO } from "../../utils/dates";
 import Card from "../../components/ui/Card";
 import { ImageUploadZone } from "../../components/shared/ImageUpload";
+import StoriesBar from "../../components/shared/Stories";
 
 /* ──────────────────────────────────────────────
    Helpers
@@ -1957,6 +1958,9 @@ export default function CommunityFeed() {
     <div style={{ maxWidth: 680, margin: "0 auto", padding: "0 16px" }}>
       {/* Header */}
       <h1 style={{ fontSize: 26, fontWeight: 700, color: B.text, margin: "24px 0 16px" }}>Community</h1>
+
+      {/* Stories — broadcast to every member and coach at this location */}
+      <StoriesBar me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} />
 
       {/* Active Challenges Banner */}
       {activeChallenges.length > 0 && activeCategory !== "Challenges" && (

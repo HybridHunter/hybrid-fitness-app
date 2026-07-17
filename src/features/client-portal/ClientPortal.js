@@ -11,6 +11,7 @@ import { EX } from "../../data/exercises";
 import { getYTId, getYTThumb } from "../../utils/youtube";
 import { localISO } from "../../utils/dates";
 import { resizeImage } from "../../components/shared/ImageUpload";
+import StoriesBar from "../../components/shared/Stories";
 import ProgressPhotos from "../members/ProgressPhotos";
 
 /* ═══════════════════════════════════════════════════════════
@@ -342,13 +343,15 @@ export default function ClientPortal() {
     paddingBottom: 80, overflow: "hidden",
   };
 
+  // Facebook-style floating pill nav
   const tabBar = {
-    position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
-    width: "100%", maxWidth: 480, height: 56,
-    background: B.card + "dd", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-    borderTop: `1px solid ${B.border}40`, borderRadius: "20px 20px 0 0",
+    position: "fixed", bottom: 10, left: "50%", transform: "translateX(-50%)",
+    width: "calc(100% - 20px)", maxWidth: 460, height: 58,
+    background: B.card + "f2", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+    border: `1px solid ${B.border}60`, borderRadius: 29,
+    boxShadow: "0 8px 30px rgba(0,0,0,0.18)",
     display: "flex", alignItems: "center", justifyContent: "space-around",
-    padding: "0 4px", zIndex: 100, boxSizing: "border-box",
+    padding: "0 6px", zIndex: 100, boxSizing: "border-box",
   };
 
   const cardStyle = {
@@ -409,10 +412,53 @@ export default function ClientPortal() {
 
     return (
       <div style={{ padding: "0 16px" }}>
-        {/* Pull-to-refresh visual hint */}
-        <div style={{ textAlign: "center", padding: "6px 0 0", opacity: 0.3 }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: B.muted, margin: "0 auto" }} />
+        {/* Facebook-style top bar: gym name + messenger */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0 4px" }}>
+          <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: -0.5, color: B.accent }}>
+            {(() => { try { return JSON.parse(localStorage.getItem("hf_branding") || "{}").gymName || "GymKit"; } catch { return "GymKit"; } })()}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            {unseenReports.length > 0 && (
+              <div onClick={() => openReport(unseenReports[0])} style={{
+                width: 40, height: 40, borderRadius: 20, background: B.card, border: `1px solid ${B.border}`,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", position: "relative",
+              }}>
+                {"🔔"}
+                <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unseenReports.length}</div>
+              </div>
+            )}
+            <div onClick={openCoachChat} style={{
+              width: 40, height: 40, borderRadius: 20, background: B.card, border: `1px solid ${B.border}`,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", position: "relative",
+            }}>
+              {"💬"}
+              {unreadMsgCount > 0 && (
+                <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadMsgCount}</div>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* "What's on your mind?" composer row */}
+        <div onClick={() => switchTab("community")} style={{
+          display: "flex", alignItems: "center", gap: 10, padding: "10px 0 12px",
+          borderBottom: `1px solid ${B.border}`, marginBottom: 10, cursor: "pointer",
+        }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: 19, flexShrink: 0,
+            background: member.photo ? `url(${member.photo}) center/cover` : `linear-gradient(135deg, ${B.accent}, ${B.accent}88)`,
+            display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800,
+          }}>
+            {!member.photo && (member.firstName || "?").slice(0, 1)}
+          </div>
+          <div style={{
+            flex: 1, background: B.card, border: `1px solid ${B.border}`, borderRadius: 20,
+            padding: "10px 16px", fontSize: 14, color: B.muted,
+          }}>What's on your mind?</div>
+        </div>
+
+        {/* Stories */}
+        <StoriesBar me={{ id: member.id, name: `${member.firstName} ${member.lastName || ""}`.trim(), photo: member.photo || "" }} />
 
         {/* New progress report notification */}
         {unseenReports.length > 0 && (
@@ -3529,19 +3575,13 @@ export default function ClientPortal() {
               style={{
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", gap: 1,
-                background: "none", border: "none", cursor: "pointer",
+                background: isActive ? B.accent + "1c" : "none",
+                border: "none", cursor: "pointer", borderRadius: 18, margin: "0 2px",
                 padding: "6px 0", minHeight: 44, position: "relative",
-                transition: "transform 0.15s",
+                transition: "transform 0.15s, background 0.15s",
                 transform: isActive ? "scale(1.05)" : "scale(1)",
               }}
             >
-              {/* Active indicator dot */}
-              {isActive && (
-                <div style={{
-                  position: "absolute", top: -1, width: 20, height: 3,
-                  borderRadius: 2, background: B.accent,
-                }} />
-              )}
               <span style={{
                 fontSize: 20, lineHeight: 1,
                 filter: isActive ? "none" : "grayscale(80%)",
