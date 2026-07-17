@@ -140,8 +140,17 @@ export default function ClientPortal() {
   const [clientChatOpen, setClientChatOpen] = useState(null);
   const [clientChatText, setClientChatText] = useState("");
   const [showPastSessions, setShowPastSessions] = useState(false);
-  const [progressReports] = useLocalStorage("hf_progress_reports", []);
+  const [progressReports, setProgressReports] = useLocalStorage("hf_progress_reports", []);
   const [viewingReport, setViewingReport] = useState(null);
+
+  // Open a report and mark it seen (drives the home-page notification badge)
+  const openReport = (r) => {
+    setViewingReport(r);
+    if (!r.seenAt) {
+      const seenAt = new Date().toISOString();
+      setProgressReports(prev => (Array.isArray(prev) ? prev : []).map(x => (x.id === r.id ? { ...x, seenAt } : x)));
+    }
+  };
 
   // Data stores
   const [classes, setClasses] = useLocalStorage("hf_schedule", []);
@@ -219,6 +228,12 @@ export default function ClientPortal() {
       setTransitioning(false);
     }, 150);
   };
+
+  // Progress reports delivered to this member (newest first) + unseen ones
+  const myDeliveredReports = (Array.isArray(progressReports) ? progressReports : [])
+    .filter(r => r.memberId === member?.id && r.status === "delivered")
+    .sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""));
+  const unseenReports = myDeliveredReports.filter(r => !r.seenAt);
 
   // Open (or create) the coach conversation and show the chat modal.
   // Shared by the Profile tab button, the home "Message Your Coach" card,
@@ -398,6 +413,30 @@ export default function ClientPortal() {
         <div style={{ textAlign: "center", padding: "6px 0 0", opacity: 0.3 }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: B.muted, margin: "0 auto" }} />
         </div>
+
+        {/* New progress report notification */}
+        {unseenReports.length > 0 && (
+          <div
+            onClick={() => openReport(unseenReports[0])}
+            style={{
+              margin: "16px 0 4px", padding: "16px 18px", borderRadius: 16, cursor: "pointer",
+              background: `linear-gradient(135deg, ${B.accent}, ${B.accent}bb)`,
+              boxShadow: `0 8px 24px ${B.accent}44`,
+              display: "flex", alignItems: "center", gap: 14,
+            }}
+          >
+            <div style={{ fontSize: 30 }}>{"🎉"}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>
+                Your Progress Report is ready!
+              </div>
+              <div style={{ fontSize: 12, color: "#ffffffdd", marginTop: 2 }}>
+                Your coach reviewed your week of {unseenReports[0].weekOf} — tap to see your wins
+              </div>
+            </div>
+            <div style={{ fontSize: 18, color: "#fff", fontWeight: 800 }}>{"→"}</div>
+          </div>
+        )}
 
         {/* Hero Greeting Card */}
         <div style={{
@@ -2058,6 +2097,37 @@ export default function ClientPortal() {
 
         <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 16px" }}>Progress</h1>
 
+        {/* Progress report history */}
+        {myDeliveredReports.length > 0 && (
+          <div style={{ ...cardStyle, marginBottom: 14 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: B.text, marginBottom: 6 }}>
+              {"📈"} Progress Reports
+            </div>
+            {myDeliveredReports.map(r => (
+              <div key={r.id} onClick={() => openReport(r)} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "11px 0", borderTop: `1px solid ${B.border}`, cursor: "pointer",
+              }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Week of {r.weekOf}</div>
+                  <div style={{ fontSize: 11, color: B.muted, marginTop: 2 }}>
+                    {r.seenAt ? `Viewed ${new Date(r.seenAt).toLocaleDateString()}` : "New — not viewed yet"}
+                    {r.coachName ? ` · ${r.coachName}` : ""}
+                  </div>
+                </div>
+                {r.seenAt ? (
+                  <span style={{ fontSize: 12, color: B.muted, fontWeight: 600 }}>{"→"}</span>
+                ) : (
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, padding: "3px 10px", borderRadius: 10,
+                    background: B.accent, color: "#fff",
+                  }}>NEW</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Level & XP */}
         <div style={{
           ...cardStyle,
@@ -2291,69 +2361,20 @@ export default function ClientPortal() {
         </div>
 
         {/* Weekly progress reports from the coach */}
-        {(() => {
-          const myReports = (Array.isArray(progressReports) ? progressReports : [])
-            .filter(r => r.memberId === member.id && r.status === "delivered")
-            .sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""));
-          if (myReports.length === 0) return null;
-          return (
-            <div style={{ ...cardStyle, marginBottom: 12 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: B.text, marginBottom: 10 }}>
-                {"📈"} Progress Reports
+        {myDeliveredReports.length > 0 && (
+          <div style={{ ...cardStyle, marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: B.text, marginBottom: 10 }}>
+              {"📈"} Progress Reports
+            </div>
+            {myDeliveredReports.slice(0, 6).map(r => (
+              <div key={r.id} onClick={() => openReport(r)} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "10px 0", borderTop: `1px solid ${B.border}`, cursor: "pointer",
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: B.text }}>Week of {r.weekOf}</div>
+                <div style={{ fontSize: 12, color: B.accent, fontWeight: 700 }}>{r.seenAt ? "View" : "NEW"} {"→"}</div>
               </div>
-              {myReports.slice(0, 6).map(r => (
-                <div key={r.id} onClick={() => setViewingReport(r)} style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "10px 0", borderTop: `1px solid ${B.border}`, cursor: "pointer",
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: B.text }}>Week of {r.weekOf}</div>
-                  <div style={{ fontSize: 12, color: B.accent, fontWeight: 700 }}>View {"→"}</div>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
-
-        {/* Full-screen report viewer */}
-        {viewingReport && (
-          <div style={{
-            position: "fixed", inset: 0, zIndex: 4000, background: B.darker,
-            overflowY: "auto", padding: "16px",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: B.text }}>Week of {viewingReport.weekOf}</div>
-              <button onClick={() => setViewingReport(null)} style={{
-                background: B.card, border: `1px solid ${B.border}`, borderRadius: 10,
-                color: B.text, fontSize: 13, fontWeight: 700, padding: "8px 16px", cursor: "pointer",
-              }}>Close</button>
-            </div>
-            {[
-              ["Your Overarching Goal", viewingReport.goal, false],
-              ["Wins From This Week", viewingReport.wins, true],
-              ["Areas To Improve", viewingReport.improvements, true],
-              ["Action Steps For The Upcoming Week", viewingReport.actionSteps, true],
-              ["Coach's Notes", viewingReport.notes, false],
-            ].map(([title, body, asList]) => {
-              if (!body) return null;
-              const items = String(body).split("\n").map(t => t.trim()).filter(Boolean);
-              return (
-                <div key={title} style={{ ...cardStyle, marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase", color: B.accent, marginBottom: 8 }}>{title}</div>
-                  {asList ? (
-                    items.map((t, i) => (
-                      <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 14, color: B.text, lineHeight: 1.5 }}>
-                        <span style={{ color: B.accent }}>{"•"}</span><span>{t}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <p style={{ margin: 0, fontSize: 14, color: B.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{body}</p>
-                  )}
-                </div>
-              );
-            })}
-            <p style={{ ...mutedText, textAlign: "center", padding: "8px 0 24px" }}>
-              Prepared by {viewingReport.coachName || "your coach"}
-            </p>
+            ))}
           </div>
         )}
 
@@ -3322,6 +3343,97 @@ export default function ClientPortal() {
     <div style={shell}>
       {/* Remote Workout Full-Screen Mode */}
       {remoteWorkoutMode && renderRemoteWorkoutMode()}
+
+      {/* Progress Report Viewer — celebratory full-screen, opens from any tab */}
+      {viewingReport && (() => {
+        const r = viewingReport;
+        const items = (v) => String(v || "").split("\n").map(t => t.trim()).filter(Boolean);
+        const wins = items(r.wins);
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 4000, background: B.darker, overflowY: "auto" }}>
+            {/* Hero */}
+            <div style={{
+              background: `linear-gradient(150deg, ${B.accent} 0%, ${B.accent}77 100%)`,
+              padding: "20px 20px 28px", position: "relative",
+            }}>
+              <button onClick={() => setViewingReport(null)} style={{
+                position: "absolute", top: 14, right: 14, background: "#ffffff2e",
+                border: "none", borderRadius: 16, color: "#fff", fontSize: 13, fontWeight: 800,
+                padding: "7px 14px", cursor: "pointer",
+              }}>Close ✕</button>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: "uppercase", color: "#ffffffcc" }}>
+                Week of {r.weekOf}
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: "#fff", lineHeight: 1.15, marginTop: 6 }}>
+                You showed up. {"💪"}
+              </div>
+              {wins.length > 0 && (
+                <div style={{ fontSize: 14, color: "#fff", marginTop: 6, opacity: 0.95 }}>
+                  <strong>{wins.length} win{wins.length === 1 ? "" : "s"}</strong> this week — momentum is building.
+                </div>
+              )}
+            </div>
+            <div style={{ padding: "16px 16px 32px" }}>
+              {r.goal && (
+                <div style={{ ...cardStyle, border: `2px dashed ${B.accent}`, marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase", color: B.accent }}>{"🧭"} Your North Star</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: B.text, marginTop: 6, lineHeight: 1.4 }}>{r.goal}</div>
+                </div>
+              )}
+              {wins.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 15, fontWeight: 900, color: B.text, margin: "4px 0 8px" }}>{"🏆"} Wins From This Week</div>
+                  {wins.map((w, i) => (
+                    <div key={i} style={{
+                      display: "flex", alignItems: "center", gap: 12, marginBottom: 8,
+                      background: B.accent + "14", borderLeft: `4px solid ${B.accent}`,
+                      borderRadius: 12, padding: "12px 14px",
+                    }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 14, background: B.accent, color: "#fff",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 14, fontWeight: 900, flexShrink: 0,
+                      }}>✓</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: B.text, lineHeight: 1.4 }}>{w}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {items(r.improvements).length > 0 && (
+                <div style={{ ...cardStyle, marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: B.text, marginBottom: 6 }}>{"🎯"} Where We Level Up Next</div>
+                  {items(r.improvements).map((t, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 13, color: B.muted, lineHeight: 1.5 }}>
+                      <span style={{ color: B.accent, fontWeight: 900 }}>{"›"}</span><span>{t}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {items(r.actionSteps).length > 0 && (
+                <div style={{ ...cardStyle, background: "#111", marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#fff", marginBottom: 4 }}>{"🚀"} This Week's Mission</div>
+                  {items(r.actionSteps).map((t, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #ffffff1f" }}>
+                      <div style={{ width: 18, height: 18, border: `2px solid ${B.accent}`, borderRadius: 5, flexShrink: 0 }} />
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", lineHeight: 1.4 }}>{t}</div>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 11, color: B.accent, fontWeight: 700, marginTop: 8 }}>Check these off — you review them together next week.</div>
+                </div>
+              )}
+              {r.notes && (
+                <div style={{ ...cardStyle, marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 2, textTransform: "uppercase", color: B.muted }}>{"💬"} From {r.coachName || "your coach"}</div>
+                  <p style={{ margin: "8px 0 0", fontSize: 13, color: B.text, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{r.notes}</p>
+                </div>
+              )}
+              <p style={{ ...mutedText, textAlign: "center", padding: "4px 0 8px" }}>
+                Proud of you. See you on the floor. {"🔥"}
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Client Chat Modal */}
       {clientChatOpen && (() => {

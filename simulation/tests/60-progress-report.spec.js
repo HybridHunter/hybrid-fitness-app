@@ -1,8 +1,9 @@
 /*
  * Feature: WEEKLY PROGRESS REPORTS.
- * Coach writes a structured report on a client's profile (goal / wins /
- * improvements / action steps), emails it (mock outbox), and the client sees
- * and opens it in their portal profile.
+ * Coach writes a structured report on a client's profile, pushes it to the
+ * client's app and emails it. Client sees a notification banner on home,
+ * opens the celebratory viewer (marking it seen), and finds it in the
+ * Progress tab history.
  */
 const { test, expect } = require('@playwright/test');
 const { store, outbox } = require('../lib/mockBackend');
@@ -19,12 +20,12 @@ test.describe('weekly progress reports', () => {
   });
   test.afterAll(() => { flush(); store.save(); });
 
-  test('coach creates + emails a report; client reads it in the portal', async ({ browser }) => {
+  test('coach pushes + emails a report; client gets banner, views it, sees history', async ({ browser }) => {
     const members = store.get(creds.gymId, 'hf_members') || [];
     const sarah = members.find(m => m.email === creds.demoClient.email);
     expect(sarah, 'demo client exists in hf_members').toBeTruthy();
 
-    // ── Staff side: create and send the report ──
+    // ── Staff side: create, push to app, then email ──
     const staff = await newPersona(browser, 'coach@report');
     if (!(await login(staff.page, creds.admin.username, creds.admin.password))) { test.skip(true, 'admin login broken'); return; }
     await staff.page.goto(`/gym/${creds.gymId}/members/${sarah.id}`);
@@ -42,43 +43,72 @@ test.describe('weekly progress reports', () => {
     await fill('constructive', 'Water intake still low on weekends');
     await fill('specific and doable', 'Drink 80oz water daily\nBook Saturday session');
 
-    const emailsBefore = outbox.emails.length;
-    await staff.page.locator(`button:has-text("Email to ${sarah.firstName}")`).click();
-    await staff.page.waitForTimeout(2500);
+    // Push to the client's app
+    await staff.page.locator('button:has-text("Push to App")').click();
+    await staff.page.waitForTimeout(1500);
 
-    // Email captured by the mock outbox?
-    const sent = outbox.emails.slice(emailsBefore).find(e => (e.subject || '').includes('Progress Report'));
-    if (!sent) {
-      reportFlow('coach@report', 'send-report', 'Report email never reached the outbox (send failed).');
-    } else if (!(sent.html || '').includes('deadlift bodyweight')) {
-      reportFlow('coach@report', 'send-report', 'Report email is missing the report content.');
+    let reports = store.get(creds.gymId, 'hf_progress_reports') || [];
+    let delivered = reports.find(r => r.memberId === sarah.id && r.status === 'delivered');
+    if (!delivered) {
+      reportFlow('coach@report', 'push-to-app', 'Push to App did not persist a delivered report.');
+    } else if (!(delivered.via || []).includes('app')) {
+      reportFlow('coach@report', 'push-to-app', 'Delivered report missing via:app channel.');
     }
 
-    // Persisted as delivered?
-    const reports = store.get(creds.gymId, 'hf_progress_reports') || [];
-    const delivered = reports.find(r => r.memberId === sarah.id && r.status === 'delivered');
-    if (!delivered) {
-      reportFlow('coach@report', 'send-report', 'Report not persisted with status=delivered in hf_progress_reports.');
+    // Also email it (reopen the delivered report)
+    const emailsBefore = outbox.emails.length;
+    await staff.page.locator('button', { hasText: /^View$/ }).first().click();
+    await staff.page.waitForTimeout(600);
+    await staff.page.locator(`button:has-text("Email to ${sarah.firstName}")`).click();
+    await staff.page.waitForTimeout(2500);
+    const sent = outbox.emails.slice(emailsBefore).find(e => (e.subject || '').includes('Progress Report'));
+    if (!sent) {
+      reportFlow('coach@report', 'send-report', 'Report email never reached the outbox.');
+    } else if (!/deadlift bodyweight/i.test(sent.html || '')) {
+      reportFlow('coach@report', 'send-report', 'Report email is missing the report content.');
     }
     await staff.context.close();
 
-    // ── Client side: see and open the report ──
+    // ── Client side: home banner → viewer → seen → history ──
     const client = await newPersona(browser, 'client@report', { mobile: true });
     if (!(await login(client.page, creds.demoClient.email, creds.demoClient.pin))) { test.skip(true, 'client login broken'); return; }
     await client.page.waitForTimeout(2000);
-    await client.page.locator('button:has-text("Profile")').last().click();
-    await client.page.waitForTimeout(1500);
 
-    const profileText = await client.page.locator('#root').innerText();
-    if (!profileText.includes('Progress Reports')) {
-      reportFlow('client@report', 'view-report', 'Delivered report card not visible on the client profile tab.');
+    // Notification banner on home
+    const homeText = await client.page.locator('#root').innerText();
+    if (!/Progress Report is ready/i.test(homeText)) {
+      reportFlow('client@report', 'home-banner', 'New-report notification banner not shown on the portal home page.');
     } else {
-      await client.page.locator('text=Week of').first().click();
-      await client.page.waitForTimeout(1000);
+      await client.page.locator('text=Progress Report is ready').first().click();
+      await client.page.waitForTimeout(1200);
       const viewerText = await client.page.locator('#root').innerText();
-      if (!/deadlift bodyweight/i.test(viewerText) || !/action steps/i.test(viewerText)) {
-        reportFlow('client@report', 'view-report', 'Report viewer did not render the report content.');
+      if (!/deadlift bodyweight/i.test(viewerText) || !/mission/i.test(viewerText)) {
+        reportFlow('client@report', 'view-report', 'Celebratory viewer did not render the report content.');
       }
+      await client.page.locator('button:has-text("Close")').first().click();
+      await client.page.waitForTimeout(1200);
+
+      // Banner should be gone now that it's seen
+      const homeAfter = await client.page.locator('#root').innerText();
+      if (/Progress Report is ready/i.test(homeAfter)) {
+        reportFlow('client@report', 'seen-tracking', 'Banner still shows after the report was viewed (seenAt not persisted).');
+      }
+      // Seen flag persisted to the backend?
+      reports = store.get(creds.gymId, 'hf_progress_reports') || [];
+      const seen = reports.find(r => r.memberId === sarah.id && r.seenAt);
+      if (!seen) {
+        reportFlow('client@report', 'seen-tracking', 'seenAt not persisted to hf_progress_reports.');
+      }
+    }
+
+    // History under the Progress tab
+    await client.page.locator('button:has-text("Progress")').last().click();
+    await client.page.waitForTimeout(1500);
+    const progressText = await client.page.locator('#root').innerText();
+    if (!/Progress Reports/i.test(progressText) || !/Week of/i.test(progressText)) {
+      reportFlow('client@report', 'history', 'Report history not visible under the Progress tab.');
+    } else if (!/Viewed/i.test(progressText)) {
+      reportFlow('client@report', 'history', 'History does not show the viewed state for a seen report.');
     }
     await client.context.close();
   });

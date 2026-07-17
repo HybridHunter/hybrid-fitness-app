@@ -124,6 +124,22 @@ export default function ProgressReportsTab({ member }) {
     setEditing(rep);
   };
 
+  const markDelivered = (rep, channel) => ({
+    ...rep,
+    status: "delivered",
+    deliveredAt: rep.deliveredAt || new Date().toISOString(),
+    via: [...new Set([...(rep.via || []), channel])],
+  });
+
+  // Push to the client's app — the report appears on their portal home with a
+  // "new report" banner and under Progress → report history.
+  const handlePushToApp = (rep) => {
+    const delivered = markDelivered(rep, "app");
+    saveReport(delivered);
+    setEditing(null);
+    flash(`Pushed to ${member.firstName}'s app 📲 — they'll see it on their home screen`);
+  };
+
   const handleSend = async (rep) => {
     if (!member.email) { flash("This client has no email on file."); return; }
     setSending(true);
@@ -134,7 +150,7 @@ export default function ProgressReportsTab({ member }) {
         subject: `Your Weekly Progress Report — week of ${rep.weekOf}`,
         html,
       });
-      const delivered = { ...rep, status: "delivered", deliveredAt: new Date().toISOString() };
+      const delivered = markDelivered(rep, "email");
       saveReport(delivered);
       setEditing(null);
       flash(`Report emailed to ${member.email} ✓`);
@@ -197,6 +213,9 @@ export default function ProgressReportsTab({ member }) {
           <button style={btn("#3b82f6")} onClick={() => { saveReport(editing); printProgressReport(editing, member); }}>
             Preview / Save PDF
           </button>
+          <button style={btn(B.accent, null, true)} onClick={() => handlePushToApp(editing)}>
+            {"📲"} Push to App
+          </button>
           <button style={btn(B.accent)} disabled={sending} onClick={() => handleSend(editing)}>
             {sending ? "Sending..." : `Email to ${member.firstName}`}
           </button>
@@ -228,7 +247,7 @@ export default function ProgressReportsTab({ member }) {
             <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Week of {r.weekOf}</div>
             <div style={{ fontSize: 11, color: B.muted, marginTop: 2 }}>
               {r.status === "delivered"
-                ? `Delivered ${r.deliveredAt ? new Date(r.deliveredAt).toLocaleDateString() : ""}`
+                ? `Delivered ${r.deliveredAt ? new Date(r.deliveredAt).toLocaleDateString() : ""}${(r.via || []).includes("app") ? " 📲" : ""}${(r.via || []).includes("email") ? " ✉️" : ""}${r.seenAt ? " · Seen ✓" : ""}`
                 : "Draft"}
               {r.coachName ? ` · ${r.coachName}` : ""}
             </div>
