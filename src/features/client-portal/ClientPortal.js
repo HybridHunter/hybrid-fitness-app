@@ -675,6 +675,54 @@ export default function ClientPortal() {
 
         <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Dashboard</h1>
 
+        {/* Hero Greeting Card */}
+        <div style={{
+          background: `linear-gradient(135deg, ${B.accent}22 0%, ${B.card} 100%)`,
+          borderRadius: 20, padding: "24px 20px", margin: "12px 0 16px",
+          border: `1px solid ${B.accent}30`,
+        }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: B.text, margin: 0, lineHeight: 1.2 }}>
+            Hey {firstName}! {"\uD83D\uDC4B"}
+          </h1>
+          <p style={{ ...mutedText, marginTop: 4, marginBottom: 16 }}>{dateStr}</p>
+
+          {/* XP Progress Bar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: B.accent + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: B.accent }}>
+              {gam.level || 1}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Level {gam.level || 1}</span>
+                <span style={{ fontSize: 11, color: B.muted }}>{gam.xp || 0} / {xpForNext} XP</span>
+              </div>
+              <div style={{ height: 8, background: B.border, borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ height: "100%", background: B.accent, borderRadius: 4, width: xpPct + "%", transition: "width 0.5s" }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Stats Row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "0 0 16px" }}>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b" }}>{gam.currentStreak || 0}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83D\uDD25"} Streak</div>
+          </div>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: B.text }}>{gam.totalWorkouts || 0}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83C\uDFCB\uFE0F"} Workouts</div>
+          </div>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: B.accent }}>{gam.longestStreak || 0}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\u2B50"} Best</div>
+          </div>
+          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px", cursor: "pointer" }} onClick={openCoachChat}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: unreadMsgCount > 0 ? B.red || "#ef4444" : B.dim }}>{unreadMsgCount}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83D\uDCE9"} Messages</div>
+          </div>
+        </div>
+
         {/* Treasure Maps — gamified task quests */}
         {(Array.isArray(treasureMaps) ? treasureMaps : [])
           .filter(m => m.enabled)
@@ -809,54 +857,6 @@ export default function ClientPortal() {
             )}
           </div>
         )}
-
-        {/* Hero Greeting Card */}
-        <div style={{
-          background: `linear-gradient(135deg, ${B.accent}22 0%, ${B.card} 100%)`,
-          borderRadius: 20, padding: "24px 20px", margin: "12px 0 16px",
-          border: `1px solid ${B.accent}30`,
-        }}>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: B.text, margin: 0, lineHeight: 1.2 }}>
-            Hey {firstName}! {"\uD83D\uDC4B"}
-          </h1>
-          <p style={{ ...mutedText, marginTop: 4, marginBottom: 16 }}>{dateStr}</p>
-
-          {/* XP Progress Bar */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: B.accent + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 800, color: B.accent }}>
-              {gam.level || 1}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Level {gam.level || 1}</span>
-                <span style={{ fontSize: 11, color: B.muted }}>{gam.xp || 0} / {xpForNext} XP</span>
-              </div>
-              <div style={{ height: 8, background: B.border, borderRadius: 4, overflow: "hidden" }}>
-                <div style={{ height: "100%", background: B.accent, borderRadius: 4, width: xpPct + "%", transition: "width 0.5s" }} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Stats Row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, margin: "0 0 16px" }}>
-          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px" }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b" }}>{gam.currentStreak || 0}</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83D\uDD25"} Streak</div>
-          </div>
-          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px" }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: B.text }}>{gam.totalWorkouts || 0}</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83C\uDFCB\uFE0F"} Workouts</div>
-          </div>
-          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px" }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: B.accent }}>{gam.longestStreak || 0}</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\u2B50"} Best</div>
-          </div>
-          <div style={{ ...cardStyle, textAlign: "center", padding: "12px 6px", cursor: "pointer" }} onClick={openCoachChat}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: unreadMsgCount > 0 ? B.red || "#ef4444" : B.dim }}>{unreadMsgCount}</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: B.muted, marginTop: 2 }}>{"\uD83D\uDCE9"} Messages</div>
-          </div>
-        </div>
 
         {/* Next Session Card */}
         {nextSession && (() => {
