@@ -843,8 +843,6 @@ export default function ClientPortal() {
           <div style={{ width: 36, height: 4, borderRadius: 2, background: B.muted, margin: "0 auto" }} />
         </div>
 
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Dashboard</h1>
-
         {/* Hero Greeting Card */}
         <div style={{
           background: `linear-gradient(135deg, ${B.accent}22 0%, ${B.card} 100%)`,
@@ -2589,8 +2587,6 @@ export default function ClientPortal() {
         <div style={{ textAlign: "center", padding: "6px 0 0", opacity: 0.3 }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: B.muted, margin: "0 auto" }} />
         </div>
-
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 16px" }}>Progress</h1>
 
         {/* Progress report history */}
         {myDeliveredReports.length > 0 && (

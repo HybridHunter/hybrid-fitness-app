@@ -128,6 +128,8 @@ export default function TreasureMap({ map, tasks, deadline, onTaskClick }) {
           const labelX = onLeft ? x + 28 : x - 28;
           return (
             <g key={t.id || i} onClick={() => onTaskClick && onTaskClick(t)} style={{ cursor: onTaskClick ? "pointer" : "default" }}>
+              {/* Full-width invisible hit band — the whole row is tappable */}
+              <rect x="0" y={y - 34} width="340" height="68" fill="transparent" />
               {done && (
                 <>
                   <circle cx={x} cy={y} r="14" fill={GOLD} stroke={GOLD_DARK} strokeWidth="2.5" />
@@ -172,8 +174,13 @@ export default function TreasureMap({ map, tasks, deadline, onTaskClick }) {
       </div>
 
       {/* Progress footer */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: INK_SOFT, marginBottom: 5 }}>
-        {doneCount} of {n} stops dug up
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: INK_SOFT }}>
+          {doneCount} of {n} stops dug up
+        </div>
+        {!allDone && onTaskClick && (
+          <div style={{ fontSize: 11, fontWeight: 700, color: GOLD_DARK }}>Tap a stop to complete it →</div>
+        )}
       </div>
       <div style={{ width: "100%", height: 7, background: "rgba(74,52,24,0.18)", borderRadius: 4, overflow: "hidden" }}>
         <div style={{ width: (n ? Math.round((doneCount / n) * 100) : 0) + "%", height: "100%", background: "linear-gradient(90deg, #f59e0b, #d97706)", borderRadius: 4, transition: "width .4s ease" }} />
