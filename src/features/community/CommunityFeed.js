@@ -7,7 +7,7 @@ import { localISO } from "../../utils/dates";
 import Card from "../../components/ui/Card";
 import { ImageUploadZone } from "../../components/shared/ImageUpload";
 import StoriesBar from "../../components/shared/Stories";
-import { GoLive, LiveViewer, useLiveStatus } from "../../components/shared/LiveStream";
+import { GoLive, LiveViewer, useLiveStatus, pruneExpiredReplays } from "../../components/shared/LiveStream";
 import MentionTextarea from "../../components/shared/MentionTextarea";
 import FeedVideo from "../../components/shared/FeedVideo";
 
@@ -1714,7 +1714,7 @@ export default function CommunityFeed() {
   /* ── Build combined feed items (posts + challenge cards) ── */
   const feedItems = useMemo(() => {
     // Regular posts
-    const postItems = posts.map((p) => ({ type: "post", data: p, sortTime: p.createdAt }));
+    const postItems = pruneExpiredReplays(posts).map((p) => ({ type: "post", data: p, sortTime: p.createdAt }));
 
     // Challenge items as pseudo-posts for the feed
     const challengeItems = challenges.map((c) => {
@@ -1975,7 +1975,7 @@ export default function CommunityFeed() {
 
       {/* Go Live button + LIVE-now banner */}
       {showGoLive && <GoLive me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} onClose={() => setShowGoLive(false)} />}
-      {watchingLive && <LiveViewer onClose={() => setWatchingLive(false)} />}
+      {watchingLive && <LiveViewer me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} onClose={() => setWatchingLive(false)} />}
       {liveNow && liveNow.hostId !== staffId ? (
         <div onClick={() => setWatchingLive(true)} style={{ display: "flex", alignItems: "center", gap: 12, margin: "10px 0", padding: "12px 16px", borderRadius: 14, cursor: "pointer", background: "linear-gradient(135deg,#ef4444,#b91c1c)" }}>
           <span style={{ background: "#fff", color: "#ef4444", fontSize: 10, fontWeight: 900, padding: "2px 7px", borderRadius: 6 }}>● LIVE</span>

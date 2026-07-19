@@ -15,7 +15,7 @@ import { resizeImage } from "../../components/shared/ImageUpload";
 import StoriesBar from "../../components/shared/Stories";
 import MentionTextarea from "../../components/shared/MentionTextarea";
 import FeedVideo from "../../components/shared/FeedVideo";
-import { GoLive, LiveViewer, useLiveStatus } from "../../components/shared/LiveStream";
+import { GoLive, LiveViewer, useLiveStatus, pruneExpiredReplays } from "../../components/shared/LiveStream";
 import TreasureMap from "../../components/shared/TreasureMap";
 import ProgressPhotos from "../members/ProgressPhotos";
 
@@ -1919,7 +1919,7 @@ export default function ClientPortal() {
 
     /* ── FEED SUB-SECTION ── */
     const renderFeed = () => {
-      const sortedPosts = [...(communityPosts || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const sortedPosts = pruneExpiredReplays([...(communityPosts || [])]).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
       const handleLikePost = (postId) => {
         setCommunityPosts(prev => prev.map(p => {
@@ -4116,7 +4116,7 @@ export default function ClientPortal() {
           onClose={() => setShowGoLive(false)}
         />
       )}
-      {watchingLive && <LiveViewer onClose={() => setWatchingLive(false)} />}
+      {watchingLive && <LiveViewer me={{ id: member.id, name: `${member.firstName} ${member.lastName || ""}`.trim(), photo: member.photo || "" }} onClose={() => setWatchingLive(false)} />}
 
       {/* Treasure-map completion toast */}
       {mapToast && (
@@ -4387,17 +4387,32 @@ export default function ClientPortal() {
                 transform: isActive ? "scale(1.05)" : "scale(1)",
               }}
             >
-              <span style={{
-                fontSize: 20, lineHeight: 1,
-                filter: isActive ? "none" : "grayscale(80%)",
-                opacity: isActive ? 1 : 0.5,
-                transition: "opacity 0.15s, filter 0.15s",
-              }}>{tab.icon}</span>
-              <span style={{
-                fontSize: 10, fontWeight: isActive ? 700 : 500,
-                color: isActive ? B.accent : B.dim,
-                transition: "color 0.15s",
-              }}>{tab.label}</span>
+              {tab.key === "profile" ? (
+                <div style={{
+                  width: 26, height: 26, borderRadius: 13,
+                  background: member.photo ? `url(${member.photo}) center/cover` : `linear-gradient(135deg, ${B.accent}, ${B.accent}88)`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#fff", fontWeight: 800, fontSize: 12,
+                  border: isActive ? `2px solid ${B.accent}` : `2px solid transparent`,
+                  transition: "border-color 0.15s",
+                }}>
+                  {!member.photo && (member.firstName || "?").slice(0, 1)}
+                </div>
+              ) : (
+                <>
+                  <span style={{
+                    fontSize: 20, lineHeight: 1,
+                    filter: isActive ? "none" : "grayscale(80%)",
+                    opacity: isActive ? 1 : 0.5,
+                    transition: "opacity 0.15s, filter 0.15s",
+                  }}>{tab.icon}</span>
+                  <span style={{
+                    fontSize: 10, fontWeight: isActive ? 700 : 500,
+                    color: isActive ? B.accent : B.dim,
+                    transition: "color 0.15s",
+                  }}>{tab.label}</span>
+                </>
+              )}
 
               {/* Unread badge on Home */}
               {tab.key === "home" && unreadCount > 0 && (
