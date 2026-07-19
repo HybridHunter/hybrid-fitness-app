@@ -15,6 +15,7 @@ import { resizeImage } from "../../components/shared/ImageUpload";
 import StoriesBar from "../../components/shared/Stories";
 import MentionTextarea from "../../components/shared/MentionTextarea";
 import FeedVideo from "../../components/shared/FeedVideo";
+import { GoLive, LiveViewer, useLiveStatus } from "../../components/shared/LiveStream";
 import TreasureMap from "../../components/shared/TreasureMap";
 import ProgressPhotos from "../members/ProgressPhotos";
 
@@ -146,6 +147,9 @@ export default function ClientPortal() {
 
   const [clientChatText, setClientChatText] = useState("");
   const [showPastSessions, setShowPastSessions] = useState(false);
+  const [showGoLive, setShowGoLive] = useState(false);
+  const [watchingLive, setWatchingLive] = useState(false);
+  const { live } = useLiveStatus();
   const [progressReports, setProgressReports] = useLocalStorage("hf_progress_reports", []);
   const [viewingReport, setViewingReport] = useState(null);
 
@@ -704,6 +708,30 @@ export default function ClientPortal() {
 
         {/* Stories */}
         <StoriesBar me={{ id: member.id, name: `${member.firstName} ${member.lastName || ""}`.trim(), photo: member.photo || "" }} />
+
+        {/* Someone is LIVE now */}
+        {live && live.hostId !== member.id && (
+          <div onClick={() => setWatchingLive(true)} style={{
+            display: "flex", alignItems: "center", gap: 12, margin: "12px 0 4px", padding: "12px 16px",
+            borderRadius: 16, cursor: "pointer",
+            background: "linear-gradient(135deg, #ef4444, #b91c1c)", boxShadow: "0 8px 24px #ef444455",
+          }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 21,
+              background: live.hostPhoto ? `url(${live.hostPhoto}) center/cover` : "#ffffff33",
+              display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800,
+              border: "2px solid #fff",
+            }}>{!live.hostPhoto && (live.hostName || "?").slice(0, 1)}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ background: "#fff", color: "#ef4444", fontSize: 10, fontWeight: 900, padding: "2px 7px", borderRadius: 6 }}>● LIVE</span>
+                {live.hostName}
+              </div>
+              <div style={{ fontSize: 12, color: "#ffffffdd", marginTop: 2 }}>{live.title || "is live now — tap to watch"}</div>
+            </div>
+            <div style={{ fontSize: 18, color: "#fff", fontWeight: 800 }}>{"▶"}</div>
+          </div>
+        )}
 
         {/* New progress report notification */}
         {unseenReports.length > 0 && (
@@ -1950,61 +1978,6 @@ export default function ClientPortal() {
 
       return (
         <div>
-          {/* Compose form */}
-          {showNewPost && (
-            <div style={{ ...cardStyle, border: `2px solid ${B.accent}40` }}>
-              <MentionTextarea
-                value={newPostText}
-                onChange={setNewPostText}
-                people={(members || []).filter(m => m.id !== member.id && (m.membershipStatus || "active") !== "inactive").map(m => ({ id: m.id, name: `${m.firstName} ${m.lastName || ""}`.trim(), photo: m.photo || "" }))}
-                onMention={(pn) => setNewPostTags(prev => (prev.some(t => t.id === pn.id) ? prev : [...prev, { id: pn.id, name: pn.name }]))}
-                placeholder="Share something... type @ to tag someone"
-                rows={3}
-                style={{
-                  width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${B.border}`,
-                  background: B.darker, color: B.text, fontSize: 14, resize: "vertical",
-                  outline: "none", boxSizing: "border-box", fontFamily: "inherit",
-                }}
-              />
-              {/* Media preview */}
-              {newPostImage && (
-                <div style={{ position: "relative", marginTop: 10 }}>
-                  <img src={newPostImage} alt="" style={{ width: "100%", maxHeight: 220, objectFit: "cover", borderRadius: 10 }} />
-                  <button onClick={() => setNewPostImage(null)} style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer" }}>✕</button>
-                </div>
-              )}
-              {newPostVideo && (
-                <div style={{ position: "relative", marginTop: 10 }}>
-                  <video src={newPostVideo} controls playsInline style={{ width: "100%", maxHeight: 240, borderRadius: 10, background: "#000" }} />
-                  <button onClick={() => setNewPostVideo(null)} style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer", zIndex: 2 }}>✕</button>
-                </div>
-              )}
-              {/* Tagged people */}
-              {newPostTags.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 12, color: B.muted }}>
-                  with{" "}
-                  {newPostTags.map(t => (
-                    <span key={t.id} onClick={() => setNewPostTags(prev => prev.filter(x => x.id !== t.id))} style={{ color: B.accent, fontWeight: 700, cursor: "pointer", marginRight: 6 }}>
-                      @{t.name} ✕
-                    </span>
-                  ))}
-                </div>
-              )}
-              <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <label style={{ ...touchBtn(B.card, B.text, { fontSize: 13, minHeight: 36, padding: "6px 12px", border: `1px solid ${B.border}`, cursor: "pointer" }), display: "inline-flex", alignItems: "center" }}>
-                  {"📷"} Photo/Video
-                  <input type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={handlePostMedia} />
-                </label>
-                <div style={{ flex: 1 }} />
-                <button onClick={() => { setShowNewPost(false); setNewPostText(""); setNewPostImage(null); setNewPostVideo(null); setNewPostTags([]); setShowTagPicker(false); }} style={touchBtn(B.card, B.muted, { fontSize: 13, minHeight: 36, padding: "6px 16px", border: `1px solid ${B.border}` })}>
-                  Cancel
-                </button>
-                <button onClick={handleCreatePost} style={touchBtn(B.accent, B.darker, { fontSize: 13, minHeight: 36, padding: "6px 16px", opacity: (newPostText.trim() || newPostImage || newPostVideo) ? 1 : 0.4 })}>
-                  Post
-                </button>
-              </div>
-            </div>
-          )}
 
           {sortedPosts.length === 0 && (
             <div style={{ ...cardStyle, textAlign: "center", padding: "32px 20px" }}>
@@ -4073,6 +4046,135 @@ export default function ClientPortal() {
           }}>Close ✕</button>
         </div>
       )}
+
+      {/* Facebook-style full-screen New Post composer */}
+      {showNewPost && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 4500, background: B.darker, display: "flex", flexDirection: "column" }}>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderBottom: `1px solid ${B.border}` }}>
+            <button
+              onClick={() => { setShowNewPost(false); setNewPostText(""); setNewPostImage(null); setNewPostVideo(null); setNewPostTags([]); }}
+              style={{ background: "none", border: "none", color: B.text, fontSize: 22, cursor: "pointer", padding: 4, lineHeight: 1 }}
+            >✕</button>
+            <div style={{ flex: 1, textAlign: "center", fontSize: 17, fontWeight: 800, color: B.text }}>New post</div>
+            <button
+              onClick={handleCreatePost}
+              disabled={!newPostText.trim() && !newPostImage && !newPostVideo}
+              style={{
+                background: (newPostText.trim() || newPostImage || newPostVideo) ? B.accent : B.border,
+                border: "none", borderRadius: 16, color: "#fff", fontSize: 14, fontWeight: 800,
+                padding: "7px 18px", cursor: (newPostText.trim() || newPostImage || newPostVideo) ? "pointer" : "default",
+              }}
+            >Post</button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+            {/* Author */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 22,
+                background: member.photo ? `url(${member.photo}) center/cover` : `linear-gradient(135deg, ${B.accent}, ${B.accent}88)`,
+                display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 18,
+              }}>
+                {!member.photo && (member.firstName || "?").slice(0, 1)}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: B.text }}>{member.firstName} {member.lastName}</div>
+            </div>
+
+            {/* Quick chips */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 2 }}>
+              <button onClick={() => setNewPostText(t => (t ? t.replace(/\s*$/, "") + " @" : "@"))} style={{
+                display: "inline-flex", alignItems: "center", gap: 6, background: B.card, border: `1px solid ${B.border}`,
+                borderRadius: 18, color: B.text, fontSize: 13, fontWeight: 700, padding: "8px 14px", cursor: "pointer", flexShrink: 0,
+              }}>{"🏷️"} Tag people</button>
+              <label style={{
+                display: "inline-flex", alignItems: "center", gap: 6, background: B.card, border: `1px solid ${B.border}`,
+                borderRadius: 18, color: B.text, fontSize: 13, fontWeight: 700, padding: "8px 14px", cursor: "pointer", flexShrink: 0,
+              }}>
+                {"📷"} Photo/Video
+                <input type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={handlePostMedia} />
+              </label>
+            </div>
+
+            {/* Composer */}
+            <MentionTextarea
+              value={newPostText}
+              onChange={setNewPostText}
+              people={(members || []).filter(m => m.id !== member.id && (m.membershipStatus || "active") !== "inactive").map(m => ({ id: m.id, name: `${m.firstName} ${m.lastName || ""}`.trim(), photo: m.photo || "" }))}
+              onMention={(pn) => setNewPostTags(prev => (prev.some(t => t.id === pn.id) ? prev : [...prev, { id: pn.id, name: pn.name }]))}
+              placeholder="What's on your mind?"
+              rows={6}
+              style={{
+                width: "100%", padding: "4px 0", border: "none", background: "transparent",
+                color: B.text, fontSize: 19, resize: "none", outline: "none", boxSizing: "border-box",
+                fontFamily: "inherit", lineHeight: 1.45, minHeight: 120,
+              }}
+            />
+
+            {/* Tagged people */}
+            {newPostTags.length > 0 && (
+              <div style={{ fontSize: 13, color: B.muted, marginBottom: 8 }}>
+                with{" "}
+                {newPostTags.map(t => (
+                  <span key={t.id} onClick={() => setNewPostTags(prev => prev.filter(x => x.id !== t.id))} style={{ color: B.accent, fontWeight: 700, cursor: "pointer", marginRight: 6 }}>@{t.name} ✕</span>
+                ))}
+              </div>
+            )}
+
+            {/* Media preview */}
+            {newPostImage && (
+              <div style={{ position: "relative", marginTop: 8 }}>
+                <img src={newPostImage} alt="" style={{ width: "100%", maxHeight: 300, objectFit: "cover", borderRadius: 12 }} />
+                <button onClick={() => setNewPostImage(null)} style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer" }}>✕</button>
+              </div>
+            )}
+            {newPostVideo && (
+              <div style={{ position: "relative", marginTop: 8 }}>
+                <video src={newPostVideo} controls playsInline style={{ width: "100%", maxHeight: 300, borderRadius: 12, background: "#000" }} />
+                <button onClick={() => setNewPostVideo(null)} style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer", zIndex: 2 }}>✕</button>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom action tiles */}
+          <div style={{ display: "flex", gap: 10, padding: "12px 16px 22px", borderTop: `1px solid ${B.border}` }}>
+            <label style={{
+              flex: 1, background: B.card, border: `1px solid ${B.border}`, borderRadius: 14,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: 4, padding: "14px 0", cursor: "pointer",
+            }}>
+              <span style={{ fontSize: 22 }}>{"🖼️"}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: B.text }}>Gallery</span>
+              <input type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={handlePostMedia} />
+            </label>
+            <button onClick={() => { setShowNewPost(false); setShowGoLive(true); }} style={{
+              flex: 1, background: B.card, border: `1px solid ${B.border}`, borderRadius: 14,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: 4, padding: "14px 0", cursor: "pointer",
+            }}>
+              <span style={{ fontSize: 22 }}>{"🔴"}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: B.text }}>Live</span>
+            </button>
+            <button onClick={() => setNewPostText(t => (t ? t.replace(/\s*$/, "") + " @" : "@"))} style={{
+              flex: 1, background: B.card, border: `1px solid ${B.border}`, borderRadius: 14,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: 4, padding: "14px 0", cursor: "pointer",
+            }}>
+              <span style={{ fontSize: 22 }}>{"🏷️"}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: B.text }}>Tag</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Live streaming */}
+      {showGoLive && (
+        <GoLive
+          me={{ id: member.id, name: `${member.firstName} ${member.lastName || ""}`.trim(), photo: member.photo || "" }}
+          onClose={() => setShowGoLive(false)}
+        />
+      )}
+      {watchingLive && <LiveViewer onClose={() => setWatchingLive(false)} />}
 
       {/* Treasure-map completion toast */}
       {mapToast && (

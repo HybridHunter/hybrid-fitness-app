@@ -7,6 +7,7 @@ import { localISO } from "../../utils/dates";
 import Card from "../../components/ui/Card";
 import { ImageUploadZone } from "../../components/shared/ImageUpload";
 import StoriesBar from "../../components/shared/Stories";
+import { GoLive, LiveViewer, useLiveStatus } from "../../components/shared/LiveStream";
 import MentionTextarea from "../../components/shared/MentionTextarea";
 import FeedVideo from "../../components/shared/FeedVideo";
 
@@ -1667,6 +1668,9 @@ export default function CommunityFeed() {
   const [composeMediaType, setComposeMediaType] = useState(null);
   const [composeMediaUrl, setComposeMediaUrl] = useState("");
   const [composeTags, setComposeTags] = useState([]); // [{id, name}]
+  const [showGoLive, setShowGoLive] = useState(false);
+  const [watchingLive, setWatchingLive] = useState(false);
+  const { live: liveNow } = useLiveStatus();
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [composePollOptions, setComposePollOptions] = useState(["", ""]);
   const [expandedComments, setExpandedComments] = useState({});
@@ -1968,6 +1972,26 @@ export default function CommunityFeed() {
 
       {/* Stories — broadcast to every member and coach at this location */}
       <StoriesBar me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} />
+
+      {/* Go Live button + LIVE-now banner */}
+      {showGoLive && <GoLive me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} onClose={() => setShowGoLive(false)} />}
+      {watchingLive && <LiveViewer onClose={() => setWatchingLive(false)} />}
+      {liveNow && liveNow.hostId !== staffId ? (
+        <div onClick={() => setWatchingLive(true)} style={{ display: "flex", alignItems: "center", gap: 12, margin: "10px 0", padding: "12px 16px", borderRadius: 14, cursor: "pointer", background: "linear-gradient(135deg,#ef4444,#b91c1c)" }}>
+          <span style={{ background: "#fff", color: "#ef4444", fontSize: 10, fontWeight: 900, padding: "2px 7px", borderRadius: 6 }}>● LIVE</span>
+          <div style={{ flex: 1, color: "#fff" }}>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>{liveNow.hostName} is live</div>
+            <div style={{ fontSize: 12, opacity: 0.9 }}>{liveNow.title || "Tap to watch"}</div>
+          </div>
+          <span style={{ color: "#fff", fontWeight: 800 }}>{"▶"}</span>
+        </div>
+      ) : (
+        !liveNow && (
+          <button onClick={() => setShowGoLive(true)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", margin: "10px 0", padding: "11px 0", borderRadius: 12, border: "none", background: "#ef4444", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
+            {"🔴"} Go Live
+          </button>
+        )
+      )}
 
       {/* Active Challenges Banner */}
       {activeChallenges.length > 0 && activeCategory !== "Challenges" && (
