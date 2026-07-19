@@ -403,13 +403,19 @@ export default function ClientPortal() {
 
   // ── Coach-assigned tasks (hf_client_tasks) ──
   // Visible = mine + pending + scheduled for today or earlier (future-scheduled stay hidden)
+  const enabledMapIds = useMemo(
+    () => new Set((Array.isArray(treasureMaps) ? treasureMaps : []).filter(m => m.enabled).map(m => m.id)),
+    [treasureMaps]
+  );
   const visibleTasks = useMemo(() => {
     if (!myId) return [];
     const today = todayISO();
     return (Array.isArray(clientTasks) ? clientTasks : [])
       .filter(t => t.memberId === myId && t.status === "pending" && (t.scheduledFor || "") <= today)
+      // Treasure-map stops render on the map, not here (unless the map was disabled/deleted)
+      .filter(t => !t.mapId || !enabledMapIds.has(t.mapId))
       .sort((a, b) => (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99"));
-  }, [clientTasks, myId]);
+  }, [clientTasks, myId, enabledMapIds]);
 
   // Completed in the last 7 days — shown in the collapsed "Done recently" list
   const recentDoneTasks = useMemo(() => {
@@ -419,6 +425,36 @@ export default function ClientPortal() {
       .filter(t => t.memberId === myId && t.status === "done" && t.completedAt && new Date(t.completedAt).getTime() >= cutoff)
       .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
   }, [clientTasks, myId]);
+
+  // Auto-complete tracking tasks:
+  // - 'attendance': done when N check-ins are logged on/after the task's start
+  // - 'challenge': done when the member has joined the linked challenge
+  const attendanceProgress = (t) => {
+    if (!member) return 0;
+    return (Array.isArray(attendance) ? attendance : []).filter(a =>
+      a.memberId === member.id && !a.noShow && a.checkInTime &&
+      localISO(new Date(a.checkInTime)) >= (t.scheduledFor || "0000-00-00")
+    ).length;
+  };
+  useEffect(() => {
+    if (!myId) return;
+    const now = new Date().toISOString();
+    const toComplete = (Array.isArray(clientTasks) ? clientTasks : []).filter(t => {
+      if (t.memberId !== myId || t.status !== "pending") return false;
+      if (t.type === "attendance") return attendanceProgress(t) >= (t.targetCount || 1);
+      if (t.type === "challenge") {
+        const ch = (Array.isArray(challenges) ? challenges : []).find(c => c.id === t.challengeId);
+        return !!ch && (ch.participants || []).includes(myId);
+      }
+      return false;
+    });
+    if (toComplete.length) {
+      const ids = new Set(toComplete.map(t => t.id));
+      setClientTasks(prev => (Array.isArray(prev) ? prev : []).map(t =>
+        ids.has(t.id) ? { ...t, status: "done", completedAt: now } : t));
+    }
+    // eslint-disable-next-line
+  }, [attendance, challenges, clientTasks, myId]);
 
   const markTaskDone = (taskId) => {
     setClientTasks(prev => (Array.isArray(prev) ? prev : []).map(t =>
@@ -456,6 +492,27 @@ export default function ClientPortal() {
 
   // Open a doc task: images get an inline overlay; anything else (PDF etc.)
   // opens a new window with an iframe pointed at the dataUrl.
+  // Route a task to its type's action (shared by the Tasks card and map stops)
+  const openTaskAction = (t) => {
+    if (t.status === "done") return;
+    if (t.type === "doc") { openTaskDoc(t); return; }
+    if (t.type === "course") { setCourseViewerId(t.courseId); setCourseLessonPath(null); return; }
+    if (t.type === "community_post") { goToPostComposer(); return; }
+    if (t.type === "attendance") {
+      alert(`${t.title}\n\n${attendanceProgress(t)} of ${t.targetCount || 1} workouts done — this stop completes automatically as you check in. Keep showing up! 💪`);
+      return;
+    }
+    if (t.type === "challenge") {
+      setCommunitySubTab("challenges");
+      setActiveChallengeId(t.challengeId || null);
+      switchTab("home");
+      return;
+    }
+    if (window.confirm(`${t.title}${t.description ? "\n\n" + t.description : ""}\n\nMark this stop as done?`)) {
+      markTaskDone(t.id);
+    }
+  };
+
   const openTaskDoc = (task) => {
     const doc = task.doc;
     if (!doc?.dataUrl) return;
@@ -775,14 +832,11 @@ export default function ClientPortal() {
               <div key={m.id} style={{ marginBottom: 14 }}>
                 <TreasureMap
                   map={m}
-                  tasks={mapTasks}
+                  tasks={mapTasks.map(t => (t.type === "attendance"
+                    ? { ...t, title: `${t.title} (${Math.min(attendanceProgress(t), t.targetCount || 1)}/${t.targetCount || 1})` }
+                    : t))}
                   deadline={mapTasks.find(t => t.dueDate)?.dueDate || null}
-                  onTaskClick={(t) => {
-                    if (t.status === "done") return;
-                    if (window.confirm(`${t.title}${t.description ? "\n\n" + t.description : ""}\n\nMark this stop as done?`)) {
-                      markTaskDone(t.id);
-                    }
-                  }}
+                  onTaskClick={openTaskAction}
                 />
               </div>
             );
@@ -806,7 +860,7 @@ export default function ClientPortal() {
               <div style={{ ...mutedText, marginTop: 8 }}>All caught up! {"🎉"}</div>
             )}
             {visibleTasks.map((t, ti) => {
-              const icon = { custom: "📝", doc: "📄", course: "🎓", community_post: "📣" }[t.type] || "📝";
+              const icon = { custom: "📝", doc: "📄", course: "🎓", community_post: "📣", attendance: "💪", challenge: "🎯" }[t.type] || "📝";
               const overdue = t.dueDate && t.dueDate < today;
               const smallBtn = { fontSize: 12, minHeight: 32, padding: "6px 14px", borderRadius: 10 };
               return (
@@ -836,6 +890,21 @@ export default function ClientPortal() {
                     )}
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8, marginLeft: 28, flexWrap: "wrap", alignItems: "center" }}>
+                    {t.type === "attendance" && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+                        <div style={{ flex: 1, height: 8, background: B.border, borderRadius: 4, overflow: "hidden", maxWidth: 180 }}>
+                          <div style={{ height: "100%", background: B.accent, width: `${Math.min(100, (attendanceProgress(t) / (t.targetCount || 1)) * 100)}%`, transition: "width 0.4s" }} />
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: B.accent }}>
+                          {"💪"} {Math.min(attendanceProgress(t), t.targetCount || 1)}/{t.targetCount || 1} workouts
+                        </span>
+                      </div>
+                    )}
+                    {t.type === "challenge" && (
+                      <button onClick={() => openTaskAction(t)} style={touchBtn(B.accent, B.darker, smallBtn)}>
+                        {"🎯"} Join {t.challengeName || "the challenge"}
+                      </button>
+                    )}
                     {t.type === "custom" && (
                       <>
                         <button onClick={() => markTaskDone(t.id)} style={touchBtn(B.accent, B.darker, smallBtn)}>Mark Done</button>

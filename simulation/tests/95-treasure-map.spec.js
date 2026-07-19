@@ -35,6 +35,13 @@ test.describe('treasure map', () => {
       ...tasks,
       { id: crypto.randomUUID(), memberId: sarah.id, title: 'TM_STOP drink water daily', description: 'Hit 80oz every day', type: 'custom', scheduledFor: today, status: 'pending', createdBy: 'Sim Admin', createdAt: new Date().toISOString(), mapId },
       { id: crypto.randomUUID(), memberId: sarah.id, title: 'TM_STOP book two sessions', description: '', type: 'custom', scheduledFor: today, status: 'pending', createdBy: 'Sim Admin', createdAt: new Date().toISOString(), mapId },
+      // Auto-tracking task: 1 workout target, with a matching check-in already logged
+      { id: 'auto-att-task', memberId: sarah.id, title: 'AUTO_ATT complete one workout', description: '', type: 'attendance', targetCount: 1, scheduledFor: today, status: 'pending', createdBy: 'Sim Admin', createdAt: new Date().toISOString() },
+    ]);
+    const att = store.get(creds.gymId, 'hf_attendance') || [];
+    store.upsert(creds.gymId, 'hf_attendance', [
+      ...att,
+      { id: crypto.randomUUID(), memberId: sarah.id, checkInTime: new Date().toISOString(), method: 'kiosk' },
     ]);
   });
   test.afterAll(() => { flush(); store.save(); });
@@ -58,6 +65,19 @@ test.describe('treasure map', () => {
       if (!/stops dug up/i.test(dashText)) {
         reportFlow('client@treasure', 'render', 'Map progress footer missing.');
       }
+    }
+
+    // Dedupe: the map stop title should appear exactly once (on the map, not in the Tasks card too)
+    const occurrences = dashText.split('TM_STOP drink water daily').length - 1;
+    if (occurrences > 1) {
+      reportFlow('client@treasure', 'dedupe', `Map task duplicated outside the treasure map (${occurrences} occurrences on Dash).`);
+    }
+
+    // Attendance auto-tracking: task with target 1 + existing check-in should auto-complete
+    await client.page.waitForTimeout(1500);
+    const autoTask = (store.get(creds.gymId, 'hf_client_tasks') || []).find(t => t.id === 'auto-att-task');
+    if (!autoTask || autoTask.status !== 'done') {
+      reportFlow('client@treasure', 'auto-attendance', 'Attendance-count task did not auto-complete after reaching its target.');
     }
 
     // Dig up the first stop (click its label in the SVG; confirm auto-accepted)

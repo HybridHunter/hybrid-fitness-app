@@ -4,26 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { localISO } from "../../utils/dates";
-
-const TYPE_META = {
-  custom: { icon: "📝", label: "Custom" },
-  doc: { icon: "📄", label: "Document" },
-  course: { icon: "🎓", label: "Course" },
-  community_post: { icon: "📣", label: "Community Post" },
-};
-
-const MAX_DOC_BYTES = 2 * 1024 * 1024; // 2MB
-
-/* Read a file into { name, dataUrl }. Rejects files over 2MB with an alert. */
-function readDoc(file, cb) {
-  if (file.size > MAX_DOC_BYTES) {
-    window.alert(`"${file.name}" is too large — files must be 2MB or smaller.`);
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => cb({ name: file.name, dataUrl: reader.result });
-  reader.readAsDataURL(file);
-}
+import TaskTypeFields, { TYPE_META } from "./TaskTypeFields";
 
 /* dataURLs can't be opened as a top-level page in modern browsers,
    so we open a blank window and frame the file inside it. */
@@ -36,58 +17,17 @@ function viewUpload(up) {
   );
 }
 
-/* Type-specific input — shared by the assign form and the template editor.
-   row: { type, courseId, doc, prompt }; onChange receives a partial patch. */
-function TypeFields({ B, row, onChange, courses, input }) {
-  if (row.type === "course") {
-    return (
-      <select value={row.courseId || ""} onChange={(e) => onChange({ courseId: e.target.value })} style={input}>
-        <option value="">Select a course...</option>
-        {courses.map((c) => (
-          <option key={c.id} value={c.id}>{c.title || "Untitled course"}</option>
-        ))}
-      </select>
-    );
-  }
-  if (row.type === "doc") {
-    return (
-      <div>
-        <input
-          type="file"
-          onChange={(e) => {
-            const f = e.target.files && e.target.files[0];
-            e.target.value = "";
-            if (f) readDoc(f, (doc) => onChange({ doc }));
-          }}
-          style={{ fontSize: 12, color: B.muted }}
-        />
-        {row.doc && <div style={{ fontSize: 11, color: B.accent, marginTop: 4, fontWeight: 600 }}>📄 {row.doc.name} attached</div>}
-      </div>
-    );
-  }
-  if (row.type === "community_post") {
-    return (
-      <textarea
-        rows={2}
-        placeholder="What should they post about?"
-        value={row.prompt || ""}
-        onChange={(e) => onChange({ prompt: e.target.value })}
-        style={{ ...input, resize: "vertical", lineHeight: 1.5 }}
-      />
-    );
-  }
-  return null;
-}
-
 const emptyForm = () => ({
   title: "", description: "", type: "custom",
   courseId: "", doc: null, prompt: "",
+  targetCount: 5, challengeId: "", challengeName: "",
   scheduledFor: localISO(), dueDate: "",
 });
 
 const emptyTplRow = () => ({
   title: "", description: "", type: "custom",
   courseId: "", doc: null, prompt: "",
+  targetCount: 5, challengeId: "", challengeName: "",
   offsetDays: 0, dueOffsetDays: null,
 });
 
@@ -98,6 +38,7 @@ export default function ClientTasksTab({ member }) {
   const [tasks, setTasks] = useLocalStorage("hf_client_tasks", []);
   const [templates, setTemplates] = useLocalStorage("hf_task_templates", []);
   const [courses] = useLocalStorage("hf_courses", []);
+  const [challenges] = useLocalStorage("hf_challenges", []);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -107,6 +48,7 @@ export default function ClientTasksTab({ member }) {
 
   const coachName = (currentUser && currentUser.displayName) || "Coach";
   const courseList = Array.isArray(courses) ? courses : [];
+  const challengeList = Array.isArray(challenges) ? challenges : [];
   const templateList = Array.isArray(templates) ? templates : [];
   const todayISO = localISO();
 
@@ -135,6 +77,7 @@ export default function ClientTasksTab({ member }) {
     if (!form.title.trim()) { window.alert("Title is required."); return; }
     if (form.type === "course" && !form.courseId) { window.alert("Pick a course for this task."); return; }
     if (form.type === "doc" && !form.doc) { window.alert("Attach a file for this task."); return; }
+    if (form.type === "challenge" && !form.challengeId) { window.alert("Pick a challenge for this task."); return; }
     const t = {
       id: crypto.randomUUID(),
       memberId: member.id,
@@ -149,6 +92,11 @@ export default function ClientTasksTab({ member }) {
     if (form.type === "course") t.courseId = form.courseId;
     if (form.type === "doc") t.doc = form.doc;
     if (form.type === "community_post") t.prompt = form.prompt.trim();
+    if (form.type === "attendance") t.targetCount = Math.max(1, Number(form.targetCount) || 5);
+    if (form.type === "challenge") {
+      t.challengeId = form.challengeId;
+      t.challengeName = form.challengeName || "";
+    }
     if (form.dueDate) t.dueDate = form.dueDate;
     setTasks((prev) => [...(Array.isArray(prev) ? prev : []), t]);
     setShowForm(false);
@@ -180,6 +128,11 @@ export default function ClientTasksTab({ member }) {
       if (tt.type === "course" && tt.courseId) task.courseId = tt.courseId;
       if (tt.type === "doc" && tt.doc) task.doc = tt.doc;
       if (tt.type === "community_post" && tt.prompt) task.prompt = tt.prompt;
+      if (tt.type === "attendance") task.targetCount = Math.max(1, Number(tt.targetCount) || 5);
+      if (tt.type === "challenge" && tt.challengeId) {
+        task.challengeId = tt.challengeId;
+        task.challengeName = tt.challengeName || "";
+      }
       if (tt.dueOffsetDays !== null && tt.dueOffsetDays !== undefined) {
         task.dueDate = localISO(new Date(Date.now() + tt.dueOffsetDays * 86400000));
       }
@@ -205,6 +158,8 @@ export default function ClientTasksTab({ member }) {
         ...(r.type === "course" && r.courseId ? { courseId: r.courseId } : {}),
         ...(r.type === "doc" && r.doc ? { doc: r.doc } : {}),
         ...(r.type === "community_post" && r.prompt ? { prompt: r.prompt.trim() } : {}),
+        ...(r.type === "attendance" ? { targetCount: Math.max(1, Number(r.targetCount) || 5) } : {}),
+        ...(r.type === "challenge" && r.challengeId ? { challengeId: r.challengeId, challengeName: r.challengeName || "" } : {}),
         offsetDays: Number(r.offsetDays) || 0,
         dueOffsetDays: r.dueOffsetDays === null || r.dueOffsetDays === undefined || r.dueOffsetDays === "" ? null : Number(r.dueOffsetDays),
       }));
@@ -303,7 +258,7 @@ export default function ClientTasksTab({ member }) {
                 {row.type !== "custom" && (
                   <div style={{ marginBottom: 8 }}>
                     <label style={label}>{TYPE_META[row.type].label} details</label>
-                    <TypeFields B={B} row={row} onChange={(patch) => updateTplRow(i, patch)} courses={courseList} input={input} />
+                    <TaskTypeFields B={B} row={row} onChange={(patch) => updateTplRow(i, patch)} courses={courseList} challenges={challengeList} input={input} />
                   </div>
                 )}
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8 }}>
@@ -367,7 +322,7 @@ export default function ClientTasksTab({ member }) {
       {form.type !== "custom" && (
         <div style={{ marginBottom: 8 }}>
           <label style={label}>{TYPE_META[form.type].label} details</label>
-          <TypeFields B={B} row={form} onChange={(patch) => setForm((p) => ({ ...p, ...patch }))} courses={courseList} input={input} />
+          <TaskTypeFields B={B} row={form} onChange={(patch) => setForm((p) => ({ ...p, ...patch }))} courses={courseList} challenges={challengeList} input={input} />
         </div>
       )}
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 8, marginBottom: 10 }}>
@@ -448,6 +403,12 @@ export default function ClientTasksTab({ member }) {
                   {future ? `Scheduled ${t.scheduledFor}` : t.scheduledFor}
                 </span>
                 {t.dueDate && <span style={chip("#f59e0b22", "#f59e0b")}>Due {t.dueDate}</span>}
+                {t.type === "attendance" && (
+                  <span style={chip("#8b5cf622", "#8b5cf6")}>💪 {t.targetCount || 5} workouts</span>
+                )}
+                {t.type === "challenge" && t.challengeName && (
+                  <span style={chip("#3b82f622", "#3b82f6")}>🎯 {t.challengeName}</span>
+                )}
                 {t.upload && (
                   <button
                     onClick={() => viewUpload(t.upload)}

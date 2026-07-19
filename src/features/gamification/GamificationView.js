@@ -5,6 +5,7 @@ import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { localISO } from "../../utils/dates";
 import TreasureMap from "../../components/shared/TreasureMap";
+import TaskTypeFields, { TYPE_META } from "../members/TaskTypeFields";
 
 const DEFAULT_GAMIFICATION_SETTINGS = {
   enabled: true,
@@ -45,10 +46,35 @@ function getInitials(f, l) {
 }
 
 /* ── Treasure Map helpers ── */
+const emptyStop = () => ({
+  title: "", description: "", type: "custom",
+  courseId: "", doc: null, prompt: "",
+  targetCount: 5, challengeId: "", challengeName: "",
+});
+
 const emptyMapDraft = () => ({
   id: null, name: "", incentive: "", deadlineMode: "none", deadline: "", durationDays: 30,
-  tasks: [{ title: "", description: "" }],
+  tasks: [emptyStop()],
 });
+
+/* Normalize an editor stop row into the persisted stop shape —
+   only the fields relevant to its type are kept. */
+function cleanStop(r) {
+  const stop = {
+    title: r.title.trim(),
+    description: (r.description || "").trim(),
+    type: r.type || "custom",
+  };
+  if (stop.type === "course" && r.courseId) stop.courseId = r.courseId;
+  if (stop.type === "doc" && r.doc) stop.doc = r.doc;
+  if (stop.type === "community_post" && r.prompt) stop.prompt = r.prompt.trim();
+  if (stop.type === "attendance") stop.targetCount = Math.max(1, Number(r.targetCount) || 5);
+  if (stop.type === "challenge" && r.challengeId) {
+    stop.challengeId = r.challengeId;
+    stop.challengeName = r.challengeName || "";
+  }
+  return stop;
+}
 
 // Resolve the due date for a member: fixed date, or assignedAt + durationDays.
 function resolveMapDeadline(map, assignedAtISO) {
@@ -90,6 +116,8 @@ export default function GamificationView() {
   // Treasure Maps
   const [treasureMaps, setTreasureMaps] = useLocalStorage("hf_treasure_maps", []);
   const [clientTasks, setClientTasks] = useLocalStorage("hf_client_tasks", []);
+  const [courses] = useLocalStorage("hf_courses", []);
+  const [challenges] = useLocalStorage("hf_challenges", []);
   const [mapEditor, setMapEditor] = useState(null); // draft being created/edited, or null
   const [showMapPreview, setShowMapPreview] = useState(false);
 
@@ -206,6 +234,8 @@ export default function GamificationView() {
   const coachName = (currentUser && currentUser.displayName) || "Coach";
   const mapList = Array.isArray(treasureMaps) ? treasureMaps : [];
   const taskList = Array.isArray(clientTasks) ? clientTasks : [];
+  const courseList = Array.isArray(courses) ? courses : [];
+  const challengeList = Array.isArray(challenges) ? challenges : [];
 
   // Per-map progress: members with tasks for this map, and how many finished all of them
   const mapProgress = (map) => {
@@ -242,13 +272,21 @@ export default function GamificationView() {
           memberId: mem.id,
           title: tt.title,
           description: tt.description || "",
-          type: "custom",
+          type: tt.type || "custom",
           scheduledFor: today,
           status: "pending",
           createdBy: coachName,
           createdAt: nowISO,
           mapId: map.id,
         };
+        if (tt.type === "course" && tt.courseId) task.courseId = tt.courseId;
+        if (tt.type === "doc" && tt.doc) task.doc = tt.doc;
+        if (tt.type === "community_post" && tt.prompt) task.prompt = tt.prompt;
+        if (tt.type === "attendance") task.targetCount = Math.max(1, Number(tt.targetCount) || 5);
+        if (tt.type === "challenge" && tt.challengeId) {
+          task.challengeId = tt.challengeId;
+          task.challengeName = tt.challengeName || "";
+        }
         if (due) task.dueDate = due;
         newTasks.push(task);
       });
@@ -271,7 +309,7 @@ export default function GamificationView() {
       id: map.id, name: map.name, incentive: map.incentive,
       deadlineMode: map.deadlineMode || "none", deadline: map.deadline || "",
       durationDays: map.durationDays || 30,
-      tasks: (map.tasks || []).map((t) => ({ title: t.title, description: t.description || "" })),
+      tasks: (map.tasks || []).map((t) => ({ ...emptyStop(), ...t })),
     });
   };
 
@@ -290,12 +328,13 @@ export default function GamificationView() {
   const saveTreasureMap = () => {
     const name = mapEditor.name.trim();
     const incentive = mapEditor.incentive.trim();
-    const rows = mapEditor.tasks
-      .map((t) => ({ title: t.title.trim(), description: (t.description || "").trim() }))
-      .filter((t) => t.title);
+    const rows = mapEditor.tasks.map(cleanStop).filter((t) => t.title);
     if (!name) { window.alert("Map name is required."); return; }
     if (!incentive) { window.alert("Incentive (reward) is required."); return; }
     if (rows.length === 0) { window.alert("Add at least one stop (task) with a title."); return; }
+    if (rows.some((t) => t.type === "course" && !t.courseId)) { window.alert("Every course stop needs a course selected."); return; }
+    if (rows.some((t) => t.type === "doc" && !t.doc)) { window.alert("Every document stop needs a file attached."); return; }
+    if (rows.some((t) => t.type === "challenge" && !t.challengeId)) { window.alert("Every challenge stop needs a challenge selected."); return; }
     if (mapEditor.deadlineMode === "date" && !mapEditor.deadline) { window.alert("Pick a deadline date."); return; }
     if (mapEditor.deadlineMode === "days" && !(Number(mapEditor.durationDays) > 0)) { window.alert("Enter a valid number of days."); return; }
 
@@ -807,8 +846,25 @@ export default function GamificationView() {
                   <button style={s.tmArrowBtn(i === mapEditor.tasks.length - 1)} disabled={i === mapEditor.tasks.length - 1} onClick={() => moveMapRow(i, 1)} title="Move down">{"▼"}</button>
                 </div>
                 <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                  <input style={s.tmInput} value={row.title} placeholder={"Stop " + (i + 1) + " title *"} onChange={(e) => updateMapRow(i, { title: e.target.value })} />
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <input style={{ ...s.tmInput, flex: 2, minWidth: 140, width: "auto" }} value={row.title} placeholder={"Stop " + (i + 1) + " title *"} onChange={(e) => updateMapRow(i, { title: e.target.value })} />
+                    <select
+                      style={{ ...s.tmInput, flex: 1, minWidth: 120, width: "auto" }}
+                      value={row.type || "custom"}
+                      onChange={(e) => updateMapRow(i, { type: e.target.value })}
+                    >
+                      {Object.entries(TYPE_META).map(([k, m]) => (
+                        <option key={k} value={k}>{m.icon} {m.label}</option>
+                      ))}
+                    </select>
+                  </div>
                   <input style={s.tmInput} value={row.description} placeholder="Description (optional)" onChange={(e) => updateMapRow(i, { description: e.target.value })} />
+                  {(row.type || "custom") !== "custom" && (
+                    <div>
+                      <label style={s.tmLabel}>{TYPE_META[row.type].label} details</label>
+                      <TaskTypeFields B={B} row={row} onChange={(patch) => updateMapRow(i, patch)} courses={courseList} challenges={challengeList} input={s.tmInput} />
+                    </div>
+                  )}
                 </div>
                 <button
                   style={{ ...s.tmBtn(B.red, false), padding: "8px 10px", marginTop: 4 }}
@@ -819,7 +875,7 @@ export default function GamificationView() {
                 </button>
               </div>
             ))}
-            <button style={{ ...s.tmBtn(B.accent, false), marginBottom: 16 }} onClick={() => setMapEditor((p) => ({ ...p, tasks: [...p.tasks, { title: "", description: "" }] }))}>
+            <button style={{ ...s.tmBtn(B.accent, false), marginBottom: 16 }} onClick={() => setMapEditor((p) => ({ ...p, tasks: [...p.tasks, emptyStop()] }))}>
               + Add Stop
             </button>
 
