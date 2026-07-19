@@ -209,7 +209,7 @@ function StoryMedia({ s, cover, controlsMuted, onUnmute }) {
  * me: { id, name, photo? } — the current person (coach or client).
  * Bar (one tile per person) + sequential viewer + composer + in-app camera.
  */
-export default function StoriesBar({ me }) {
+export default function StoriesBar({ me, live, onWatchLive }) {
   const B = useTheme();
   const [stories, setStories] = useLocalStorage("hf_stories", []);
   const [view, setView] = useState(null); // { g: groupIdx, i: storyIdx }
@@ -321,6 +321,43 @@ export default function StoriesBar({ me }) {
     <>
       {/* ── Bar: one tile per person ── */}
       <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "4px 0 8px", scrollbarWidth: "none" }}>
+        <style>{`@keyframes hfLivePulse { 0%,100% { box-shadow: 0 0 0 2px #ef4444, 0 0 6px 1px #ef444466; } 50% { box-shadow: 0 0 0 2px #ef4444, 0 0 14px 4px #ef4444aa; } }`}</style>
+
+        {/* LIVE tile — someone is broadcasting now */}
+        {live && live.hostId !== me.id && (
+          <div
+            onClick={() => onWatchLive && onWatchLive()}
+            style={{
+              minWidth: 92, width: 92, height: 140, borderRadius: 14, overflow: "hidden", cursor: "pointer",
+              position: "relative", flexShrink: 0, background: "#111",
+              animation: "hfLivePulse 1.8s ease-in-out infinite",
+            }}
+          >
+            <div style={{
+              position: "absolute", inset: 0,
+              background: live.hostPhoto ? `url(${live.hostPhoto}) center/cover` : `linear-gradient(135deg, #7f1d1d, #ef4444)`,
+              opacity: 0.9,
+            }} />
+            <div style={{
+              position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)",
+              background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 900,
+              padding: "2px 9px", borderRadius: 8, letterSpacing: 0.5,
+            }}>● LIVE</div>
+            {!live.hostPhoto && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, color: "#fff", fontWeight: 800 }}>
+                {(live.hostName || "?").slice(0, 1)}
+              </div>
+            )}
+            <div style={{
+              position: "absolute", bottom: 0, left: 0, right: 0, padding: "16px 8px 6px",
+              background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
+              color: "#fff", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}>
+              {live.hostName}
+            </div>
+          </div>
+        )}
+
         {/* Create tile */}
         <div onClick={() => setComposing(true)} style={{
           minWidth: 92, width: 92, height: 140, borderRadius: 14, overflow: "hidden", cursor: "pointer",

@@ -1971,7 +1971,7 @@ export default function CommunityFeed() {
       <h1 style={{ fontSize: 26, fontWeight: 700, color: B.text, margin: "24px 0 16px" }}>Community</h1>
 
       {/* Stories — broadcast to every member and coach at this location */}
-      <StoriesBar me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} />
+      <StoriesBar me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} live={liveNow} onWatchLive={() => setWatchingLive(true)} />
 
       {/* Go Live button + LIVE-now banner */}
       {showGoLive && <GoLive me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} onClose={() => setShowGoLive(false)} />}

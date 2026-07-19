@@ -723,31 +723,7 @@ export default function ClientPortal() {
         </div>
 
         {/* Stories */}
-        <StoriesBar me={{ id: member.id, name: `${member.firstName} ${member.lastName || ""}`.trim(), photo: member.photo || "" }} />
-
-        {/* Someone is LIVE now */}
-        {live && live.hostId !== member.id && (
-          <div onClick={() => setWatchingLive(true)} style={{
-            display: "flex", alignItems: "center", gap: 12, margin: "12px 0 4px", padding: "12px 16px",
-            borderRadius: 16, cursor: "pointer",
-            background: "linear-gradient(135deg, #ef4444, #b91c1c)", boxShadow: "0 8px 24px #ef444455",
-          }}>
-            <div style={{
-              width: 42, height: 42, borderRadius: 21,
-              background: live.hostPhoto ? `url(${live.hostPhoto}) center/cover` : "#ffffff33",
-              display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800,
-              border: "2px solid #fff",
-            }}>{!live.hostPhoto && (live.hostName || "?").slice(0, 1)}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ background: "#fff", color: "#ef4444", fontSize: 10, fontWeight: 900, padding: "2px 7px", borderRadius: 6 }}>● LIVE</span>
-                {live.hostName}
-              </div>
-              <div style={{ fontSize: 12, color: "#ffffffdd", marginTop: 2 }}>{live.title || "is live now — tap to watch"}</div>
-            </div>
-            <div style={{ fontSize: 18, color: "#fff", fontWeight: 800 }}>{"▶"}</div>
-          </div>
-        )}
+        <StoriesBar me={{ id: member.id, name: `${member.firstName} ${member.lastName || ""}`.trim(), photo: member.photo || "" }} live={live} onWatchLive={() => setWatchingLive(true)} />
 
         {/* New progress report notification */}
         {unseenReports.length > 0 && (

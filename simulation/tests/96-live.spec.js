@@ -38,7 +38,7 @@ test.describe('live streaming', () => {
     await client.page.waitForTimeout(3000); // allow the live-status poll to land
 
     let homeText = await client.page.locator('#root').innerText();
-    if (!/LIVE/.test(homeText) || !/Coach Mike/.test(homeText)) {
+    if (!/LIVE/.test(homeText) || !/Coach Mike/.test(homeText)) { // LIVE tile in the stories bar
       reportFlow('client@live', 'banner', 'Live banner not shown on Home while a coach is broadcasting.');
       await client.context.close();
       return;
