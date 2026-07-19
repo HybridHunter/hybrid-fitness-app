@@ -12,6 +12,9 @@ import { getYTId, getYTThumb } from "../../utils/youtube";
 import { localISO } from "../../utils/dates";
 import { resizeImage } from "../../components/shared/ImageUpload";
 import StoriesBar from "../../components/shared/Stories";
+import MentionTextarea from "../../components/shared/MentionTextarea";
+import FeedVideo from "../../components/shared/FeedVideo";
+import TreasureMap from "../../components/shared/TreasureMap";
 import ProgressPhotos from "../members/ProgressPhotos";
 
 /* ═══════════════════════════════════════════════════════════
@@ -181,6 +184,7 @@ export default function ClientPortal() {
   const [resources] = useLocalStorage("hf_resources", []);
   const [remoteWorkouts, setRemoteWorkouts] = useLocalStorage("hf_remote_workouts", []);
   const [clientTasks, setClientTasks] = useLocalStorage("hf_client_tasks", []);
+  const [treasureMaps] = useLocalStorage("hf_treasure_maps", []);
   const [courses] = useLocalStorage("hf_courses", []);
   const [courseProgress, setCourseProgress] = useLocalStorage("hf_course_progress", []);
 
@@ -670,6 +674,34 @@ export default function ClientPortal() {
         </div>
 
         <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Dashboard</h1>
+
+        {/* Treasure Maps — gamified task quests */}
+        {(Array.isArray(treasureMaps) ? treasureMaps : [])
+          .filter(m => m.enabled)
+          .map(m => {
+            const mapTasks = (Array.isArray(clientTasks) ? clientTasks : [])
+              .filter(t => t.mapId === m.id && t.memberId === member.id)
+              .sort((a, b) => {
+                const order = (m.tasks || []).map(x => x.title);
+                return order.indexOf(a.title) - order.indexOf(b.title);
+              });
+            if (mapTasks.length === 0) return null;
+            return (
+              <div key={m.id} style={{ marginBottom: 14 }}>
+                <TreasureMap
+                  map={m}
+                  tasks={mapTasks}
+                  deadline={mapTasks.find(t => t.dueDate)?.dueDate || null}
+                  onTaskClick={(t) => {
+                    if (t.status === "done") return;
+                    if (window.confirm(`${t.title}${t.description ? "\n\n" + t.description : ""}\n\nMark this stop as done?`)) {
+                      markTaskDone(t.id);
+                    }
+                  }}
+                />
+              </div>
+            );
+          })}
 
         {/* Tasks to Complete — coach-assigned tasks */}
         {(visibleTasks.length > 0 || recentDoneTasks.length > 0) && (
@@ -1772,10 +1804,12 @@ export default function ClientPortal() {
           {/* Compose form */}
           {showNewPost && (
             <div style={{ ...cardStyle, border: `2px solid ${B.accent}40` }}>
-              <textarea
+              <MentionTextarea
                 value={newPostText}
-                onChange={e => setNewPostText(e.target.value)}
-                placeholder="Share something with the community..."
+                onChange={setNewPostText}
+                people={(members || []).filter(m => m.id !== member.id && (m.membershipStatus || "active") !== "inactive").map(m => ({ id: m.id, name: `${m.firstName} ${m.lastName || ""}`.trim(), photo: m.photo || "" }))}
+                onMention={(pn) => setNewPostTags(prev => (prev.some(t => t.id === pn.id) ? prev : [...prev, { id: pn.id, name: pn.name }]))}
+                placeholder="Share something... type @ to tag someone"
                 rows={3}
                 style={{
                   width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${B.border}`,
@@ -1807,31 +1841,11 @@ export default function ClientPortal() {
                   ))}
                 </div>
               )}
-              {showTagPicker && (
-                <div style={{ marginTop: 8, maxHeight: 160, overflowY: "auto", border: `1px solid ${B.border}`, borderRadius: 10, background: B.darker }}>
-                  {(members || []).filter(m => m.id !== member.id && (m.membershipStatus || "active") !== "inactive").map(m => {
-                    const tagged = newPostTags.some(t => t.id === m.id);
-                    return (
-                      <div key={m.id} onClick={() => setNewPostTags(prev => tagged ? prev.filter(t => t.id !== m.id) : [...prev, { id: m.id, name: `${m.firstName} ${m.lastName || ""}`.trim() }])}
-                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", cursor: "pointer", borderBottom: `1px solid ${B.border}40`, background: tagged ? B.accent + "14" : "transparent" }}>
-                        <div style={{ width: 24, height: 24, borderRadius: 12, background: m.photo ? `url(${m.photo}) center/cover` : B.accent + "33", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: B.accent }}>
-                          {!m.photo && (m.firstName || "?").slice(0, 1)}
-                        </div>
-                        <span style={{ fontSize: 13, color: B.text, flex: 1 }}>{m.firstName} {m.lastName}</span>
-                        {tagged && <span style={{ color: B.accent, fontWeight: 800 }}>✓</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
               <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <label style={{ ...touchBtn(B.card, B.text, { fontSize: 13, minHeight: 36, padding: "6px 12px", border: `1px solid ${B.border}`, cursor: "pointer" }), display: "inline-flex", alignItems: "center" }}>
                   {"📷"} Photo/Video
                   <input type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={handlePostMedia} />
                 </label>
-                <button onClick={() => setShowTagPicker(v => !v)} style={touchBtn(B.card, showTagPicker ? B.accent : B.text, { fontSize: 13, minHeight: 36, padding: "6px 12px", border: `1px solid ${showTagPicker ? B.accent : B.border}` })}>
-                  {"🏷️"} Tag
-                </button>
                 <div style={{ flex: 1 }} />
                 <button onClick={() => { setShowNewPost(false); setNewPostText(""); setNewPostImage(null); setNewPostVideo(null); setNewPostTags([]); setShowTagPicker(false); }} style={touchBtn(B.card, B.muted, { fontSize: 13, minHeight: 36, padding: "6px 16px", border: `1px solid ${B.border}` })}>
                   Cancel
@@ -1882,7 +1896,7 @@ export default function ClientPortal() {
                 )}
                 {post.mediaType === "video" && post.mediaUrl && (() => {
                   if (post.mediaUrl.startsWith("data:")) return (
-                    <video src={post.mediaUrl} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 320, borderRadius: 8, marginBottom: 12, background: "#000" }} />
+                    <FeedVideo src={post.mediaUrl} style={{ width: "100%", maxHeight: 320, borderRadius: 8, marginBottom: 12, background: "#000" }} />
                   );
                   const ytMatch = post.mediaUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
                   if (ytMatch) return (

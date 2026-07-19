@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { localISO } from "../../utils/dates";
+import TreasureMap from "../../components/shared/TreasureMap";
 
 const DEFAULT_GAMIFICATION_SETTINGS = {
   enabled: true,
@@ -41,6 +44,28 @@ function getInitials(f, l) {
   return ((f?.[0] || "") + (l?.[0] || "")).toUpperCase();
 }
 
+/* ── Treasure Map helpers ── */
+const emptyMapDraft = () => ({
+  id: null, name: "", incentive: "", deadlineMode: "none", deadline: "", durationDays: 30,
+  tasks: [{ title: "", description: "" }],
+});
+
+// Resolve the due date for a member: fixed date, or assignedAt + durationDays.
+function resolveMapDeadline(map, assignedAtISO) {
+  if (map.deadlineMode === "date" && map.deadline) return map.deadline;
+  if (map.deadlineMode === "days" && Number(map.durationDays) > 0) {
+    const base = assignedAtISO ? new Date(assignedAtISO) : new Date();
+    return localISO(new Date(base.getTime() + Number(map.durationDays) * 86400000));
+  }
+  return null;
+}
+
+function mapDeadlineSummary(map) {
+  if (map.deadlineMode === "date" && map.deadline) return "Due " + map.deadline;
+  if (map.deadlineMode === "days" && Number(map.durationDays) > 0) return map.durationDays + " days from assignment";
+  return "No deadline";
+}
+
 function getAttendanceByMonth(attendance, year, month) {
   const counts = {};
   attendance.forEach((rec) => {
@@ -55,12 +80,18 @@ function getAttendanceByMonth(attendance, year, month) {
 export default function GamificationView() {
   const B = useTheme();
   const { members } = useMembers();
+  const { currentUser } = useAuth();
   const [gamSettings] = useLocalStorage("hf_gamification_settings", DEFAULT_GAMIFICATION_SETTINGS);
   const [activeTab, setActiveTab] = useState("xp");
   const [attendance] = useLocalStorage("hf_attendance", []);
   const [showDidntReach, setShowDidntReach] = useState(false);
   const [showDidntReachCurrent, setShowDidntReachCurrent] = useState(false);
   const [drillDown, setDrillDown] = useState(null); // "prev" | "current" | null
+  // Treasure Maps
+  const [treasureMaps, setTreasureMaps] = useLocalStorage("hf_treasure_maps", []);
+  const [clientTasks, setClientTasks] = useLocalStorage("hf_client_tasks", []);
+  const [mapEditor, setMapEditor] = useState(null); // draft being created/edited, or null
+  const [showMapPreview, setShowMapPreview] = useState(false);
 
   // Derive badges and leaderboard tabs from settings
   const ALL_BADGES = (gamSettings.badges || []).filter(b => b.active).map(b => ({ key: b.name, icon: b.icon, desc: b.description }));
@@ -171,6 +202,131 @@ export default function GamificationView() {
   const medalColors = ["#FFD700", "#C0C0C0", "#CD7F32"];
   const medalEmojis = ["\ud83e\udd47", "\ud83e\udd48", "\ud83e\udd49"];
 
+  /* \u2500\u2500 Treasure Maps logic \u2500\u2500 */
+  const coachName = (currentUser && currentUser.displayName) || "Coach";
+  const mapList = Array.isArray(treasureMaps) ? treasureMaps : [];
+  const taskList = Array.isArray(clientTasks) ? clientTasks : [];
+
+  // Per-map progress: members with tasks for this map, and how many finished all of them
+  const mapProgress = (map) => {
+    const byMember = {};
+    taskList.forEach((t) => {
+      if (t.mapId !== map.id) return;
+      if (!byMember[t.memberId]) byMember[t.memberId] = [];
+      byMember[t.memberId].push(t);
+    });
+    const ids = Object.keys(byMember);
+    const completed = ids.filter((id) => byMember[id].every((t) => t.status === "done")).length;
+    return { assigned: ids.length, completed };
+  };
+
+  const toggleTreasureMap = (map) => {
+    if (map.enabled) {
+      // OFF: keep tasks as history \u2014 the client dashboard hides the map via map.enabled
+      setTreasureMaps((prev) => (Array.isArray(prev) ? prev : []).map((m) => (m.id === map.id ? { ...m, enabled: false } : m)));
+      return;
+    }
+    // ON: assign tasks to every active member who doesn't have this map's tasks yet
+    const eligible = members.filter((m) => m.membershipStatus !== "inactive");
+    const alreadyAssigned = new Set(taskList.filter((t) => t.mapId === map.id).map((t) => t.memberId));
+    const nowISO = new Date().toISOString();
+    const today = localISO();
+    const assignedAt = { ...(map.assignedAt || {}) };
+    const newTasks = [];
+    eligible.forEach((mem) => {
+      if (alreadyAssigned.has(mem.id)) return;
+      const due = resolveMapDeadline(map, nowISO);
+      (map.tasks || []).forEach((tt) => {
+        const task = {
+          id: crypto.randomUUID(),
+          memberId: mem.id,
+          title: tt.title,
+          description: tt.description || "",
+          type: "custom",
+          scheduledFor: today,
+          status: "pending",
+          createdBy: coachName,
+          createdAt: nowISO,
+          mapId: map.id,
+        };
+        if (due) task.dueDate = due;
+        newTasks.push(task);
+      });
+      assignedAt[mem.id] = nowISO;
+    });
+    if (newTasks.length > 0) setClientTasks((prev) => [...(Array.isArray(prev) ? prev : []), ...newTasks]);
+    setTreasureMaps((prev) => (Array.isArray(prev) ? prev : []).map((m) => (m.id === map.id ? { ...m, enabled: true, assignedAt } : m)));
+  };
+
+  const deleteTreasureMap = (map) => {
+    if (!window.confirm('Delete treasure map "' + map.name + '"? Pending tasks it created will be removed (completed tasks are kept as history).')) return;
+    setTreasureMaps((prev) => (Array.isArray(prev) ? prev : []).filter((m) => m.id !== map.id));
+    setClientTasks((prev) => (Array.isArray(prev) ? prev : []).filter((t) => !(t.mapId === map.id && t.status !== "done")));
+  };
+
+  const openMapEditor = (map) => {
+    setShowMapPreview(false);
+    if (!map) { setMapEditor(emptyMapDraft()); return; }
+    setMapEditor({
+      id: map.id, name: map.name, incentive: map.incentive,
+      deadlineMode: map.deadlineMode || "none", deadline: map.deadline || "",
+      durationDays: map.durationDays || 30,
+      tasks: (map.tasks || []).map((t) => ({ title: t.title, description: t.description || "" })),
+    });
+  };
+
+  const updateMapRow = (i, patch) =>
+    setMapEditor((p) => ({ ...p, tasks: p.tasks.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) }));
+
+  const moveMapRow = (i, dir) =>
+    setMapEditor((p) => {
+      const rows = [...p.tasks];
+      const j = i + dir;
+      if (j < 0 || j >= rows.length) return p;
+      [rows[i], rows[j]] = [rows[j], rows[i]];
+      return { ...p, tasks: rows };
+    });
+
+  const saveTreasureMap = () => {
+    const name = mapEditor.name.trim();
+    const incentive = mapEditor.incentive.trim();
+    const rows = mapEditor.tasks
+      .map((t) => ({ title: t.title.trim(), description: (t.description || "").trim() }))
+      .filter((t) => t.title);
+    if (!name) { window.alert("Map name is required."); return; }
+    if (!incentive) { window.alert("Incentive (reward) is required."); return; }
+    if (rows.length === 0) { window.alert("Add at least one stop (task) with a title."); return; }
+    if (mapEditor.deadlineMode === "date" && !mapEditor.deadline) { window.alert("Pick a deadline date."); return; }
+    if (mapEditor.deadlineMode === "days" && !(Number(mapEditor.durationDays) > 0)) { window.alert("Enter a valid number of days."); return; }
+
+    const fields = {
+      name, incentive,
+      deadlineMode: mapEditor.deadlineMode,
+      deadline: mapEditor.deadlineMode === "date" ? mapEditor.deadline : undefined,
+      durationDays: mapEditor.deadlineMode === "days" ? Number(mapEditor.durationDays) : undefined,
+      tasks: rows,
+    };
+    if (mapEditor.id) {
+      setTreasureMaps((prev) => (Array.isArray(prev) ? prev : []).map((m) => (m.id === mapEditor.id ? { ...m, ...fields } : m)));
+    } else {
+      const newMap = {
+        id: crypto.randomUUID(), enabled: false, assignedTo: "all", assignedAt: {},
+        createdAt: new Date().toISOString(), createdBy: coachName, ...fields,
+      };
+      setTreasureMaps((prev) => [...(Array.isArray(prev) ? prev : []), newMap]);
+    }
+    setMapEditor(null);
+    setShowMapPreview(false);
+  };
+
+  // Preview data for the editor: first half of stops "done" so the owner sees both states
+  const previewRows = mapEditor ? mapEditor.tasks.filter((t) => t.title.trim()) : [];
+  const previewTasks = previewRows.map((t, i) => ({
+    id: "preview-" + i, title: t.title, description: t.description,
+    status: i < Math.floor(previewRows.length / 2) ? "done" : "pending",
+  }));
+  const previewDeadline = mapEditor ? resolveMapDeadline(mapEditor, new Date().toISOString()) : null;
+
   const s = {
     page: { minHeight: "100%" },
     header: { marginBottom: 28 },
@@ -243,6 +399,40 @@ export default function GamificationView() {
       marginTop: 12, marginBottom: 4,
     },
     mutedMember: { fontSize: 12, color: B.dim, padding: "4px 12px" },
+    // Treasure Maps styles
+    tmRow: { display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: B.darker, borderRadius: 12, marginBottom: 8, border: "1px solid " + B.border, flexWrap: "wrap" },
+    tmToggle: (on) => ({
+      width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", flexShrink: 0,
+      background: on ? B.accent : B.dim + "66", position: "relative", transition: "background .2s", padding: 0,
+    }),
+    tmKnob: (on) => ({
+      position: "absolute", top: 3, left: on ? 23 : 3, width: 18, height: 18, borderRadius: "50%",
+      background: "#fff", transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
+    }),
+    tmBtn: (bg, solid) => ({
+      background: solid ? bg : bg + "18", color: solid ? "#fff" : bg, border: "none", borderRadius: 8,
+      padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer",
+    }),
+    tmInput: {
+      width: "100%", boxSizing: "border-box", background: B.dark, color: B.text,
+      border: "1px solid " + B.border, borderRadius: 8, padding: "8px 10px",
+      fontSize: 13, outline: "none", fontFamily: "inherit",
+    },
+    tmLabel: { fontSize: 11, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 4 },
+    tmOverlay: {
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+    },
+    tmModal: {
+      background: B.card, border: "1px solid " + B.border, borderRadius: 14, padding: 20,
+      width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", boxSizing: "border-box",
+    },
+    tmArrowBtn: (disabled) => ({
+      background: B.darker, border: "1px solid " + B.border, borderRadius: 6, width: 26, height: 26,
+      color: disabled ? B.dim : B.text, fontSize: 12, cursor: disabled ? "default" : "pointer",
+      opacity: disabled ? 0.4 : 1, padding: 0,
+    }),
+    tmFinePrint: { fontSize: 11, color: B.dim, marginTop: 8, lineHeight: 1.5 },
   };
 
   return (
@@ -512,6 +702,154 @@ export default function GamificationView() {
           })}
         </div>
       </div>
+
+      {/* Treasure Maps */}
+      <div style={s.section}>
+        <div style={{ ...s.sectionTitle, justifyContent: "space-between" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>{"🗺️"} Treasure Maps</span>
+          <button style={s.tmBtn(B.accent, true)} onClick={() => openMapEditor(null)}>+ New Map</button>
+        </div>
+        <div style={s.card}>
+          {mapList.length === 0 && (
+            <div style={{ textAlign: "center", padding: 24, color: B.dim, fontSize: 14 }}>
+              No treasure maps yet. Create one to turn a task list into a treasure hunt with a reward at the end.
+            </div>
+          )}
+          {mapList.map((map) => {
+            const prog = mapProgress(map);
+            return (
+              <div key={map.id} style={s.tmRow}>
+                <button
+                  style={s.tmToggle(map.enabled)}
+                  onClick={() => toggleTreasureMap(map)}
+                  title={map.enabled ? "Turn off (hides the map for clients; tasks are kept)" : "Turn on (assigns tasks to all active members)"}
+                >
+                  <span style={s.tmKnob(map.enabled)} />
+                </button>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: B.text }}>
+                    {map.name}
+                    {map.enabled && <span style={{ fontSize: 10, fontWeight: 800, color: B.accent, marginLeft: 8, background: B.accent + "1c", padding: "2px 8px", borderRadius: 8 }}>LIVE</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>
+                    {"💰"} {map.incentive} &middot; {(map.tasks || []).length} stop{(map.tasks || []).length !== 1 ? "s" : ""} &middot; {mapDeadlineSummary(map)}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: prog.assigned > 0 && prog.completed === prog.assigned ? "#22c55e" : B.muted, whiteSpace: "nowrap" }}>
+                  {prog.assigned > 0 ? prog.completed + "/" + prog.assigned + " members completed" : "Not assigned yet"}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button style={s.tmBtn("#3b82f6", false)} onClick={() => openMapEditor(map)}>Edit</button>
+                  <button style={s.tmBtn(B.red, false)} onClick={() => deleteTreasureMap(map)}>Delete</button>
+                </div>
+              </div>
+            );
+          })}
+          <div style={s.tmFinePrint}>
+            Toggling a map ON assigns its stops as tasks to all active members and shows the treasure map on their dashboard.
+            Members who join later are not auto-assigned &mdash; toggle the map off and on again to include them.
+            Toggling OFF hides the map but keeps task history.
+          </div>
+        </div>
+      </div>
+
+      {/* Treasure Map editor modal */}
+      {mapEditor && (
+        <div style={s.tmOverlay} onClick={(e) => { if (e.target === e.currentTarget) { setMapEditor(null); setShowMapPreview(false); } }}>
+          <div style={s.tmModal}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: B.text, marginBottom: 16 }}>
+              {"🗺️"} {mapEditor.id ? "Edit Treasure Map" : "New Treasure Map"}
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={s.tmLabel}>Map Name *</label>
+              <input style={s.tmInput} value={mapEditor.name} placeholder="e.g. 30-Day Kickstart Quest" onChange={(e) => setMapEditor((p) => ({ ...p, name: e.target.value }))} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={s.tmLabel}>Incentive (Reward) *</label>
+              <input style={s.tmInput} value={mapEditor.incentive} placeholder="e.g. Free InBody scan + smoothie" onChange={(e) => setMapEditor((p) => ({ ...p, incentive: e.target.value }))} />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <label style={s.tmLabel}>Deadline</label>
+                <select style={s.tmInput} value={mapEditor.deadlineMode} onChange={(e) => setMapEditor((p) => ({ ...p, deadlineMode: e.target.value }))}>
+                  <option value="none">No deadline</option>
+                  <option value="date">Fixed date</option>
+                  <option value="days">X days from assignment</option>
+                </select>
+              </div>
+              {mapEditor.deadlineMode === "date" && (
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <label style={s.tmLabel}>Date</label>
+                  <input type="date" style={s.tmInput} value={mapEditor.deadline} onChange={(e) => setMapEditor((p) => ({ ...p, deadline: e.target.value }))} />
+                </div>
+              )}
+              {mapEditor.deadlineMode === "days" && (
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <label style={s.tmLabel}>Days</label>
+                  <input type="number" min="1" style={s.tmInput} value={mapEditor.durationDays} onChange={(e) => setMapEditor((p) => ({ ...p, durationDays: e.target.value }))} />
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <label style={s.tmLabel}>Assign To</label>
+              <input style={{ ...s.tmInput, opacity: 0.6, cursor: "not-allowed" }} value="All active members" disabled readOnly />
+            </div>
+
+            <label style={s.tmLabel}>Stops (tasks, in order) *</label>
+            {mapEditor.tasks.map((row, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 8 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, paddingTop: 4 }}>
+                  <button style={s.tmArrowBtn(i === 0)} disabled={i === 0} onClick={() => moveMapRow(i, -1)} title="Move up">{"▲"}</button>
+                  <button style={s.tmArrowBtn(i === mapEditor.tasks.length - 1)} disabled={i === mapEditor.tasks.length - 1} onClick={() => moveMapRow(i, 1)} title="Move down">{"▼"}</button>
+                </div>
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <input style={s.tmInput} value={row.title} placeholder={"Stop " + (i + 1) + " title *"} onChange={(e) => updateMapRow(i, { title: e.target.value })} />
+                  <input style={s.tmInput} value={row.description} placeholder="Description (optional)" onChange={(e) => updateMapRow(i, { description: e.target.value })} />
+                </div>
+                <button
+                  style={{ ...s.tmBtn(B.red, false), padding: "8px 10px", marginTop: 4 }}
+                  onClick={() => setMapEditor((p) => ({ ...p, tasks: p.tasks.filter((_, idx) => idx !== i) }))}
+                  title="Remove stop"
+                >
+                  {"✕"}
+                </button>
+              </div>
+            ))}
+            <button style={{ ...s.tmBtn(B.accent, false), marginBottom: 16 }} onClick={() => setMapEditor((p) => ({ ...p, tasks: [...p.tasks, { title: "", description: "" }] }))}>
+              + Add Stop
+            </button>
+
+            {showMapPreview && previewTasks.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <TreasureMap
+                  map={{ ...mapEditor, name: mapEditor.name || "Treasure Map", incentive: mapEditor.incentive || "Your reward here" }}
+                  tasks={previewTasks}
+                  deadline={previewDeadline}
+                  onTaskClick={() => {}}
+                />
+                <div style={{ ...s.tmFinePrint, textAlign: "center" }}>Preview with sample progress &mdash; this is what clients see on their dashboard.</div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button
+                style={s.tmBtn(B.purple, false)}
+                onClick={() => {
+                  if (previewRows.length === 0) { window.alert("Add at least one stop with a title to preview."); return; }
+                  setShowMapPreview((v) => !v);
+                }}
+              >
+                {showMapPreview ? "Hide Preview" : "Preview"}
+              </button>
+              <button style={s.tmBtn(B.dim, false)} onClick={() => { setMapEditor(null); setShowMapPreview(false); }}>Cancel</button>
+              <button style={s.tmBtn(B.accent, true)} onClick={saveTreasureMap}>{mapEditor.id ? "Save Changes" : "Create Map"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

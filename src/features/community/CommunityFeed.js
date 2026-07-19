@@ -7,6 +7,8 @@ import { localISO } from "../../utils/dates";
 import Card from "../../components/ui/Card";
 import { ImageUploadZone } from "../../components/shared/ImageUpload";
 import StoriesBar from "../../components/shared/Stories";
+import MentionTextarea from "../../components/shared/MentionTextarea";
+import FeedVideo from "../../components/shared/FeedVideo";
 
 /* ──────────────────────────────────────────────
    Helpers
@@ -2033,11 +2035,12 @@ export default function CommunityFeed() {
                       ))}
                     </select>
                   </div>
-                  <textarea
+                  <MentionTextarea
                     value={composeText}
-                    onChange={(e) => setComposeText(e.target.value)}
-                    placeholder="Share something with the community..."
-                    autoFocus
+                    onChange={setComposeText}
+                    people={members.filter(m => (m.membershipStatus || "active") !== "inactive").map(m => ({ id: m.id, name: `${m.firstName} ${m.lastName || ""}`.trim(), photo: m.photo || "" }))}
+                    onMention={(pn) => setComposeTags(prev => (prev.some(t => t.id === pn.id) ? prev : [...prev, { id: pn.id, name: pn.name }]))}
+                    placeholder="Share something... type @ to tag someone"
                     rows={4}
                     style={{
                       width: "100%", background: "transparent", border: "none", color: B.text,
@@ -2110,25 +2113,6 @@ export default function CommunityFeed() {
                 </div>
               )}
 
-              {/* Tag picker */}
-              {showTagPicker && (
-                <div style={{ margin: "8px 0", maxHeight: 180, overflowY: "auto", border: `1px solid ${B.border}`, borderRadius: 10 }}>
-                  {members.filter(m => (m.membershipStatus || "active") !== "inactive").map(m => {
-                    const tagged = composeTags.some(t => t.id === m.id);
-                    return (
-                      <div key={m.id}
-                        onClick={() => setComposeTags(prev => tagged ? prev.filter(t => t.id !== m.id) : [...prev, { id: m.id, name: `${m.firstName} ${m.lastName || ""}`.trim() }])}
-                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", cursor: "pointer", borderBottom: `1px solid ${B.border}40`, background: tagged ? B.accent + "12" : "transparent" }}>
-                        <div style={{ width: 24, height: 24, borderRadius: 12, background: m.photo ? `url(${m.photo}) center/cover` : B.accent + "26", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: B.accent }}>
-                          {!m.photo && (m.firstName || "?").slice(0, 1)}
-                        </div>
-                        <span style={{ fontSize: 13, color: B.text, flex: 1 }}>{m.firstName} {m.lastName}</span>
-                        {tagged && <span style={{ color: B.accent, fontWeight: 800 }}>✓</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
               {composeTags.length > 0 && (
                 <div style={{ margin: "4px 0 8px", fontSize: 12, color: B.muted }}>
                   with {composeTags.map(t => (
@@ -2158,10 +2142,6 @@ export default function CommunityFeed() {
                   </button>
                   <button style={{ ...toolbarBtn, opacity: 0.4, cursor: "default" }}>
                     <span style={{ fontSize: 16 }}>GIF</span>
-                  </button>
-                  <button onClick={() => setShowTagPicker(v => !v)}
-                    style={{ ...toolbarBtn, background: showTagPicker || composeTags.length ? `${B.accent}18` : "transparent", color: showTagPicker || composeTags.length ? B.accent : B.muted }}>
-                    <span style={{ fontSize: 15 }}>{"🏷️"}</span> Tag{composeTags.length ? ` (${composeTags.length})` : ""}
                   </button>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -2326,7 +2306,7 @@ export default function CommunityFeed() {
 
                 {/* Media: uploaded video (data URL) */}
                 {post.mediaType === "video" && !ytId && (post.mediaUrl || "").startsWith("data:") && (
-                  <video src={post.mediaUrl} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 360, borderRadius: 10, marginBottom: 10, background: "#000" }} />
+                  <FeedVideo src={post.mediaUrl} style={{ width: "100%", maxHeight: 360, borderRadius: 10, marginBottom: 10, background: "#000" }} />
                 )}
                 {(post.tagged || []).length > 0 && (
                   <div style={{ fontSize: 12, color: B.muted, marginBottom: 8 }}>
