@@ -10,6 +10,17 @@ import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { resizeImage } from "./ImageUpload";
 
+
+// Repair data URLs whose mime carries codec params (e.g. "video/mp4; codecs=a,b")
+// — the raw comma breaks strict parsers like iOS Safari.
+function cleanDataUrl(v) {
+  if (!v || !v.startsWith("data:")) return v;
+  const i = v.indexOf(";base64,");
+  if (i === -1) return v;
+  const mime = v.slice(5, i).split(";")[0].split(",")[0].trim();
+  return `data:${mime};base64,` + v.slice(i + 8);
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TEXT_BGS = [
   "linear-gradient(135deg,#8fbf3b,#4a7020)",
@@ -88,7 +99,7 @@ function StoryCamera({ onCapture, onClose }) {
     rec.onstop = () => {
       clearInterval(timerRef.current);
       setRecording(false);
-      const blob = new Blob(chunksRef.current, { type: rec.mimeType || "video/webm" });
+      const blob = new Blob(chunksRef.current, { type: (rec.mimeType || "video/webm").split(";")[0] });
       if (blob.size < 20000) return; // accidental tap — nothing meaningful recorded
       if (blob.size > 8 * 1024 * 1024) { setError("That clip is too big — keep it under ~25 seconds."); return; }
       const reader = new FileReader();
@@ -175,7 +186,7 @@ function StoryMedia({ s, cover, controlsMuted, onUnmute }) {
     return (
       <video
         key={s.id}
-        src={s.video}
+        src={cleanDataUrl(s.video)}
         autoPlay={!cover}
         playsInline
         loop
@@ -469,7 +480,7 @@ export default function StoriesBar({ me }) {
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               {video && (
-                <video src={video} autoPlay muted loop playsInline onLoadedMetadata={(e) => { try { e.target.currentTime = 0.01; } catch {} }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <video src={cleanDataUrl(video)} autoPlay muted loop playsInline onLoadedMetadata={(e) => { try { e.target.currentTime = 0.01; } catch {} }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               )}
               {!image && !video && (
                 <div style={{ color: "#fff", fontSize: 20, fontWeight: 800, textAlign: "center", padding: 20, lineHeight: 1.35 }}>

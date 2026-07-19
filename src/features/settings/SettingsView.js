@@ -1606,6 +1606,16 @@ export default function SettingsView() {
         </div>
       </Card>
 
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <h3 style={{ ...s.sectionTitle, margin: 0 }}>{"🗺️"} Treasure Maps</h3>
+            <p style={{ color: B.muted, fontSize: 12, margin: "4px 0 0" }}>Gamified task quests with rewards live on the Gamification page (first section).</p>
+          </div>
+          <button style={s.btn()} onClick={() => { window.location.href = `/gym/${localStorage.getItem("hf_gym_id") || "default"}/gamification`; }}>Open Gamification</button>
+        </div>
+      </Card>
+
       {/* Reset to Defaults */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

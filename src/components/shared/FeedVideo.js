@@ -4,7 +4,16 @@
  */
 import { useRef, useEffect } from "react";
 
+function cleanDataUrl(v) {
+  if (!v || !v.startsWith("data:")) return v;
+  const i = v.indexOf(";base64,");
+  if (i === -1) return v;
+  const mime = v.slice(5, i).split(";")[0].split(",")[0].trim();
+  return `data:${mime};base64,` + v.slice(i + 8);
+}
+
 export default function FeedVideo({ src, style = {} }) {
+  src = cleanDataUrl(src);
   const ref = useRef(null);
 
   useEffect(() => {
