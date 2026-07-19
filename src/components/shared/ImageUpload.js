@@ -1,8 +1,23 @@
 import { useRef } from "react";
 import { useTheme } from "../../context/ThemeContext";
 
-// Resizes image to max dimension and returns base64 data URL
-function resizeImage(file, maxSize = 800) {
+// Does this browser encode WebP? (much smaller than JPEG/PNG, supports alpha)
+let _webpSupport = null;
+function supportsWebp() {
+  if (_webpSupport !== null) return _webpSupport;
+  try {
+    const c = document.createElement("canvas");
+    c.width = c.height = 1;
+    _webpSupport = c.toDataURL("image/webp").startsWith("data:image/webp");
+  } catch { _webpSupport = false; }
+  return _webpSupport;
+}
+
+// Resizes an image and returns a compact base64 data URL. To keep storage/
+// bandwidth costs down we prefer WebP (≈25-35% smaller than JPEG at equal
+// quality, and it keeps transparency so logos survive too); JPEG is the
+// fallback. quality defaults to 0.72 — visually clean, far lighter than raw.
+function resizeImage(file, maxSize = 800, quality = 0.72) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Could not read file"));
@@ -19,14 +34,22 @@ function resizeImage(file, maxSize = 800) {
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext("2d");
-        const isPng = file.type === "image/png";
-        if (!isPng) {
-          // JPEG has no alpha channel — flatten transparency onto white, not black
+        const hasAlpha = file.type === "image/png" || file.type === "image/webp";
+        const webp = supportsWebp();
+        if (!webp && !hasAlpha) {
+          // JPEG has no alpha — flatten transparency onto white, not black
           ctx.fillStyle = "#fff";
           ctx.fillRect(0, 0, w, h);
         }
         ctx.drawImage(img, 0, 0, w, h);
-        resolve(isPng ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", 0.75));
+        if (webp) {
+          resolve(canvas.toDataURL("image/webp", quality));
+        } else if (hasAlpha) {
+          // No WebP + needs alpha → PNG (lossless, larger, but rare)
+          resolve(canvas.toDataURL("image/png"));
+        } else {
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        }
       };
       img.src = ev.target.result;
     };

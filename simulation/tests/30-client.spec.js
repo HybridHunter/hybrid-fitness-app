@@ -24,6 +24,7 @@ test.describe('client journey (mobile)', () => {
 
   test('client logs in with email + PIN and explores the portal', async ({ browser }) => {
     const { context, page } = await newPersona(browser, 'client', { mobile: true });
+    page.on('dialog', d => d.accept());
     const ok = await login(page, creds.demoClient.email, creds.demoClient.pin);
     if (!ok) {
       reportFlow('client', 'login', `Member ${creds.demoClient.email} with PIN cannot log in to the client portal.`);
@@ -62,7 +63,7 @@ test.describe('client journey (mobile)', () => {
     if (booked) {
       await page.waitForTimeout(1800);
       const schedule = store.get(creds.gymId, 'hf_schedule');
-      const anyBooking = Array.isArray(schedule) && schedule.some(c => (c.bookings || []).length > 0);
+      const anyBooking = Array.isArray(schedule) && schedule.some(c => (c.bookings || []).length > 0 || Object.values(c.bookingsByDate || {}).some(l => l.length > 0));
       if (!anyBooking) {
         reportFlow('client', 'book-session', 'Client tapped a session Book button but no booking persisted to hf_schedule.');
       }

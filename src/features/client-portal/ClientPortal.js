@@ -1184,16 +1184,6 @@ export default function ClientPortal() {
           </>
         )}
 
-        {/* Message Your Coach */}
-        <div style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 12, cursor: "pointer", marginBottom: 12 }} onClick={openCoachChat}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: B.accent + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{"\uD83D\uDCE9"}</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: B.text }}>Message Your Coach</div>
-            <div style={{ fontSize: 12, color: B.muted }}>Questions? Need help? Reach out anytime.</div>
-          </div>
-          <span style={{ color: B.accent, fontSize: 18 }}>{"\u203A"}</span>
-        </div>
-
         {/* Resources (moved here from Community) */}
         {(resources || []).length > 0 && (
           <div style={{ marginBottom: 12 }}>
@@ -1572,6 +1562,10 @@ export default function ClientPortal() {
   const handleCancel = (classId, cancelDateISO) => {
     if (!member) return;
     const cls = classes.find(c => c.id === classId);
+    if (cls) {
+      const when = cancelDateISO ? ` on ${fmtDateShort(cancelDateISO + "T00:00:00")}` : "";
+      if (!window.confirm(`Cancel your booking for ${cls.name}${when}?`)) return;
+    }
     const nsSettings = noShowSettings || {};
     const cancelWindowHours = nsSettings.cancelWindowHours ?? 12;
     const penaltyEnabled = nsSettings.penaltyEnabled !== false;
@@ -1643,6 +1637,14 @@ export default function ClientPortal() {
           return;
         }
       }
+      const cls = classes.find(c => c.id === classId);
+      const full = cls && getBookingsOn(cls, dateISO).length >= cls.capacity;
+      const when = fmtDateShort(dateISO + "T00:00:00");
+      if (cls && !window.confirm(
+        full
+          ? `${cls.name} on ${when} is full — join the waitlist?`
+          : `Book ${cls.name} on ${when}${cls.startTime ? ` at ${fmtTime(cls.startTime)}` : ""}?`
+      )) return;
       setClasses(prev => prev.map(c => {
         if (c.id !== classId) return c;
         return pruneOldDateBookings(addBookingOn(c, dateISO, member.id), todayISO());
@@ -2932,24 +2934,6 @@ export default function ClientPortal() {
           ))}
         </div>
 
-        {/* Message Coach */}
-        <button
-          onClick={openCoachChat}
-          style={{
-            ...touchBtn(B.card, B.text, { width: "100%", marginTop: 8, border: `1px solid ${B.border}`, gap: 10 }),
-            boxSizing: "border-box",
-          }}
-        >
-          <span style={{ fontSize: 18 }}>&#x1F4AC;</span>
-          Message Coach
-          {unreadCount > 0 && (
-            <span style={{
-              background: "#ef4444", color: "#fff", fontSize: 11, fontWeight: 800,
-              padding: "2px 8px", borderRadius: 10, marginLeft: 4,
-            }}>{unreadCount}</span>
-          )}
-        </button>
-
         {/* Edit Profile */}
         <button
           onClick={() => setEditProfileOpen(true)}
@@ -4052,21 +4036,6 @@ export default function ClientPortal() {
                 {!member.photo && (member.firstName || "?").slice(0, 1)}
               </div>
               <div style={{ fontSize: 16, fontWeight: 800, color: B.text }}>{member.firstName} {member.lastName}</div>
-            </div>
-
-            {/* Quick chips */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 2 }}>
-              <button onClick={() => setNewPostText(t => (t ? t.replace(/\s*$/, "") + " @" : "@"))} style={{
-                display: "inline-flex", alignItems: "center", gap: 6, background: B.card, border: `1px solid ${B.border}`,
-                borderRadius: 18, color: B.text, fontSize: 13, fontWeight: 700, padding: "8px 14px", cursor: "pointer", flexShrink: 0,
-              }}>{"🏷️"} Tag people</button>
-              <label style={{
-                display: "inline-flex", alignItems: "center", gap: 6, background: B.card, border: `1px solid ${B.border}`,
-                borderRadius: 18, color: B.text, fontSize: 13, fontWeight: 700, padding: "8px 14px", cursor: "pointer", flexShrink: 0,
-              }}>
-                {"📷"} Photo/Video
-                <input type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={handlePostMedia} />
-              </label>
             </div>
 
             {/* Composer */}

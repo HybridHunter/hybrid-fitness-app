@@ -26,6 +26,7 @@ test.describe('multi-user realtime', () => {
   test('client message reaches staff inbox without a manual reload', async ({ browser }) => {
     const admin = await newPersona(browser, 'admin@multiuser');
     const client = await newPersona(browser, 'client@multiuser', { mobile: true });
+    client.page.on('dialog', d => d.accept());
 
     if (!(await login(admin.page, creds.admin.username, creds.admin.password))) { test.skip(true, 'admin login broken (already recorded)'); return; }
     await admin.page.goto(`/gym/${creds.gymId}/messages`);
@@ -91,6 +92,7 @@ test.describe('multi-user realtime', () => {
 
   test('client booking appears on the staff schedule', async ({ browser }) => {
     const client = await newPersona(browser, 'client@booking', { mobile: true });
+    client.page.on('dialog', d => d.accept());
     if (!(await login(client.page, creds.demoClient.email, creds.demoClient.pin))) { test.skip(true, 'client login broken'); return; }
     await client.page.waitForTimeout(2000);
 
@@ -103,7 +105,7 @@ test.describe('multi-user realtime', () => {
     await client.page.waitForTimeout(1800);
 
     const schedule = store.get(creds.gymId, 'hf_schedule');
-    const booked = Array.isArray(schedule) && schedule.some(c => (c.bookings || []).length > 0);
+    const booked = Array.isArray(schedule) && schedule.some(c => (c.bookings || []).length > 0 || Object.values(c.bookingsByDate || {}).some(l => l.length > 0));
     if (booked) {
       const admin = await newPersona(browser, 'admin@booking');
       if (await login(admin.page, creds.admin.username, creds.admin.password)) {
