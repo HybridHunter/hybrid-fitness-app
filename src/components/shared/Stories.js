@@ -333,17 +333,28 @@ export default function StoriesBar({ me, live, onWatchLive }) {
               animation: "hfLivePulse 1.8s ease-in-out infinite",
             }}
           >
-            <div style={{
-              position: "absolute", inset: 0,
-              background: live.hostPhoto ? `url(${live.hostPhoto}) center/cover` : `linear-gradient(135deg, #7f1d1d, #ef4444)`,
-              opacity: 0.9,
-            }} />
+            {/* Mini preview of the current stream (latest chunk), muted */}
+            {live.chunk ? (
+              <video
+                key={live.seq}
+                src={cleanDataUrl(live.chunk)}
+                autoPlay muted loop playsInline preload="auto"
+                onCanPlay={(e) => e.target.play().catch(() => {})}
+                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <div style={{
+                position: "absolute", inset: 0,
+                background: live.hostPhoto ? `url(${live.hostPhoto}) center/cover` : `linear-gradient(135deg, #7f1d1d, #ef4444)`,
+                opacity: 0.9,
+              }} />
+            )}
             <div style={{
               position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)",
               background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 900,
-              padding: "2px 9px", borderRadius: 8, letterSpacing: 0.5,
+              padding: "2px 9px", borderRadius: 8, letterSpacing: 0.5, zIndex: 2,
             }}>● LIVE</div>
-            {!live.hostPhoto && (
+            {!live.chunk && !live.hostPhoto && (
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, color: "#fff", fontWeight: 800 }}>
                 {(live.hostName || "?").slice(0, 1)}
               </div>

@@ -22,6 +22,7 @@ const HEADERS = {
 const LIVE_KEY = "hf_live_stream";
 const PRESENCE_KEY = "hf_live_presence"; // { [viewerId]: lastSeenEpochMs }
 const CHAT_KEY = "hf_live_chat";         // [{ id, authorId, authorName, text, at }]
+const REACTIONS_KEY = "hf_live_reactions"; // [{ id, emoji, at, byId }]
 const POSTS_KEY = "hf_community_posts";  // community feed array (shared w/ app)
 const CHUNK_MS = 6000;            // ~6s per chunk
 const POLL_MS = 4000;             // viewer poll interval
@@ -29,6 +30,10 @@ const PRESENCE_MS = 4000;         // viewer heartbeat + count poll interval
 const PRESENCE_STALE_MS = 12000;  // an entry older than this isn't "watching"
 const CHAT_POLL_MS = 3000;        // chat poll interval
 const CHAT_MAX = 60;              // stored message cap
+const REACTIONS_POLL_MS = 1200;  // reaction poll interval (both sides)
+const REACTIONS_MAX = 80;        // stored reaction cap
+const REACTION_LIFE_MS = 4000;   // how long a float lives on screen
+const REACTION_EMOJIS = ["❤️", "🔥", "💪", "👏", "😂"];
 const MAX_LIVE_MS = 30 * 60 * 1000; // 30 min hard cap
 const REPLAY_CAP_BYTES = 12 * 1024 * 1024; // ~12MB accumulated-chunk cap
 const REPLAY_TTL_MS = 14 * 24 * 60 * 60 * 1000; // replay posts expire in 14 days
@@ -126,6 +131,28 @@ async function sendChatMessage(me, text) {
   await upsertKey(CHAT_KEY, arr.slice(-CHAT_MAX));
 }
 
+// Append one reaction (read-modify-write, pruned to REACTIONS_MAX). Returns the
+// reaction record so the caller can optimistically float it without waiting.
+async function sendReaction(myId, emoji) {
+  const rec = { id: newId(), emoji, at: Date.now(), byId: myId || "anon" };
+  const current = await fetchKey(REACTIONS_KEY);
+  const arr = Array.isArray(current) ? current : [];
+  arr.push(rec);
+  await upsertKey(REACTIONS_KEY, arr.slice(-REACTIONS_MAX));
+  return rec;
+}
+
+// Tally a reactions array into a { emoji: count } breakdown.
+function tallyReactions(list) {
+  const out = {};
+  if (!Array.isArray(list)) return out;
+  for (const r of list) {
+    if (!r || !r.emoji) continue;
+    out[r.emoji] = (out[r.emoji] || 0) + 1;
+  }
+  return out;
+}
+
 /* Remove expired live-replay posts. Exported so the feed reader can purge on
    read. Non-replay posts (and anything without a valid expiresAt) pass through. */
 export function pruneExpiredReplays(posts) {
@@ -168,6 +195,103 @@ function useLiveChat() {
     return () => { dead = true; clearInterval(id); };
   }, []);
   return messages;
+}
+
+/* Poll live reactions (both sides) and drive the floating animation.
+   Reactions seen in the last ~4s spawn a float; new ones are deduped by their
+   reaction id via a seen-set ref so a reaction floats exactly once. Returns the
+   active floats plus spawnLocal() for optimistic (own-tap) floats. */
+function useLiveReactions() {
+  const [floats, setFloats] = useState([]); // [{ key, emoji, x }]
+  const seenRef = useRef(new Set());
+  const timersRef = useRef([]);
+
+  const spawn = useCallback((emoji) => {
+    const key = newId();
+    const x = 8 + Math.random() * 64; // 8-72% from left
+    setFloats((f) => [...f, { key, emoji, x }]);
+    const t = setTimeout(() => {
+      setFloats((f) => f.filter((fl) => fl.key !== key));
+    }, REACTION_LIFE_MS);
+    timersRef.current.push(t);
+  }, []);
+
+  useEffect(() => {
+    let dead = false;
+    const poll = async () => {
+      const v = await fetchKey(REACTIONS_KEY);
+      if (dead || !Array.isArray(v)) return;
+      const cutoff = Date.now() - REACTION_LIFE_MS;
+      for (const r of v) {
+        if (!r || !r.id || !r.emoji) continue;
+        if (seenRef.current.has(r.id)) continue;
+        seenRef.current.add(r.id);
+        // Only float ones recent enough to still be alive (skip backlog).
+        if (typeof r.at === "number" && r.at >= cutoff) spawn(r.emoji);
+      }
+      // Keep the seen-set from growing unbounded across a long broadcast.
+      if (seenRef.current.size > 400) {
+        seenRef.current = new Set(v.map((r) => r && r.id).filter(Boolean));
+      }
+    };
+    poll();
+    const id = setInterval(poll, REACTIONS_POLL_MS);
+    return () => {
+      dead = true;
+      clearInterval(id);
+      timersRef.current.forEach(clearTimeout);
+    };
+  }, [spawn]);
+
+  return { floats, spawnLocal: spawn };
+}
+
+const reactionFloatCss = `
+@keyframes hfReactionFloat {
+  0%   { transform: translateY(0) translateX(0); opacity: 1; }
+  100% { transform: translateY(-320px) translateX(24px); opacity: 0; }
+}`;
+
+/* Absolutely-positioned floating emoji layer, rendered inside the 9:16 frame. */
+function ReactionFloats({ floats }) {
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 5 }}>
+      {floats.map((f) => (
+        <span
+          key={f.key}
+          style={{
+            position: "absolute", bottom: 70, left: `${f.x}%`, fontSize: 30, lineHeight: 1,
+            animation: "hfReactionFloat 4s ease-out forwards",
+          }}
+        >{f.emoji}</span>
+      ))}
+    </div>
+  );
+}
+
+/* Tappable emoji reaction bar, bottom-right of the frame. Spammable — every tap
+   sends one reaction and optimistically spawns its own float immediately. */
+function ReactionBar({ myId, onLocal }) {
+  const tap = (emoji) => {
+    onLocal(emoji);          // instant local float (don't wait for the poll)
+    sendReaction(myId, emoji); // fire-and-forget append (retry-once inside upsertKey)
+  };
+  return (
+    <div style={{
+      position: "absolute", right: 10, bottom: 58, display: "flex", flexDirection: "column", gap: 6, zIndex: 6,
+    }}>
+      {REACTION_EMOJIS.map((emoji) => (
+        <button
+          key={emoji}
+          onClick={() => tap(emoji)}
+          style={{
+            width: 40, height: 40, borderRadius: 20, background: "#ffffff22", border: "1px solid #ffffff33",
+            fontSize: 20, lineHeight: 1, cursor: "pointer", padding: 0,
+          }}
+        >{emoji}</button>
+      ))}
+    </div>
+  );
 }
 
 function fmtClock(sec) {
@@ -287,6 +411,7 @@ export function GoLive({ me, onClose }) {
   const truncatedRef = useRef(false);  // dropped oldest chunks past the size cap
   const watching = useWatchingCount();
   const chatMessages = useLiveChat();
+  const { floats } = useLiveReactions(); // broadcaster sees viewers' reactions float too
   const [facing, setFacing] = useState("user");
   const [live, setLive] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -411,9 +536,10 @@ export function GoLive({ me, onClose }) {
     seqRef.current = 0;
     chunksRef.current = [];
     truncatedRef.current = false;
-    // Fresh presence/chat for this broadcast.
+    // Fresh presence/chat/reactions for this broadcast.
     upsertKey(PRESENCE_KEY, {});
     upsertKey(CHAT_KEY, []);
+    upsertKey(REACTIONS_KEY, []);
     liveRef.current = true;
     setLive(true);
     setElapsed(0);
@@ -431,6 +557,7 @@ export function GoLive({ me, onClose }) {
   const resetLivePeripherals = () => {
     upsertKey(PRESENCE_KEY, {});
     upsertKey(CHAT_KEY, []);
+    upsertKey(REACTIONS_KEY, []);
   };
 
   const discardLive = async () => {
@@ -447,6 +574,12 @@ export function GoLive({ me, onClose }) {
     const meta = metaRef.current || {};
     const lastChunk = chunksRef.current[chunksRef.current.length - 1] || "";
     const now = new Date();
+    // Tally the reactions this live earned so the replay shows the love it got.
+    const reactionList = await fetchKey(REACTIONS_KEY);
+    const reactions = tallyReactions(reactionList);
+    const totalReactions = Object.values(reactions).reduce((s, n) => s + n, 0);
+    // The feed counts likes by array length, so seed placeholder ids to match.
+    const likes = Array.from({ length: totalReactions }, (_, i) => `live_react_${i}`);
     const post = {
       id: newId(),
       authorId: me.id,
@@ -454,8 +587,9 @@ export function GoLive({ me, onClose }) {
       content: (meta.title && meta.title.trim()) || "Live replay",
       category: "General",
       createdAt: now.toISOString(),
-      likes: [],
+      likes,
       comments: [],
+      reactions,
       mediaType: "video",
       mediaUrl: cleanDataUrl(lastChunk),
       note: truncatedRef.current
@@ -497,7 +631,7 @@ export function GoLive({ me, onClose }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 6500, background: "#000", display: "flex", flexDirection: "column" }}>
-      <style>{livePulseCss}</style>
+      <style>{livePulseCss + reactionFloatCss}</style>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px" }}>
         <button
           onClick={() => { endLive(true); onClose(); }}
@@ -532,6 +666,7 @@ export function GoLive({ me, onClose }) {
           {live && (
             <ChatOverlay me={me} messages={chatMessages} accent={B.accent} rightInset={10} />
           )}
+          {live && <ReactionFloats floats={floats} />}
           {error && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, color: "#fff", fontSize: 14, textAlign: "center", background: "#000c" }}>{error}</div>
           )}
@@ -630,6 +765,7 @@ export function LiveViewer({ me, onClose }) {
   if (!myIdRef.current) myIdRef.current = newId();
   const watching = useWatchingCount();
   const chatMessages = useLiveChat();
+  const { floats, spawnLocal } = useLiveReactions();
   const [front, setFront] = useState(0);
   const [waiting, setWaiting] = useState(true);   // no chunk currently playing
   const [muted, setMuted] = useState(true);
@@ -755,7 +891,7 @@ export function LiveViewer({ me, onClose }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 6400, background: "#000", display: "flex", flexDirection: "column" }}>
-      <style>{livePulseCss}</style>
+      <style>{livePulseCss + reactionFloatCss}</style>
 
       {/* Header — host + title + live pill + elapsed + close */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px" }}>
@@ -836,6 +972,10 @@ export function LiveViewer({ me, onClose }) {
           {active && (
             <ChatOverlay me={me} messages={chatMessages} accent={B.accent} rightInset={58} />
           )}
+
+          {/* Floating reactions + tappable reaction bar */}
+          {active && <ReactionFloats floats={floats} />}
+          {active && <ReactionBar myId={myIdRef.current} onLocal={spawnLocal} />}
         </div>
       </div>
     </div>

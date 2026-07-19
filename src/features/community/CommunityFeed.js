@@ -1973,25 +1973,10 @@ export default function CommunityFeed() {
       {/* Stories — broadcast to every member and coach at this location */}
       <StoriesBar me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} live={liveNow} onWatchLive={() => setWatchingLive(true)} />
 
-      {/* Go Live button + LIVE-now banner */}
+      {/* Live overlays (the Go Live entry point lives in the composer toolbar; the
+          live tile now appears in the stories bar) */}
       {showGoLive && <GoLive me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} onClose={() => setShowGoLive(false)} />}
       {watchingLive && <LiveViewer me={{ id: staffId, name: staffName, photo: currentUser?.photo || "" }} onClose={() => setWatchingLive(false)} />}
-      {liveNow && liveNow.hostId !== staffId ? (
-        <div onClick={() => setWatchingLive(true)} style={{ display: "flex", alignItems: "center", gap: 12, margin: "10px 0", padding: "12px 16px", borderRadius: 14, cursor: "pointer", background: "linear-gradient(135deg,#ef4444,#b91c1c)" }}>
-          <span style={{ background: "#fff", color: "#ef4444", fontSize: 10, fontWeight: 900, padding: "2px 7px", borderRadius: 6 }}>● LIVE</span>
-          <div style={{ flex: 1, color: "#fff" }}>
-            <div style={{ fontSize: 14, fontWeight: 800 }}>{liveNow.hostName} is live</div>
-            <div style={{ fontSize: 12, opacity: 0.9 }}>{liveNow.title || "Tap to watch"}</div>
-          </div>
-          <span style={{ color: "#fff", fontWeight: 800 }}>{"▶"}</span>
-        </div>
-      ) : (
-        !liveNow && (
-          <button onClick={() => setShowGoLive(true)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", margin: "10px 0", padding: "11px 0", borderRadius: 12, border: "none", background: "#ef4444", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
-            {"🔴"} Go Live
-          </button>
-        )
-      )}
 
       {/* Active Challenges Banner */}
       {activeChallenges.length > 0 && activeCategory !== "Challenges" && (
@@ -2167,6 +2152,12 @@ export default function CommunityFeed() {
                   <button style={{ ...toolbarBtn, opacity: 0.4, cursor: "default" }}>
                     <span style={{ fontSize: 16 }}>GIF</span>
                   </button>
+                  {!liveNow && (
+                    <button onClick={() => setShowGoLive(true)}
+                      style={{ ...toolbarBtn, color: "#ef4444", fontWeight: 700 }}>
+                      <span style={{ fontSize: 14 }}>{"🔴"}</span> Live
+                    </button>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => { setComposing(false); setComposeMediaType(null); }}

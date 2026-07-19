@@ -1989,6 +1989,16 @@ export default function ClientPortal() {
                   </div>
                 )}
 
+                {/* Live-replay reaction breakdown */}
+                {post.isLiveReplay && post.reactions && Object.keys(post.reactions).length > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: "#ef4444", marginRight: 4 }}>🔴 LIVE REPLAY</span>
+                    {Object.entries(post.reactions).sort((a, b) => b[1] - a[1]).map(([emoji, n]) => (
+                      <span key={emoji} style={{ fontSize: 12, color: B.muted, background: B.darker, borderRadius: 10, padding: "2px 8px", fontWeight: 600 }}>{emoji} {n}</span>
+                    ))}
+                  </div>
+                )}
+
                 {/* Like + Comment buttons */}
                 <div style={{ display: "flex", alignItems: "center", gap: 16, paddingTop: 8, borderTop: `1px solid ${B.border}30` }}>
                   <button
