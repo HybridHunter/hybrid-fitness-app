@@ -97,7 +97,7 @@ export default function TaskTypeFields({ B, row, onChange, courses, challenges, 
           }}
           style={input}
         >
-          <option value="">Select a challenge...</option>
+          <option value="">Any challenge (counts when they join one)</option>
           {list.map((c) => (
             <option key={c.id} value={c.id}>{c.name || c.title || "Untitled challenge"}</option>
           ))}

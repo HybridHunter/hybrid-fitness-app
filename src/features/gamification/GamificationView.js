@@ -334,7 +334,6 @@ export default function GamificationView() {
     if (rows.length === 0) { window.alert("Add at least one stop (task) with a title."); return; }
     if (rows.some((t) => t.type === "course" && !t.courseId)) { window.alert("Every course stop needs a course selected."); return; }
     if (rows.some((t) => t.type === "doc" && !t.doc)) { window.alert("Every document stop needs a file attached."); return; }
-    if (rows.some((t) => t.type === "challenge" && !t.challengeId)) { window.alert("Every challenge stop needs a challenge selected."); return; }
     if (mapEditor.deadlineMode === "date" && !mapEditor.deadline) { window.alert("Pick a deadline date."); return; }
     if (mapEditor.deadlineMode === "days" && !(Number(mapEditor.durationDays) > 0)) { window.alert("Enter a valid number of days."); return; }
 

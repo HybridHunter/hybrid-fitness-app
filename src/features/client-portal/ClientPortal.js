@@ -426,6 +426,30 @@ export default function ClientPortal() {
       .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
   }, [clientTasks, myId]);
 
+  // 🗺️ Celebrate treasure-map completions: watch for pending→done transitions
+  const [mapToast, setMapToast] = useState(null);
+  const prevDoneMapTasks = useRef(null);
+  useEffect(() => {
+    if (!myId) return;
+    const list = Array.isArray(clientTasks) ? clientTasks : [];
+    const doneIds = new Set(list.filter(t => t.memberId === myId && t.mapId && t.status === "done").map(t => t.id));
+    if (prevDoneMapTasks.current === null) { prevDoneMapTasks.current = doneIds; return; }
+    const newlyDone = [...doneIds].filter(id => !prevDoneMapTasks.current.has(id));
+    prevDoneMapTasks.current = doneIds;
+    if (newlyDone.length === 0) return;
+    const task = list.find(t => t.id === newlyDone[newlyDone.length - 1]);
+    const map = (Array.isArray(treasureMaps) ? treasureMaps : []).find(m => m.id === task?.mapId && m.enabled);
+    if (!task || !map) return;
+    const mapTasks = list.filter(t => t.memberId === myId && t.mapId === map.id);
+    const remaining = mapTasks.filter(t => t.status !== "done").length;
+    setMapToast(remaining === 0
+      ? { big: true, text: `🏆 X marks the spot — you finished ${map.name}!`, sub: map.incentive ? `Claim your reward: ${map.incentive}` : "You found the treasure!" }
+      : { big: false, text: `🗺️ "${task.title}" dug up off your treasure map!`, sub: `${remaining} stop${remaining === 1 ? "" : "s"} to the treasure` });
+    const timer = setTimeout(() => setMapToast(null), remaining === 0 ? 7000 : 4500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line
+  }, [clientTasks, myId, treasureMaps]);
+
   // Auto-complete tracking tasks:
   // - 'attendance': done when N check-ins are logged on/after the task's start
   // - 'challenge': done when the member has joined the linked challenge
@@ -443,8 +467,11 @@ export default function ClientPortal() {
       if (t.memberId !== myId || t.status !== "pending") return false;
       if (t.type === "attendance") return attendanceProgress(t) >= (t.targetCount || 1);
       if (t.type === "challenge") {
-        const ch = (Array.isArray(challenges) ? challenges : []).find(c => c.id === t.challengeId);
-        return !!ch && (ch.participants || []).includes(myId);
+        const list = Array.isArray(challenges) ? challenges : [];
+        // Specific challenge when set; otherwise ANY challenge participation counts
+        return t.challengeId
+          ? list.some(c => c.id === t.challengeId && (c.participants || []).includes(myId))
+          : list.some(c => (c.participants || []).includes(myId));
       }
       return false;
     });
@@ -495,7 +522,12 @@ export default function ClientPortal() {
   // Route a task to its type's action (shared by the Tasks card and map stops)
   const openTaskAction = (t) => {
     if (t.status === "done") return;
-    if (t.type === "doc") { openTaskDoc(t); return; }
+    if (t.type === "doc") {
+      openTaskDoc(t);
+      // Opening the doc IS doing the task when launched from the treasure map
+      if (t.mapId) markTaskDone(t.id);
+      return;
+    }
     if (t.type === "course") { setCourseViewerId(t.courseId); setCourseLessonPath(null); return; }
     if (t.type === "community_post") { goToPostComposer(); return; }
     if (t.type === "attendance") {
@@ -504,7 +536,7 @@ export default function ClientPortal() {
     }
     if (t.type === "challenge") {
       setCommunitySubTab("challenges");
-      setActiveChallengeId(t.challengeId || null);
+      setActiveChallengeId(t.challengeId || null); // null = browse all challenges
       switchTab("home");
       return;
     }
@@ -902,7 +934,7 @@ export default function ClientPortal() {
                     )}
                     {t.type === "challenge" && (
                       <button onClick={() => openTaskAction(t)} style={touchBtn(B.accent, B.darker, smallBtn)}>
-                        {"🎯"} Join {t.challengeName || "the challenge"}
+                        {"🎯"} Join {t.challengeName || "a challenge"}
                       </button>
                     )}
                     {t.type === "custom" && (
@@ -4039,6 +4071,26 @@ export default function ClientPortal() {
             marginTop: 14, background: "#ffffff2e", border: "none", borderRadius: 16,
             color: "#fff", fontSize: 13, fontWeight: 800, padding: "7px 16px", cursor: "pointer",
           }}>Close ✕</button>
+        </div>
+      )}
+
+      {/* Treasure-map completion toast */}
+      {mapToast && (
+        <div
+          onClick={() => setMapToast(null)}
+          style={{
+            position: "fixed", top: 14, left: "50%", transform: "translateX(-50%)",
+            zIndex: 7000, width: "calc(100% - 28px)", maxWidth: 420, cursor: "pointer",
+            background: mapToast.big
+              ? "linear-gradient(135deg, #f59e0b, #b45309)"
+              : `linear-gradient(135deg, ${B.accent}, ${B.accent}bb)`,
+            borderRadius: 16, padding: "14px 18px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+            animation: "hfSlideDown 0.35s ease",
+          }}
+        >
+          <style>{`@keyframes hfSlideDown { from { transform: translate(-50%, -120%); } to { transform: translate(-50%, 0); } }`}</style>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", lineHeight: 1.35 }}>{mapToast.text}</div>
+          {mapToast.sub && <div style={{ fontSize: 12, color: "#ffffffdd", marginTop: 3 }}>{mapToast.sub}</div>}
         </div>
       )}
 

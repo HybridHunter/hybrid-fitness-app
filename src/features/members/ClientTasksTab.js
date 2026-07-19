@@ -77,7 +77,6 @@ export default function ClientTasksTab({ member }) {
     if (!form.title.trim()) { window.alert("Title is required."); return; }
     if (form.type === "course" && !form.courseId) { window.alert("Pick a course for this task."); return; }
     if (form.type === "doc" && !form.doc) { window.alert("Attach a file for this task."); return; }
-    if (form.type === "challenge" && !form.challengeId) { window.alert("Pick a challenge for this task."); return; }
     const t = {
       id: crypto.randomUUID(),
       memberId: member.id,
