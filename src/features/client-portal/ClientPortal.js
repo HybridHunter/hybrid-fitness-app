@@ -139,6 +139,7 @@ export default function ClientPortal() {
   const [prevTab, setPrevTab] = useState("home");
   const [transitioning, setTransitioning] = useState(false);
   const [clientChatOpen, setClientChatOpen] = useState(null);
+
   const [clientChatText, setClientChatText] = useState("");
   const [showPastSessions, setShowPastSessions] = useState(false);
   const [progressReports, setProgressReports] = useLocalStorage("hf_progress_reports", []);
@@ -158,9 +159,21 @@ export default function ClientPortal() {
   const [attendance, setAttendance] = useLocalStorage("hf_attendance", []);
   const [, setPayments] = useLocalStorage("hf_payments", []);
   const [noShowSettings] = useLocalStorage("hf_noshow_settings", {});
+  const [scheduleSettings] = useLocalStorage("hf_schedule_settings", {});
   const [workouts] = useLocalStorage("hf_w", []);
   const [communityPosts, setCommunityPosts] = useLocalStorage("hf_community_posts", []);
   const [messages, setMessages] = useLocalStorage("hf_messages", []);
+  // Clear unread state when the chat is opened (read = read-by-recipient)
+  useEffect(() => {
+    if (!clientChatOpen || !currentUser?.memberId) return;
+    setMessages(prev => (Array.isArray(prev) ? prev : []).map(c => {
+      if (c.id !== clientChatOpen) return c;
+      const hasUnread = (c.messages || []).some(m => !m.read && m.senderId !== currentUser.memberId);
+      if (!hasUnread) return c;
+      return { ...c, messages: c.messages.map(m => (m.senderId !== currentUser.memberId ? { ...m, read: true } : m)) };
+    }));
+    // eslint-disable-next-line
+  }, [clientChatOpen, messages.length]);
   const [workoutLogs, setWorkoutLogs] = useLocalStorage("hf_workout_logs", []);
   const [matrix] = useLocalStorage("hf_matrix", DEFAULT_MATRIX);
   const [exercises] = useLocalStorage("hf_ex", [...EX]);
@@ -583,32 +596,6 @@ export default function ClientPortal() {
               </div>
             </div>
             <div style={{ fontSize: 18, color: "#fff", fontWeight: 800 }}>{"→"}</div>
-          </div>
-        )}
-
-        {/* Unread Messages */}
-        {unreadCount > 0 && (
-          <div style={{
-            ...cardStyle, background: `linear-gradient(135deg, #3b82f615 0%, ${B.card} 100%)`,
-            border: `1px solid #3b82f640`, cursor: "pointer",
-          }} onClick={openCoachChat}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: 12, background: "#3b82f622",
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-              }}>&#x1F4AC;</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: B.text }}>
-                  {unreadCount} unread message{unreadCount > 1 ? "s" : ""}
-                </div>
-                <div style={mutedText}>Tap to view</div>
-              </div>
-              <div style={{
-                width: 24, height: 24, borderRadius: 12, background: "#ef4444",
-                color: "#fff", fontSize: 13, fontWeight: 800, display: "flex",
-                alignItems: "center", justifyContent: "center",
-              }}>{unreadCount}</div>
-            </div>
           </div>
         )}
 
@@ -1424,9 +1411,13 @@ export default function ClientPortal() {
   };
 
   const renderBook = () => {
-    const monday = getMonday();
-    const weekDates = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday);
+    // Rolling window starting TODAY (never trapped at the end of a week).
+    // Capped at 7 days: classes recur weekly, so beyond 7 the same class
+    // would appear twice. Gym controls the window via hf_schedule_settings.
+    const bookingWindowDays = Math.max(1, Math.min(7, Number(scheduleSettings?.bookingWindowDays) || 7));
+    const todayD = new Date(); todayD.setHours(0, 0, 0, 0);
+    const weekDates = Array.from({ length: bookingWindowDays }, (_, i) => {
+      const d = new Date(todayD);
       d.setDate(d.getDate() + i);
       return d;
     });
@@ -1452,31 +1443,30 @@ export default function ClientPortal() {
         </div>
 
         <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Book a Session</h1>
-        <p style={mutedText}>This week's schedule</p>
+        <p style={mutedText}>{bookingWindowDays === 1 ? "Today's sessions" : `Next ${bookingWindowDays} days`}</p>
 
-        {/* Day selector pills */}
+        {/* Day selector pills — rolling from today */}
         <div style={{
           display: "flex", gap: 6, overflowX: "auto", padding: "16px 0 8px",
           scrollbarWidth: "none", msOverflowStyle: "none",
         }}>
           {weekDates.map((d, i) => {
-            const isToday = localISO(d) === todayISO();
-            const dayClasses = classes.filter(c => c.dayOfWeek === i && !c.exceptions?.includes(localISO(d)));
-            const isDayPast = localISO(d) < todayISO();
+            const dow = (d.getDay() + 6) % 7; // 0 = Monday convention
+            const isToday = i === 0;
+            const dayClasses = classes.filter(c => c.dayOfWeek === dow && !c.exceptions?.includes(localISO(d)));
             return (
               <div key={i} style={{
                 textAlign: "center", padding: "10px 14px", borderRadius: 14,
                 background: isToday ? B.accent + "20" : B.card,
                 border: isToday ? `2px solid ${B.accent}` : `1px solid ${B.border}`,
                 minWidth: 52, flexShrink: 0,
-                opacity: isDayPast ? 0.4 : 1,
               }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? B.accent : B.muted }}>{DAYS_SHORT[i]}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? B.accent : B.muted }}>{isToday ? "Today" : DAYS_SHORT[dow]}</div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: isToday ? B.accent : B.text, marginTop: 2 }}>{d.getDate()}</div>
                 {dayClasses.length > 0 && (
                   <div style={{
                     width: 6, height: 6, borderRadius: 3,
-                    background: isDayPast ? B.muted : B.accent, margin: "4px auto 0",
+                    background: B.accent, margin: "4px auto 0",
                   }} />
                 )}
               </div>
@@ -1484,57 +1474,59 @@ export default function ClientPortal() {
           })}
         </div>
 
-        {/* Past-sessions toggle — only when this week actually has past sessions */}
+        {/* Past-sessions toggle — only today's already-ended sessions qualify now */}
         {(() => {
-          const sessionEnded = (cls, d) => {
-            const [eh, em] = (cls.endTime || "23:59").split(":").map(Number);
-            const end = new Date(d); end.setHours(eh, em, 0, 0);
-            return new Date() > end;
-          };
-          const hasPast = weekDates.some((d, i) =>
-            (localISO(d) < todayISO() || localISO(d) === todayISO()) &&
-            classes.some(c => c.dayOfWeek === i && !c.exceptions?.includes(localISO(d)) && sessionEnded(c, d))
-          );
+          const now = new Date();
+          const hasPast = classes.some(c => {
+            const dow = (todayD.getDay() + 6) % 7;
+            if (c.dayOfWeek !== dow || c.exceptions?.includes(todayISO())) return false;
+            const [eh, em] = (c.endTime || "23:59").split(":").map(Number);
+            const end = new Date(todayD); end.setHours(eh, em, 0, 0);
+            return now > end;
+          });
           if (!hasPast) return null;
           return (
             <button
               onClick={() => setShowPastSessions(s => !s)}
               style={{ background: "none", border: "none", color: B.muted, fontSize: 11, fontWeight: 600, cursor: "pointer", padding: "4px 0 0", textDecoration: "underline" }}
             >
-              {showPastSessions ? "Hide past sessions" : "Show past sessions"}
+              {showPastSessions ? "Hide today's past sessions" : "Show today's past sessions"}
             </button>
           );
         })()}
 
-        {/* Classes by day */}
-        {DAYS_SHORT.map((day, dayIdx) => {
-          const dayISO = localISO(weekDates[dayIdx]);
-          // Past days are hidden unless the user opts in
-          if (dayISO < todayISO() && !showPastSessions) return null;
+        {/* Classes by day — rolling window */}
+        {weekDates.map((dateObj, wi) => {
+          const dayIdx = (dateObj.getDay() + 6) % 7; // 0 = Monday convention
+          const dayISO = localISO(dateObj);
           let dayClasses = classes
             .filter(c => c.dayOfWeek === dayIdx && !c.exceptions?.includes(dayISO))
             .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
           // On today, hide sessions that already ended unless opted in
-          if (dayISO === todayISO() && !showPastSessions) {
+          if (wi === 0 && !showPastSessions) {
             const now = new Date();
             dayClasses = dayClasses.filter(cls => {
               const [eh, em] = (cls.endTime || "23:59").split(":").map(Number);
-              const end = new Date(weekDates[dayIdx]); end.setHours(eh, em, 0, 0);
+              const end = new Date(dateObj); end.setHours(eh, em, 0, 0);
               return now <= end;
             });
           }
           if (dayClasses.length === 0) return null;
 
-          const dateLabel = `${DAYS_FULL[dayIdx]}, ${MONTHS[weekDates[dayIdx].getMonth()]} ${weekDates[dayIdx].getDate()}`;
+          const dateLabel = wi === 0
+            ? `Today · ${MONTHS[dateObj.getMonth()]} ${dateObj.getDate()}`
+            : wi === 1
+              ? `Tomorrow · ${MONTHS[dateObj.getMonth()]} ${dateObj.getDate()}`
+              : `${DAYS_FULL[dayIdx]}, ${MONTHS[dateObj.getMonth()]} ${dateObj.getDate()}`;
 
           return (
-            <div key={dayIdx} style={{ marginTop: 20 }}>
+            <div key={dayISO} style={{ marginTop: 20 }}>
               <div style={{ ...labelText, marginBottom: 10 }}>{dateLabel}</div>
               {dayClasses.map(cls => {
                 const isBooked = cls.bookings?.includes(member.id);
                 const isWaitlisted = cls.waitlist?.includes(member.id);
                 // Check if session is in the past
-                const sessionDate = weekDates[dayIdx];
+                const sessionDate = dateObj;
                 const now = new Date();
                 const [sh, sm] = (cls.endTime || "23:59").split(":").map(Number);
                 const sessionEnd = new Date(sessionDate); sessionEnd.setHours(sh, sm, 0, 0);

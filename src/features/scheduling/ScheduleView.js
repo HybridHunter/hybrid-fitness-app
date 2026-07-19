@@ -317,6 +317,14 @@ export default function ScheduleView() {
               {Array.from({length:24},(_,i)=>i).map(h=><option key={h} value={h}>{h===0?"12 AM":h<12?`${h} AM`:h===12?"12 PM":`${h-12} PM`}</option>)}
             </select>
           </div>
+          <div style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:B.muted}} title="How far ahead clients can book in the app">
+            <span>Clients book</span>
+            <select value={Math.max(1,Math.min(7,Number(scheduleSettings.bookingWindowDays)||7))}
+              onChange={e=>setScheduleSettings(p=>({...p,bookingWindowDays:Number(e.target.value)}))}
+              style={{padding:"4px 6px",borderRadius:6,border:"1px solid "+B.border,background:B.darker,color:B.text,fontSize:12,outline:"none"}}>
+              {[1,2,3,4,5,6,7].map(d=><option key={d} value={d}>{d} day{d>1?"s":""} out</option>)}
+            </select>
+          </div>
           <button onClick={()=>{setForm({...EMPTY_FORM});setShowNewModal(true)}} style={btn({background:B.accent,color:B.darker,fontSize:14,padding:"10px 20px"})}>
             + New Session
           </button>
