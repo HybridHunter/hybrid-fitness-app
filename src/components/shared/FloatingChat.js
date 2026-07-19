@@ -107,11 +107,12 @@ function ChatBox({ chat, onClose, onMinimize, B, conversations, setConversations
                       {!chatMember?.photo && (chatMember?.firstName || "M").slice(0, 1)}
                     </div>
                   )}
-                  <div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start", minWidth: 0 }}>
                     <div style={{
                       padding: "6px 10px", borderRadius: isMe ? "10px 10px 2px 10px" : "10px 10px 10px 2px",
                       background: isMe ? B.accent : B.darker, color: isMe ? "#fff" : B.text,
                       fontSize: 13, lineHeight: 1.4, wordBreak: "break-word",
+                      width: "fit-content", maxWidth: "100%",
                     }}>
                       {imageUrl && <img src={imageUrl} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block" }} />}
                       {displayText}

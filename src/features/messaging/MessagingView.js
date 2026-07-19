@@ -184,8 +184,8 @@ export default function MessagingView() {
     unreadBadge: { minWidth: 18, height: 18, borderRadius: 9, background: B.accent, color: "#fff", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px" },
     chatHeader: { display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", borderBottom: "1px solid " + B.border, background: B.dark },
     chatArea: { flex: 1, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 8, justifyContent: "flex-end", minHeight: 0 },
-    bubbleCoach: { alignSelf: "flex-end", maxWidth: "70%", background: B.accent, color: "#fff", borderRadius: "16px 16px 4px 16px", padding: "10px 14px", fontSize: 13, lineHeight: 1.5 },
-    bubbleMember: { alignSelf: "flex-start", maxWidth: "70%", background: B.card, color: B.text, borderRadius: "16px 16px 16px 4px", padding: "10px 14px", fontSize: 13, lineHeight: 1.5, border: "1px solid " + B.border },
+    bubbleCoach: { background: B.accent, color: "#fff", borderRadius: "16px 16px 4px 16px", padding: "9px 13px", fontSize: 13, lineHeight: 1.45, width: "fit-content", maxWidth: "100%", wordBreak: "break-word" },
+    bubbleMember: { background: B.card, color: B.text, borderRadius: "16px 16px 16px 4px", padding: "9px 13px", fontSize: 13, lineHeight: 1.45, border: "1px solid " + B.border, width: "fit-content", maxWidth: "100%", wordBreak: "break-word" },
     bubbleSystem: { alignSelf: "center", background: B.border + "44", color: B.dim, borderRadius: 12, padding: "6px 14px", fontSize: 11, fontStyle: "italic" },
     bubbleTime: { fontSize: 10, color: B.dim, marginTop: 4 },
     bubbleTimeCoach: { fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 4, textAlign: "right" },
@@ -332,7 +332,7 @@ export default function MessagingView() {
                     {!sender?.photo && senderInitial}
                   </div>
                 )}
-                <div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start", minWidth: 0 }}>
                   <div style={isMe ? s.bubbleCoach : s.bubbleMember}>
                     {imageUrl && <img src={imageUrl} alt="" style={{ maxWidth: "100%", borderRadius: 8, display: "block", marginBottom: displayText ? 6 : 0 }} />}
                     {displayText}

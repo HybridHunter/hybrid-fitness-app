@@ -4308,8 +4308,8 @@ export default function ClientPortal() {
                     }}>
                       {isMe ? (!member?.photo && (member?.firstName || "?").slice(0, 1)) : "C"}
                     </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ padding: "10px 14px", borderRadius: 18, fontSize: 14, lineHeight: 1.4, background: isMe ? B.accent : B.card, color: isMe ? "#fff" : B.text, borderBottomRightRadius: isMe ? 4 : 18, borderBottomLeftRadius: isMe ? 18 : 4 }}>
+                    <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                      <div style={{ padding: "9px 13px", borderRadius: 18, fontSize: 14, lineHeight: 1.4, background: isMe ? B.accent : B.card, color: isMe ? "#fff" : B.text, borderBottomRightRadius: isMe ? 4 : 18, borderBottomLeftRadius: isMe ? 18 : 4, width: "fit-content", maxWidth: "100%", wordBreak: "break-word" }}>
                         {msg.text}
                       </div>
                       <div style={{ fontSize: 10, color: B.dim, marginTop: 2, textAlign: isMe ? "right" : "left" }}>
