@@ -287,7 +287,7 @@ export default function ScheduleView() {
 
   const modal = {
     background:B.card,border:`1px solid ${B.border}`,borderRadius:16,padding:24,
-    width:480,maxWidth:"90vw",maxHeight:"85vh",overflowY:"auto"
+    width:"min(480px, calc(100vw - 24px))",maxWidth:"90vw",maxHeight:"85vh",overflowY:"auto"
   };
 
   const inputStyle = {
@@ -300,12 +300,12 @@ export default function ScheduleView() {
   return (
     <div>
       {/* Header */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
           <h1 style={{fontSize:24,fontWeight:800,color:B.text,margin:0}}>Schedule</h1>
           <p style={{color:B.muted,margin:"4px 0 0",fontSize:14}}>Weekly session calendar, booking, and waitlists.</p>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <div style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:B.muted}}>
             <select value={scheduleSettings.startHour} onChange={e=>setScheduleSettings(p=>({...p,startHour:Number(e.target.value)}))}
               style={{padding:"4px 6px",borderRadius:6,border:"1px solid "+B.border,background:B.darker,color:B.text,fontSize:12,outline:"none"}}>
@@ -325,7 +325,7 @@ export default function ScheduleView() {
 
       {/* Week Navigation */}
       <Card style={{marginBottom:16,padding:12}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,flexWrap:"wrap"}}>
           <button onClick={()=>setWeekOffset(w=>w-1)} style={btn({background:B.border,color:B.text,padding:"6px 14px",fontSize:18})}>
             &#8592;
           </button>
@@ -341,9 +341,10 @@ export default function ScheduleView() {
         </div>
       </Card>
 
-      {/* Calendar Grid */}
+      {/* Calendar Grid — horizontally scrollable on small screens */}
       <Card style={{padding:0,overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"60px repeat(7,1fr)",minHeight:600}}>
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+        <div style={{display:"grid",gridTemplateColumns:"60px repeat(7,1fr)",minHeight:600,minWidth:760}}>
           {/* Header row */}
           <div style={{background:B.darker,borderBottom:`1px solid ${B.border}`,padding:"10px 4px",textAlign:"center"}}>
             <span style={{fontSize:11,color:B.dim}}></span>
@@ -421,6 +422,7 @@ export default function ScheduleView() {
               })}
             </div>
           ))}
+        </div>
         </div>
       </Card>
 

@@ -1999,7 +1999,7 @@ export default function CommunityFeed() {
       </div>
 
       {/* Compose box + Start Challenge button */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "stretch" }}>
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "stretch", flexWrap: "wrap" }}>
         <Card style={{ flex: 1, padding: composing ? 16 : 12, marginBottom: 0 }}>
           {!composing ? (
             <div onClick={() => setComposing(true)}
@@ -2089,9 +2089,10 @@ export default function CommunityFeed() {
               {/* Toolbar */}
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                borderTop: `1px solid ${B.border}`, paddingTop: 10, marginTop: 4
+                borderTop: `1px solid ${B.border}`, paddingTop: 10, marginTop: 4,
+                flexWrap: "wrap", gap: 8
               }}>
-                <div style={{ display: "flex", gap: 2 }}>
+                <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
                   <button onClick={() => setComposeMediaType(composeMediaType === "video" ? null : "video")}
                     style={{ ...toolbarBtn, background: composeMediaType === "video" ? `${B.accent}18` : "transparent", color: composeMediaType === "video" ? B.accent : B.muted }}>
                     <VideoIcon size={16} color={composeMediaType === "video" ? B.accent : B.muted} /> Video

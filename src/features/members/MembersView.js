@@ -388,7 +388,7 @@ export default function MembersView() {
     searchInput: { flex: 1, minWidth: 200, background: B.darker, border: "1px solid " + B.border, borderRadius: 8, padding: "10px 14px", color: B.text, fontSize: 14, outline: "none" },
     pills: { display: "flex", gap: 6, flexWrap: "wrap" },
     pill: (active) => ({ padding: "6px 14px", borderRadius: 20, border: "1px solid " + (active ? B.accent : B.border), background: active ? B.accent : "transparent", color: active ? "#fff" : B.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .15s" }),
-    grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 14 },
+    grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(340px, 100%), 1fr))", gap: 14 },
     card: { background: B.card, borderRadius: 12, border: "1px solid " + B.border, padding: 18, display: "flex", flexDirection: "column", gap: 10 },
     cardTop: { display: "flex", alignItems: "center", gap: 14 },
     avatar: (color) => ({ width: 46, height: 46, borderRadius: "50%", background: color + "22", color: color, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, flexShrink: 0 }),
@@ -399,11 +399,11 @@ export default function MembersView() {
     rankBadge: { display: "inline-block", padding: "2px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: B.purple + "22", color: B.purple, marginLeft: 6 },
     dots: { display: "flex", gap: 4, alignItems: "center", marginTop: 2 },
     dot: (color) => ({ width: 8, height: 8, borderRadius: "50%", background: color }),
-    actions: { display: "flex", gap: 8, marginTop: "auto", paddingTop: 6 },
+    actions: { display: "flex", gap: 8, marginTop: "auto", paddingTop: 6, flexWrap: "wrap" },
     actionBtn: (bg, fg) => ({ background: bg, color: fg, border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }),
     // Modal
     overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
-    modal: { background: B.dark, borderRadius: 14, border: "1px solid " + B.border, padding: 28, width: 440, maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto" },
+    modal: { background: B.dark, borderRadius: 14, border: "1px solid " + B.border, padding: 28, width: "min(440px, calc(100vw - 24px))", maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto" },
     modalTitle: { fontSize: 18, fontWeight: 800, color: B.text, marginBottom: 18 },
     field: { marginBottom: 14 },
     label: { display: "block", fontSize: 12, fontWeight: 600, color: B.muted, marginBottom: 4 },
@@ -428,7 +428,7 @@ export default function MembersView() {
         <h1 style={s.title}>
           Clients<span style={s.count}>({members.length})</span>
         </h1>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {duplicateGroups.length > 0 && (
             <button onClick={() => setShowMerge(!showMerge)} style={{
               background: showMerge ? B.orange + "18" : "transparent",
@@ -985,7 +985,7 @@ export default function MembersView() {
           background: toast.type === "error" ? "#7f1d1d" : toast.type === "info" ? B.blue : "#14532d",
           color: toast.type === "error" ? "#fca5a5" : toast.type === "info" ? "#bfdbfe" : "#86efac",
           padding: "12px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.3)", maxWidth: 360,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.3)", maxWidth: "min(360px, calc(100vw - 48px))",
         }}>
           {toast.msg}
         </div>

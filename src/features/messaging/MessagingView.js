@@ -3,6 +3,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { resizeImage } from "../../components/shared/ImageUpload";
 
 function getInitials(f, l) {
@@ -26,6 +27,7 @@ function formatTime(ts) {
 
 export default function MessagingView() {
   const B = useTheme();
+  const isMobile = useIsMobile();
   const { currentUser, isClient } = useAuth();
   const { members } = useMembers();
   // Determine sender ID: staff uses "coach", clients use their memberId
@@ -76,8 +78,8 @@ export default function MessagingView() {
 
   const getMemberInfo = (memberId) => {
     const m = members.find(x => x.id === memberId);
-    if (m) return { name: `${m.firstName} ${m.lastName}`, initials: getInitials(m.firstName, m.lastName), status: m.membershipStatus };
-    return { name: "Unknown", initials: "??", status: "inactive" };
+    if (m) return { name: `${m.firstName} ${m.lastName}`, initials: getInitials(m.firstName, m.lastName), status: m.membershipStatus, photo: m.photo || "" };
+    return { name: "Unknown", initials: "??", status: "inactive", photo: "" };
   };
 
   const activeConv = conversations.find(c => c.id === activeConvId);
@@ -195,7 +197,7 @@ export default function MessagingView() {
     quickLikeBtn: { background: "none", border: "none", fontSize: 26, cursor: "pointer", padding: 4, color: B.accent, lineHeight: 1 },
     emptyChat: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: B.dim, fontSize: 14 },
     overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
-    modal: { background: B.dark, borderRadius: 14, border: "1px solid " + B.border, padding: 28, width: 420, maxWidth: "92vw" },
+    modal: { background: B.dark, borderRadius: 14, border: "1px solid " + B.border, padding: 28, width: "min(420px, calc(100vw - 24px))", maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto", boxSizing: "border-box" },
     modalTitle: { fontSize: 18, fontWeight: 800, color: B.text, marginBottom: 18 },
     field: { marginBottom: 14 },
     label: { display: "block", fontSize: 12, fontWeight: 600, color: B.muted, marginBottom: 4 },
@@ -206,8 +208,7 @@ export default function MessagingView() {
     backBtn: { background: "transparent", border: "1px solid " + B.border, borderRadius: 8, padding: "7px 12px", color: B.muted, fontSize: 13, cursor: "pointer", display: "none" },
   };
 
-  // Mobile responsive: use CSS media query via inline check
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  // Mobile responsive: shared live-updating hook (declared at top of component)
 
   const renderConversationList = () => (
     <div style={{ ...s.leftPanel, ...(isMobile && mobileShowConv ? { display: "none" } : {}), ...(isMobile ? { width: "100%", minWidth: "100%" } : {}) }}>
@@ -252,7 +253,7 @@ export default function MessagingView() {
                 onMouseEnter={e => { if (activeConvId !== c.id) e.currentTarget.style.background = B.border + "44"; }}
                 onMouseLeave={e => { if (activeConvId !== c.id) e.currentTarget.style.background = "transparent"; }}
               >
-                <div style={s.avatar(color)}>{info.initials}</div>
+                <div style={{ ...s.avatar(color), ...(info.photo ? { background: `url(${info.photo}) center/cover` } : {}) }}>{!info.photo && info.initials}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ ...s.convName, fontWeight: hasUnread ? 800 : 600 }}>{info.name}</span>
@@ -292,7 +293,7 @@ export default function MessagingView() {
           {isMobile && (
             <button style={{ ...s.backBtn, display: "inline-flex" }} onClick={() => setMobileShowConv(false)}>&#8592;</button>
           )}
-          <div style={s.avatar(color)}>{info.initials}</div>
+          <div style={{ ...s.avatar(color), ...(info.photo ? { background: `url(${info.photo}) center/cover` } : {}) }}>{!info.photo && info.initials}</div>
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: B.text }}>{info.name}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
@@ -316,15 +317,30 @@ export default function MessagingView() {
             const legacyImg = !msg.imageUrl ? rawText.match(/\[img:(.*?)\]/) : null;
             const imageUrl = msg.imageUrl || legacyImg?.[1];
             const displayText = legacyImg ? rawText.replace(legacyImg[0], "").trim() : rawText;
+            // Sender avatar: member photo for member messages, initial circle otherwise
+            const sender = !isMe ? members.find(m => m.id === msg.senderId) : null;
+            const senderInitial = (sender?.firstName || "M").slice(0, 1);
             return (
-              <div key={msg.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "70%" }}>
-                <div style={isMe ? s.bubbleCoach : s.bubbleMember}>
-                  {imageUrl && <img src={imageUrl} alt="" style={{ maxWidth: "100%", borderRadius: 8, display: "block", marginBottom: displayText ? 6 : 0 }} />}
-                  {displayText}
-                </div>
-                <div style={isMe ? s.bubbleTimeCoach : s.bubbleTime}>
-                  {formatTime(msg.timestamp ?? msg.createdAt)}
-                  {isMe && msg.read && <span style={{ marginLeft: 6 }}>&#10003;&#10003;</span>}
+              <div key={msg.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "76%", display: "flex", gap: 8, flexDirection: isMe ? "row-reverse" : "row", alignItems: "flex-end" }}>
+                {!isMe && (
+                  <div style={{
+                    width: 26, height: 26, borderRadius: 13, flexShrink: 0,
+                    background: sender?.photo ? `url(${sender.photo}) center/cover` : B.accent + "33",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, fontWeight: 800, color: B.accent,
+                  }}>
+                    {!sender?.photo && senderInitial}
+                  </div>
+                )}
+                <div>
+                  <div style={isMe ? s.bubbleCoach : s.bubbleMember}>
+                    {imageUrl && <img src={imageUrl} alt="" style={{ maxWidth: "100%", borderRadius: 8, display: "block", marginBottom: displayText ? 6 : 0 }} />}
+                    {displayText}
+                  </div>
+                  <div style={isMe ? s.bubbleTimeCoach : s.bubbleTime}>
+                    {formatTime(msg.timestamp ?? msg.createdAt)}
+                    {isMe && msg.read && <span style={{ marginLeft: 6 }}>&#10003;&#10003;</span>}
+                  </div>
                 </div>
               </div>
             );

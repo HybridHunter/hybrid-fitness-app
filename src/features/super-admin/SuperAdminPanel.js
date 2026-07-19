@@ -4,6 +4,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
 import { EX } from "../../data/exercises";
+import { useIsMobile } from "../../hooks/useIsMobile";
 
 const SUPABASE_URL = "https://qzvxnklyeadbroesccxt.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6dnhua2x5ZWFkYnJvZXNjY3h0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNTI5MTgsImV4cCI6MjA5MDcyODkxOH0.nDa1iuZwS0E2j-rGizIvVuPRslYn7ugChPJiW-ejSMM";
@@ -67,6 +68,7 @@ function randomChars(n) {
 
 export default function SuperAdminPanel() {
   const B = useTheme(); // Gets LIGHT theme from parent ThemeCtx.Provider
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
   const [tab, setTab] = useState("dashboard");
@@ -460,11 +462,11 @@ export default function SuperAdminPanel() {
   }, [registry]);
 
   /* ===================== STYLES ===================== */
-  const pageStyle = { padding: 24, color: B.text, minHeight: "100vh" };
-  const headerStyle = { fontSize: 24, fontWeight: 700, marginBottom: 24, display: "flex", alignItems: "center", gap: 12 };
-  const tabBar = { display: "flex", gap: 4, marginBottom: 24, borderBottom: `1px solid ${B.border}`, paddingBottom: 4 };
-  const tabBtn = (active) => ({ padding: "8px 20px", borderRadius: "8px 8px 0 0", background: active ? B.card : "transparent", color: active ? B.green : B.muted, fontWeight: active ? 700 : 500, fontSize: 14, border: "none", cursor: "pointer", borderBottom: active ? `2px solid ${B.green}` : "2px solid transparent" });
-  const statCard = { textAlign: "center", padding: 20, flex: 1 };
+  const pageStyle = { padding: isMobile ? 12 : 24, color: B.text, minHeight: "100vh" };
+  const headerStyle = { fontSize: 24, fontWeight: 700, marginBottom: 24, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" };
+  const tabBar = { display: "flex", gap: 4, marginBottom: 24, borderBottom: `1px solid ${B.border}`, paddingBottom: 4, overflowX: "auto", whiteSpace: "nowrap" };
+  const tabBtn = (active) => ({ padding: "8px 20px", borderRadius: "8px 8px 0 0", background: active ? B.card : "transparent", color: active ? B.green : B.muted, fontWeight: active ? 700 : 500, fontSize: 14, border: "none", cursor: "pointer", borderBottom: active ? `2px solid ${B.green}` : "2px solid transparent", flexShrink: 0, whiteSpace: "nowrap" });
+  const statCard = { textAlign: "center", padding: 20, flex: 1, minWidth: 130 };
   const statNum = { fontSize: 28, fontWeight: 800, color: B.green };
   const statLabel = { fontSize: 13, color: B.muted, marginTop: 4 };
   const inputStyle = { width: "100%", padding: "10px 14px", borderRadius: 8, border: `1px solid ${B.border}`, background: B.dark, color: B.text, fontSize: 14, outline: "none", boxSizing: "border-box" };
@@ -477,11 +479,11 @@ export default function SuperAdminPanel() {
   const tableCell = { padding: "10px 12px", fontSize: 14, color: B.text, borderTop: `1px solid ${B.border}` };
   const badge = (color) => ({ display: "inline-block", padding: "2px 10px", borderRadius: 10, fontSize: 11, fontWeight: 700, background: color + "22", color });
   const overlayStyle = { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" };
-  const modalStyle = { background: B.card || "#1e1e2e", borderRadius: 16, padding: 32, width: 720, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", border: `1px solid ${B.border}`, boxShadow: "0 20px 60px rgba(0,0,0,0.5)" };
+  const modalStyle = { background: B.card || "#1e1e2e", borderRadius: 16, padding: isMobile ? 20 : 32, width: "min(720px, calc(100vw - 24px))", maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto", border: `1px solid ${B.border}`, boxShadow: "0 20px 60px rgba(0,0,0,0.5)", boxSizing: "border-box" };
   const sectionTitle = { fontSize: 14, fontWeight: 700, color: B.green, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, marginTop: 20 };
   const checkboxRow = { display: "flex", alignItems: "center", gap: 10, padding: "6px 0", cursor: "pointer", fontSize: 14, color: B.text };
   const planCard = (selected, color) => ({
-    flex: 1, padding: 16, borderRadius: 10, textAlign: "center", cursor: "pointer",
+    flex: 1, minWidth: 110, padding: 16, borderRadius: 10, textAlign: "center", cursor: "pointer",
     border: `2px solid ${selected ? color : B.border}`, background: selected ? color + "11" : "transparent",
     transition: "all 0.15s ease",
   });
@@ -517,7 +519,7 @@ export default function SuperAdminPanel() {
             </div>
 
             <div style={{ background: B.dark, borderRadius: 10, padding: 20, marginBottom: 20 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "10px 16px", fontSize: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "100px 1fr" : "140px 1fr", gap: "10px 16px", fontSize: 14 }}>
                 <span style={{ color: B.muted, fontWeight: 600 }}>Gym Name:</span>
                 <span style={{ color: B.text }}>{createSuccess.gymName}</span>
                 <span style={{ color: B.muted, fontWeight: 600 }}>Gym ID:</span>
@@ -562,7 +564,7 @@ export default function SuperAdminPanel() {
 
           {/* Gym Info */}
           <div style={sectionTitle}>Gym Information</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 8 }}>
             <div>
               <label style={labelStyle}>Gym / Location Name *</label>
               <input style={inputStyle} value={f.gymName} onChange={e => updateCreateForm("gymName", e.target.value)} placeholder="Iron Athletics" />
@@ -572,7 +574,7 @@ export default function SuperAdminPanel() {
               <input style={inputStyle} value={f.phone} onChange={e => updateCreateForm("phone", e.target.value)} placeholder="(555) 123-4567" />
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 8 }}>
             <div>
               <label style={labelStyle}>Email</label>
               <input style={inputStyle} value={f.email} onChange={e => updateCreateForm("email", e.target.value)} placeholder="info@gym.com" />
@@ -582,7 +584,7 @@ export default function SuperAdminPanel() {
               <input style={inputStyle} value={f.website} onChange={e => updateCreateForm("website", e.target.value)} placeholder="https://www.gym.com" />
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12, marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 1fr 1fr 1fr", gap: 12, marginBottom: 8 }}>
             <div>
               <label style={labelStyle}>Street Address</label>
               <input style={inputStyle} value={f.street} onChange={e => updateCreateForm("street", e.target.value)} placeholder="123 Main St" />
@@ -609,7 +611,7 @@ export default function SuperAdminPanel() {
 
           {/* Admin Account */}
           <div style={sectionTitle}>Admin Account</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 8 }}>
             <div>
               <label style={labelStyle}>Display Name *</label>
               <input style={inputStyle} value={f.adminDisplayName} onChange={e => updateCreateForm("adminDisplayName", e.target.value)} placeholder="John Smith" />
@@ -619,7 +621,7 @@ export default function SuperAdminPanel() {
               <input style={inputStyle} value={f.adminEmail} onChange={e => updateCreateForm("adminEmail", e.target.value)} placeholder="admin@gym.com" />
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 8 }}>
             <div>
               <label style={labelStyle}>Username *</label>
               <input style={inputStyle} value={f.adminUsername} onChange={e => updateCreateForm("adminUsername", e.target.value)} placeholder="admin" />
@@ -698,13 +700,13 @@ export default function SuperAdminPanel() {
     if (!editGym) return null;
     return (
       <div style={overlayStyle} onClick={() => setEditGym(null)}>
-        <div style={{ ...modalStyle, width: 560 }} onClick={e => e.stopPropagation()}>
+        <div style={{ ...modalStyle, width: "min(560px, calc(100vw - 24px))" }} onClick={e => e.stopPropagation()}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: B.text, margin: 0 }}>Edit Location: {editGym.gymName}</h2>
             <button style={{ background: "none", border: "none", color: B.muted, fontSize: 22, cursor: "pointer" }} onClick={() => setEditGym(null)}>&times;</button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 8 }}>
             <div>
               <label style={labelStyle}>Gym Name</label>
               <input style={inputStyle} value={editForm.gymName || ""} onChange={e => setEditForm(p => ({ ...p, gymName: e.target.value }))} />
@@ -714,7 +716,7 @@ export default function SuperAdminPanel() {
               <input style={inputStyle} value={editForm.phone || ""} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} />
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 8 }}>
             <div>
               <label style={labelStyle}>Email</label>
               <input style={inputStyle} value={editForm.email || ""} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))} />
@@ -724,7 +726,7 @@ export default function SuperAdminPanel() {
               <input style={inputStyle} value={editForm.website || ""} onChange={e => setEditForm(p => ({ ...p, website: e.target.value }))} />
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 12, marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "2fr 1fr 1fr 1fr", gap: 12, marginBottom: 8 }}>
             <div>
               <label style={labelStyle}>Street</label>
               <input style={inputStyle} value={editForm.street || ""} onChange={e => setEditForm(p => ({ ...p, street: e.target.value }))} />
@@ -752,7 +754,7 @@ export default function SuperAdminPanel() {
           {/* Plan & Subscription */}
           <div style={{ borderTop: "1px solid " + B.border, paddingTop: 16, marginBottom: 16 }}>
             <h3 style={{ fontSize: 14, fontWeight: 700, color: B.text, margin: "0 0 12px" }}>Subscription</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div>
                 <label style={labelStyle}>Plan</label>
                 <select style={inputStyle} value={editForm.planId || "professional"} onChange={e => setEditForm(p => ({ ...p, planId: e.target.value }))}>
@@ -773,7 +775,7 @@ export default function SuperAdminPanel() {
               </div>
             </div>
             {editForm.planId === "custom" && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 }}>
                 <div>
                   <label style={labelStyle}>Custom Plan Name</label>
                   <input style={inputStyle} value={editForm.customPlanName || ""} onChange={e => setEditForm(p => ({ ...p, customPlanName: e.target.value }))} placeholder="e.g. Premium" />
@@ -809,7 +811,7 @@ export default function SuperAdminPanel() {
     if (!deleteConfirm) return null;
     return (
       <div style={overlayStyle} onClick={() => { setDeleteConfirm(null); setDeleteData(false); }}>
-        <div style={{ ...modalStyle, width: 460, textAlign: "center" }} onClick={e => e.stopPropagation()}>
+        <div style={{ ...modalStyle, width: "min(460px, calc(100vw - 24px))", textAlign: "center" }} onClick={e => e.stopPropagation()}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>&#9888;&#65039;</div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: B.text, margin: "0 0 8px 0" }}>Delete Location</h2>
           <p style={{ color: B.muted, fontSize: 14, marginBottom: 20 }}>
@@ -836,6 +838,45 @@ export default function SuperAdminPanel() {
       </div>
     );
   };
+
+  /* ===================== GYM DETAIL (shared: table expansion + mobile card) ===================== */
+  const renderGymDetail = (g) => gymDetails[g.gymId] ? (
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: isMobile ? 16 : 24 }}>
+      <div>
+        <h4 style={{ color: B.green, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Contact</h4>
+        <p style={{ color: B.text, fontSize: 14, margin: "2px 0" }}>{gymDetails[g.gymId].info?.email || g.adminEmail || "N/A"}</p>
+        <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>Admin: {g.adminUsername || "N/A"}</p>
+        <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>Phone: {gymDetails[g.gymId].info?.phone || "N/A"}</p>
+        {gymDetails[g.gymId].info?.address && (
+          <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>
+            {[gymDetails[g.gymId].info.address.street, gymDetails[g.gymId].info.address.city, gymDetails[g.gymId].info.address.state, gymDetails[g.gymId].info.address.zip].filter(Boolean).join(", ")}
+          </p>
+        )}
+      </div>
+      <div>
+        <h4 style={{ color: B.green, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Subscription</h4>
+        <p style={{ color: B.text, fontSize: 14, margin: "2px 0" }}>
+          {gymDetails[g.gymId].sub?.planName || "N/A"} — ${gymDetails[g.gymId].sub?.price || 0}/mo
+        </p>
+        <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>
+          Status: {gymDetails[g.gymId].sub?.status || "N/A"}
+        </p>
+        {gymDetails[g.gymId].sub?.trialEndsAt && (
+          <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>
+            Trial ends: {new Date(gymDetails[g.gymId].sub.trialEndsAt).toLocaleDateString()}
+          </p>
+        )}
+      </div>
+      <div>
+        <h4 style={{ color: B.green, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Usage</h4>
+        <p style={{ color: B.text, fontSize: 14, margin: "2px 0" }}>
+          Members: {gymDetails[g.gymId].members?.length || 0}
+        </p>
+      </div>
+    </div>
+  ) : (
+    <p style={{ color: B.muted }}>Loading details...</p>
+  );
 
   return (
     <div style={pageStyle}>
@@ -883,7 +924,7 @@ export default function SuperAdminPanel() {
       {!loading && tab === "dashboard" && (
         <>
           {/* Title row with Create button */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 8 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: B.text, margin: 0 }}>Overview</h2>
             <button
               style={{ ...btnPrimary, padding: "10px 24px", fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}
@@ -905,7 +946,7 @@ export default function SuperAdminPanel() {
           </Card>
 
           {/* Stats row */}
-          <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
+          <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
             <Card style={statCard}>
               <div style={statNum}>{stats.total}</div>
               <div style={statLabel}>Total Locations</div>
@@ -931,7 +972,7 @@ export default function SuperAdminPanel() {
           {/* Plan breakdown */}
           <Card style={{ marginBottom: 24 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: B.text }}>Plan Distribution</h3>
-            <div style={{ display: "flex", gap: 32 }}>
+            <div style={{ display: "flex", gap: isMobile ? 16 : 32, flexWrap: "wrap" }}>
               {[
                 { label: "Starter", count: stats.byPlan.starter, color: B.blue || "#3498db" },
                 { label: "Professional", count: stats.byPlan.professional, color: B.green },
@@ -947,7 +988,7 @@ export default function SuperAdminPanel() {
           </Card>
 
           {/* Two columns: Recent registrations + Recent actions */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 20 }}>
             <Card>
               <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: B.text }}>Recent Registrations</h3>
               {registry.slice(-5).reverse().map(g => (
@@ -979,7 +1020,7 @@ export default function SuperAdminPanel() {
       {/* ===== GYMS TAB ===== */}
       {!loading && tab === "gyms" && (
         <>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: B.text, margin: 0 }}>
               All Locations <span style={{ fontSize: 14, fontWeight: 400, color: B.muted }}>({registry.length})</span>
             </h2>
@@ -988,7 +1029,43 @@ export default function SuperAdminPanel() {
             </button>
           </div>
 
+          {isMobile ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {registry.map(g => (
+                <Card key={g.gymId} style={{ padding: 14 }}>
+                  <div style={{ cursor: "pointer" }} onClick={() => handleExpand(g.gymId)}>
+                    <div style={{ fontWeight: 600, color: B.text, fontSize: 15 }}>{g.gymName}</div>
+                    <div style={{ fontFamily: "monospace", fontSize: 12, color: B.muted, margin: "2px 0 8px", wordBreak: "break-all" }}>{g.gymId}</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+                      <span style={badge(g.planId === "enterprise" ? (B.purple || "#9b59b6") : g.planId === "professional" ? B.green : g.planId === "custom" ? (B.orange || "#f59e0b") : (B.blue || "#3498db"))}>
+                        {g.planName || g.planId}
+                      </span>
+                      <span style={badge(g.status === "active" ? B.green : g.status === "trial" ? (B.orange || "#e67e22") : (B.red || "#e74c3c"))}>
+                        {g.status || "trial"}
+                      </span>
+                      <span style={{ fontSize: 12, color: B.muted }}>Clients: {g.memberCount ?? (gymDetails[g.gymId]?.members?.length ?? "--")}</span>
+                      <span style={{ fontSize: 12, color: B.muted }}>{g.createdAt ? new Date(g.createdAt).toLocaleDateString() : "N/A"}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button style={btnSmall} onClick={() => setImpersonateTarget(g)}>Impersonate</button>
+                    <button style={{ ...btnSmall, background: B.green }} onClick={() => openEdit(g)}>Edit</button>
+                    <button style={btnDanger} onClick={() => setDeleteConfirm(g)}>Delete</button>
+                  </div>
+                  {expandedGym === g.gymId && (
+                    <div style={{ marginTop: 12, borderTop: `1px solid ${B.border}`, paddingTop: 12 }}>
+                      {renderGymDetail(g)}
+                    </div>
+                  )}
+                </Card>
+              ))}
+              {registry.length === 0 && (
+                <Card><p style={{ color: B.muted, textAlign: "center", padding: 16, margin: 0 }}>No gyms registered yet.</p></Card>
+              )}
+            </div>
+          ) : (
           <Card style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: B.dark }}>
@@ -1036,43 +1113,7 @@ export default function SuperAdminPanel() {
                     {expandedGym === g.gymId && (
                       <tr key={g.gymId + "_detail"}>
                         <td colSpan={7} style={{ ...tableCell, background: B.dark, padding: 20 }}>
-                          {gymDetails[g.gymId] ? (
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 24 }}>
-                              <div>
-                                <h4 style={{ color: B.green, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Contact</h4>
-                                <p style={{ color: B.text, fontSize: 14, margin: "2px 0" }}>{gymDetails[g.gymId].info?.email || g.adminEmail || "N/A"}</p>
-                                <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>Admin: {g.adminUsername || "N/A"}</p>
-                                <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>Phone: {gymDetails[g.gymId].info?.phone || "N/A"}</p>
-                                {gymDetails[g.gymId].info?.address && (
-                                  <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>
-                                    {[gymDetails[g.gymId].info.address.street, gymDetails[g.gymId].info.address.city, gymDetails[g.gymId].info.address.state, gymDetails[g.gymId].info.address.zip].filter(Boolean).join(", ")}
-                                  </p>
-                                )}
-                              </div>
-                              <div>
-                                <h4 style={{ color: B.green, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Subscription</h4>
-                                <p style={{ color: B.text, fontSize: 14, margin: "2px 0" }}>
-                                  {gymDetails[g.gymId].sub?.planName || "N/A"} — ${gymDetails[g.gymId].sub?.price || 0}/mo
-                                </p>
-                                <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>
-                                  Status: {gymDetails[g.gymId].sub?.status || "N/A"}
-                                </p>
-                                {gymDetails[g.gymId].sub?.trialEndsAt && (
-                                  <p style={{ color: B.muted, fontSize: 13, margin: "2px 0" }}>
-                                    Trial ends: {new Date(gymDetails[g.gymId].sub.trialEndsAt).toLocaleDateString()}
-                                  </p>
-                                )}
-                              </div>
-                              <div>
-                                <h4 style={{ color: B.green, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Usage</h4>
-                                <p style={{ color: B.text, fontSize: 14, margin: "2px 0" }}>
-                                  Members: {gymDetails[g.gymId].members?.length || 0}
-                                </p>
-                              </div>
-                            </div>
-                          ) : (
-                            <p style={{ color: B.muted }}>Loading details...</p>
-                          )}
+                          {renderGymDetail(g)}
                         </td>
                       </tr>
                     )}
@@ -1083,14 +1124,16 @@ export default function SuperAdminPanel() {
                 )}
               </tbody>
             </table>
+            </div>
           </Card>
+          )}
         </>
       )}
 
       {/* ===== REVENUE TAB ===== */}
       {!loading && tab === "revenue" && (
         <>
-          <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
+          <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
             {[
               { label: "Starter MRR", value: stats.byPlan.starter * 99, color: B.blue || "#3498db" },
               { label: "Professional MRR", value: stats.byPlan.professional * 199, color: B.green },
@@ -1138,9 +1181,9 @@ export default function SuperAdminPanel() {
           {/* Quick Actions */}
           <Card style={{ marginBottom: 24 }}>
             <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, color: B.text }}>Quick Actions</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
               {registry.map(g => (
-                <div key={g.gymId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: B.dark, borderRadius: 8, border: `1px solid ${B.border}` }}>
+                <div key={g.gymId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: B.dark, borderRadius: 8, border: `1px solid ${B.border}`, flexWrap: "wrap", gap: 8 }}>
                   <div>
                     <span style={{ fontWeight: 600, color: B.text, fontSize: 14 }}>{g.gymName}</span>
                     <span style={{ color: B.muted, fontSize: 12, marginLeft: 8 }}>{g.status}</span>
@@ -1171,7 +1214,7 @@ export default function SuperAdminPanel() {
       {/* ===== FEEDBACK TAB ===== */}
       {!loading && tab === "feedback" && (
         <>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: B.text, margin: 0 }}>
               Feedback Submissions <span style={{ fontSize: 14, fontWeight: 400, color: B.muted }}>({feedback.length})</span>
             </h2>
@@ -1183,6 +1226,7 @@ export default function SuperAdminPanel() {
           )}
           {!feedbackLoading && feedback.length > 0 && (
             <Card style={{ padding: 0, overflow: "hidden" }}>
+              <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: B.dark }}>
@@ -1239,6 +1283,7 @@ export default function SuperAdminPanel() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </Card>
           )}
         </>
@@ -1394,7 +1439,7 @@ function ExerciseLibraryTab({ B, supabaseGet, supabaseUpsert, PC, PATS, registry
 
       {/* Push to individual gym */}
       {registry.length > 0 && (
-        <div style={{ marginBottom: 16, display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ marginBottom: 16, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ fontSize: 12, color: B.muted }}>Push to:</span>
           {registry.map(g => (
             <button key={g.gymId} onClick={() => pushToGym(g.gymId)} style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid " + B.border, background: B.dark, color: B.text, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{g.gymName || g.gymId}</button>

@@ -139,6 +139,15 @@ function VoiceMemoPanel({ B, member, previousGoal, previousActionSteps, onGenera
           memberName: `${member.firstName} ${member.lastName}`,
           previousGoal: previousGoal || undefined,
           previousActionSteps: previousActionSteps || undefined,
+          // BYOK: send the gym's own OpenRouter key when AI mode is "byok"
+          ...(() => {
+            try {
+              const integ = JSON.parse(localStorage.getItem("hf_integrations") || "{}");
+              return integ.aiMode === "byok" && integ.openrouterApiKey
+                ? { openrouterApiKey: integ.openrouterApiKey, model: integ.openrouterModel || undefined }
+                : {};
+            } catch { return {}; }
+          })(),
         }),
       });
       const data = await res.json();
@@ -160,7 +169,7 @@ function VoiceMemoPanel({ B, member, previousGoal, previousActionSteps, onGenera
         <div>
           <div style={{ fontSize: 13, fontWeight: 800, color: B.text }}>{"🎙️"} One voice memo — AI writes the report</div>
           <div style={{ fontSize: 11, color: B.muted, marginTop: 2 }}>
-            Just talk about {member.firstName}'s week: how they did on last week's targets, wins, struggles, what's next.
+            Hit Record and answer the questions below in your own words — the AI structures it for you.
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -180,6 +189,21 @@ function VoiceMemoPanel({ B, member, previousGoal, previousActionSteps, onGenera
             {generating ? "Generating..." : "✨ Generate Report"}
           </button>
         </div>
+      </div>
+      {/* Coach prompts — what to cover in the memo */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 4, marginTop: 10 }}>
+        {[
+          ["📋", `How did ${member.firstName} do on each target from the last report?`],
+          ["🏆", "What wins have they had since then? Be specific."],
+          ["🎯", "What still needs work?"],
+          ["🚀", "What should they focus on before the next report?"],
+          ["🧭", "Any change to their big-picture goal?"],
+          ["💬", "Anything personal you want to tell them?"],
+        ].map(([icon, q]) => (
+          <div key={q} style={{ display: "flex", gap: 6, fontSize: 11, color: B.muted, lineHeight: 1.4, alignItems: "flex-start" }}>
+            <span>{icon}</span><span>{q}</span>
+          </div>
+        ))}
       </div>
       <textarea
         value={transcript}
@@ -256,7 +280,7 @@ export default function ProgressReportsTab({ member }) {
       const html = buildProgressReportHtml(rep, member, getBranding());
       await sendEmail({
         to: member.email,
-        subject: `Your Weekly Progress Report — week of ${rep.weekOf}`,
+        subject: `Your Progress Report — ${rep.weekOf}`,
         html,
       });
       const delivered = markDelivered(rep, "email");
@@ -283,10 +307,10 @@ export default function ProgressReportsTab({ member }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div>
             <div style={{ fontSize: 16, fontWeight: 800, color: B.text }}>
-              {editing.status === "delivered" ? "Progress Report (delivered)" : "Weekly Progress Report"}
+              {editing.status === "delivered" ? "Progress Report (delivered)" : "Progress Report"}
             </div>
             <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>
-              Week of{" "}
+              Report date{" "}
               <input
                 type="date" value={editing.weekOf}
                 onChange={(e) => setEditing(p => ({ ...p, weekOf: e.target.value }))}
@@ -321,16 +345,16 @@ export default function ProgressReportsTab({ member }) {
         <Field B={B} label="Reminder of overarching goal" rows={2}
           hint="What is this client working toward long-term?"
           value={editing.goal} onChange={(v) => setEditing(p => ({ ...p, goal: v }))} />
-        <Field B={B} label="Last week's targets — how'd we do?"
+        <Field B={B} label="Targets from the last report — how'd we do?"
           hint={"One per line, e.g.\n✅ Drink 80oz water daily — crushed it\n❌ Book Saturday session — didn't happen"}
           value={editing.targetReview || ""} onChange={(v) => setEditing(p => ({ ...p, targetReview: v }))} />
-        <Field B={B} label="Wins from this week"
+        <Field B={B} label="Wins since the last report"
           hint="One win per line — e.g. Hit all 3 scheduled sessions"
           value={editing.wins} onChange={(v) => setEditing(p => ({ ...p, wins: v }))} />
         <Field B={B} label="Areas to improve"
           hint="One per line — keep it constructive"
           value={editing.improvements} onChange={(v) => setEditing(p => ({ ...p, improvements: v }))} />
-        <Field B={B} label="Action steps for the upcoming week"
+        <Field B={B} label="Action steps until the next report"
           hint="One per line — specific and doable"
           value={editing.actionSteps} onChange={(v) => setEditing(p => ({ ...p, actionSteps: v }))} />
         <Field B={B} label="Coach's notes (optional)" rows={2}
@@ -361,7 +385,7 @@ export default function ProgressReportsTab({ member }) {
   return (
     <div style={card}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: B.text }}>Weekly Progress Reports</div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: B.text }}>Progress Reports</div>
         <button style={btn(B.accent, null, true)} onClick={startNew}>+ New Report</button>
       </div>
       {toast && <div style={{ marginBottom: 10, fontSize: 12, color: B.accent, fontWeight: 600 }}>{toast}</div>}
@@ -376,7 +400,7 @@ export default function ProgressReportsTab({ member }) {
           padding: "10px 12px", borderRadius: 10, border: `1px solid ${B.border}`, marginBottom: 8,
         }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Week of {r.weekOf}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Report — {r.weekOf}</div>
             <div style={{ fontSize: 11, color: B.muted, marginTop: 2 }}>
               {r.status === "delivered"
                 ? `Delivered ${r.deliveredAt ? new Date(r.deliveredAt).toLocaleDateString() : ""}${(r.via || []).includes("app") ? " 📲" : ""}${(r.via || []).includes("email") ? " ✉️" : ""}${r.seenAt ? " · Seen ✓" : ""}`

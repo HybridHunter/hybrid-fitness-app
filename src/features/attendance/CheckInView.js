@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTheme } from "../../context/ThemeContext";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
@@ -62,6 +63,8 @@ function buildDemoAttendance(members) {
 
 export default function CheckInView() {
   const B = useTheme();
+  const isMobile = useIsMobile();
+  const keySize = isMobile ? 64 : 80;
   const { members, getMember, updateMember } = useMembers();
   const [attendance, setAttendance] = useLocalStorage("hf_attendance", []);
   const [schedule] = useLocalStorage("hf_schedule", []);
@@ -194,7 +197,7 @@ export default function CheckInView() {
       key={label}
       onClick={action}
       style={{
-        width: 80, height: 80, borderRadius: 16, border: `1px solid ${B.border}`,
+        width: keySize, height: keySize, borderRadius: 16, border: `1px solid ${B.border}`,
         background: B.darker, color: B.text, fontSize: 28, fontWeight: 700,
         cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
         transition: "background 0.15s, transform 0.1s",
@@ -267,7 +270,7 @@ export default function CheckInView() {
       </div>
 
       {/* PIN Entry Card */}
-      <Card style={{ padding: 32, marginBottom: 24 }}>
+      <Card style={{ padding: isMobile ? 20 : 32, marginBottom: 24 }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: B.text, margin: "0 0 16px" }}>Enter Your PIN</h2>
           {/* PIN dots */}
@@ -318,7 +321,7 @@ export default function CheckInView() {
             <button
               onClick={handleClear}
               style={{
-                width: 80, height: 80, borderRadius: 16, border: `1px solid ${B.border}`,
+                width: keySize, height: keySize, borderRadius: 16, border: `1px solid ${B.border}`,
                 background: B.red + "15", color: B.red, fontSize: 14, fontWeight: 700,
                 cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center"
               }}
@@ -329,7 +332,7 @@ export default function CheckInView() {
             <button
               onClick={handleEnter}
               style={{
-                width: 80, height: 80, borderRadius: 16, border: "none",
+                width: keySize, height: keySize, borderRadius: 16, border: "none",
                 background: pin.length === 4 ? B.accent : B.accent + "44",
                 color: B.darker, fontSize: 14, fontWeight: 700,
                 cursor: pin.length === 4 ? "pointer" : "default",

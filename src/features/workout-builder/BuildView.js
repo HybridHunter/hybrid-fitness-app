@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTheme } from "../../context/ThemeContext";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { DSEC, emptySlot, getLabel } from "../../data/constants";
 import ExercisePicker from "../../components/shared/ExercisePicker";
 import ExerciseForm from "../../components/shared/ExerciseForm";
@@ -11,6 +12,7 @@ const initSections=()=>DSEC.map(s=>({...s,slots:[emptySlot()]}));
 
 export default function BuildView({exercises,setExercises,workouts,setWorkouts,loadedWorkout,onSaved}){
   const B=useTheme();
+  const isMobile=useIsMobile();
 
   const[sections,setSections]=useState(()=>{
     if(loadedWorkout)return loadedWorkout.sections.map(s=>({...s,slots:s.slots.map(sl=>({...sl}))}));
@@ -63,7 +65,7 @@ export default function BuildView({exercises,setExercises,workouts,setWorkouts,l
     <textarea value={wDesc} onChange={e=>setWDesc(e.target.value)} placeholder="Workout description or coaching notes..." rows={2} style={{width:"100%",boxSizing:"border-box",background:B.card,border:"1px solid "+B.border,borderRadius:8,color:B.text,padding:"10px 14px",fontSize:12,outline:"none",resize:"vertical",marginBottom:16,fontFamily:"inherit"}}/>
 
     {sections.map((sec,si)=>(<div key={sec.id} style={{marginBottom:20}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
           <div style={{width:4,height:22,borderRadius:2,background:sec.color}}/>
           <span style={{fontSize:11,fontWeight:700,color:sec.color,letterSpacing:2,textTransform:"uppercase"}}>Section {sec.id} &mdash;</span>
           <input value={sec.name} onChange={e=>setSections(p=>{const n=[...p.map(s=>({...s,slots:[...s.slots]}))];n[si].name=e.target.value;return n;})} style={{background:"transparent",border:"none",borderBottom:"1px solid "+B.border,color:B.text,fontSize:13,fontWeight:600,outline:"none",padding:"2px 4px",width:140}}/>
@@ -73,11 +75,11 @@ export default function BuildView({exercises,setExercises,workouts,setWorkouts,l
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:4}}>
           {sec.slots.map((s,idx)=>{const label=getLabel(sec.id,idx);const ex=s.exercise;return(
-            <div key={idx} draggable onDragStart={onDragStart(si,idx)} onDragOver={onDragOver} onDrop={onDrop(si,idx)} style={{background:ex?B.card:B.dark,borderRadius:10,border:ex?"1px solid "+sec.color+"25":"1px dashed "+B.border,padding:"8px 12px",display:"flex",alignItems:"center",gap:8,cursor:"grab"}}>
+            <div key={idx} draggable onDragStart={onDragStart(si,idx)} onDragOver={onDragOver} onDrop={onDrop(si,idx)} style={{background:ex?B.card:B.dark,borderRadius:10,border:ex?"1px solid "+sec.color+"25":"1px dashed "+B.border,padding:"8px 12px",display:"flex",alignItems:"center",gap:8,cursor:"grab",flexWrap:isMobile?"wrap":"nowrap"}}>
               <span style={{fontWeight:800,color:sec.color,fontSize:12,fontFamily:"monospace",minWidth:22}}>{label}</span>
               {ex?(<>
                 <Thumb ex={ex} size="sm" onClick={()=>{if(ex.u)openVideo(ex.u,ex.n);}}/>
-                <div style={{flex:1,minWidth:0}}><div style={{color:B.text,fontSize:12,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ex.n}</div><div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",marginTop:2}}><span style={{color:B.dim,fontSize:10}}>{ex.e}</span></div></div>
+                <div style={{flex:1,minWidth:isMobile?140:0}}><div style={{color:B.text,fontSize:12,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ex.n}</div><div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap",marginTop:2}}><span style={{color:B.dim,fontSize:10}}>{ex.e}</span></div></div>
                 {inp(s.sets,v=>upSlot(si,idx,"sets",v),"Sets",36)}<span style={{color:B.dim,fontSize:10}}>&times;</span>
                 {inp(s.reps,v=>upSlot(si,idx,"reps",v),"Reps",36)}
                 {inp(s.rpe,v=>upSlot(si,idx,"rpe",v),"RPE",34)}

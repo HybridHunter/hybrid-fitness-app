@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useTheme } from "../../context/ThemeContext";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
@@ -178,6 +179,7 @@ function Tab({ label, active, onClick, B }) {
         padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer",
         background: active ? B.accent : "transparent", color: active ? "#fff" : B.muted,
         fontWeight: 700, fontSize: 13, transition: "all 0.2s",
+        whiteSpace: "nowrap", flexShrink: 0,
       }}
     >
       {label}
@@ -199,6 +201,7 @@ function Section({ title, children, B }) {
    TAB: OVERVIEW
    ══════════════════════════════════════════════════════ */
 function OverviewTab({ B, members, payments, attendance, membershipEvents, plans }) {
+  const isMobile = useIsMobile();
   const tt = ChartTooltip({ B });
   const activeCount = members.filter(m => !!m.membershipPlanId).length;
   const revenueData = buildRevenueByMonth(payments);
@@ -224,7 +227,7 @@ function OverviewTab({ B, members, payments, attendance, membershipEvents, plans
         <KPI label="Avg Attendance/Day" value={avgAttendance} sub="Last 30 days" B={B} />
         <KPI label="Churn Rate" value={latestChurn + "%"} sub={monthName} B={B} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
         <Section title="Revenue (Last 6 Months)" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
             {!hasRevData ? (
@@ -268,6 +271,7 @@ function OverviewTab({ B, members, payments, attendance, membershipEvents, plans
    TAB: REVENUE
    ══════════════════════════════════════════════════════ */
 function RevenueTab({ B, payments, members, plans }) {
+  const isMobile = useIsMobile();
   const tt = ChartTooltip({ B });
   const thStyle = { padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid " + B.border };
   const tdStyle = { padding: "10px 14px", fontSize: 13, color: B.text, borderBottom: "1px solid " + B.border };
@@ -278,7 +282,7 @@ function RevenueTab({ B, payments, members, plans }) {
   const hasPlanData = revenueByPlan.length > 0 && revenueByPlan.some(d => d.value > 0);
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr", gap: 16, marginBottom: 24 }}>
         <Section title="Monthly Revenue (12 Months)" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
             {!hasRevData ? (
@@ -359,6 +363,7 @@ function RevenueTab({ B, payments, members, plans }) {
    TAB: MEMBERS
    ══════════════════════════════════════════════════════ */
 function MembersTab({ B, members, membershipEvents }) {
+  const isMobile = useIsMobile();
   const tt = ChartTooltip({ B });
   const memberGrowth = buildMemberGrowth(members);
   const signUpsCancellations = buildSignUpsCancellations(membershipEvents);
@@ -370,7 +375,7 @@ function MembersTab({ B, members, membershipEvents }) {
   const hasChurnData = churnRate.some(d => d.rate > 0);
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 24 }}>
         <Section title="Active Clients (12 Months)" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
             {!hasGrowthData ? (
@@ -407,7 +412,7 @@ function MembersTab({ B, members, membershipEvents }) {
           </Card>
         </Section>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
         <Section title="Client Status Distribution" B={B}>
           <Card style={{ padding: "16px 8px 8px", display: "flex", flexDirection: "column", alignItems: "center" }}>
             {!hasStatusData ? (
@@ -450,6 +455,7 @@ function MembersTab({ B, members, membershipEvents }) {
    TAB: ATTENDANCE
    ══════════════════════════════════════════════════════ */
 function AttendanceTab({ B, attendance }) {
+  const isMobile = useIsMobile();
   const tt = ChartTooltip({ B });
   const attendanceByDay = buildAttendanceByDay(attendance);
   const checkInsPerMonth = buildCheckInsPerMonth(attendance);
@@ -466,7 +472,7 @@ function AttendanceTab({ B, attendance }) {
   const hasAttData = attendance.length > 0;
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 24 }}>
         <Section title="Average Daily Attendance" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
             {!hasAttData ? (
@@ -632,6 +638,7 @@ function countDayOccurrencesInRange(dayOfWeek, startDate, endDate) {
 }
 
 function UtilizationTab({ B, members, schedule, attendance, plans }) {
+  const isMobile = useIsMobile();
   const tt = ChartTooltip({ B });
   const defaultRange = getDatePreset("last30");
   const [startDate, setStartDate] = useState(defaultRange.start);
@@ -809,7 +816,7 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
       </div>
 
       {/* Week-by-Week Utilization Chart */}
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr", gap: 16, marginBottom: 24 }}>
         <Section title="Weekly Utilization" B={B}>
           <Card style={{ padding: "16px 8px 8px" }}>
             <ResponsiveContainer width="100%" height={320}>
@@ -921,6 +928,7 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
    TAB: SESSION REVENUE
    ══════════════════════════════════════════════════════ */
 function SessionRevenueTab({ B, members, schedule, plans }) {
+  const isMobile = useIsMobile();
   const tt = ChartTooltip({ B });
   const [sortBy, setSortBy] = useState("highestRevenue");
 
@@ -1157,7 +1165,7 @@ function SessionRevenueTab({ B, members, schedule, plans }) {
       </Section>
 
       {/* Section 4: Revenue Distribution Pie Chart */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 24 }}>
         <Section title="Revenue Distribution" B={B}>
           <Card style={{ padding: "16px 8px 8px", display: "flex", flexDirection: "column", alignItems: "center" }}>
             <ResponsiveContainer width="100%" height={340}>
@@ -1250,7 +1258,7 @@ export default function AnalyticsView() {
       <p style={{ color: B.muted, marginBottom: 20, fontSize: 14 }}>Revenue, client growth, attendance trends, and churn charts.</p>
 
       {/* Tab Bar */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 24, background: B.darker, borderRadius: 10, padding: 4, width: "fit-content" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 24, background: B.darker, borderRadius: 10, padding: 4, width: "fit-content", maxWidth: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
         {TABS.map(t => (
           <Tab key={t.key} label={t.label} active={tab === t.key} onClick={() => setTab(t.key)} B={B} />
         ))}

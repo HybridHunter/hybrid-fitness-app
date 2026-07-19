@@ -262,6 +262,7 @@ function MemberHistoryModal({ memberName, payments, onClose, B }) {
         {memberPayments.length === 0 ? (
           <div style={{ padding: 32, textAlign: "center", color: B.dim, fontSize: 14 }}>No payment history found.</div>
         ) : (
+          <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: B.darker }}>
@@ -282,6 +283,7 @@ function MemberHistoryModal({ memberName, payments, onClose, B }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
@@ -696,7 +698,7 @@ export default function BillingView() {
       {historyMember && <MemberHistoryModal memberName={historyMember} payments={payments} onClose={() => setHistoryMember(null)} B={B} />}
 
       {/* ── A. Header ── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 10 }}>
         <h1 style={{ fontSize: 26, fontWeight: 800, color: B.text, margin: 0 }}>Billing</h1>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button

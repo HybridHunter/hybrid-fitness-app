@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
 import { requestPermission, getPermissionStatus, sendLocalNotification, getNotificationPrefs, setNotificationPrefs } from "../../utils/pushNotifications";
@@ -435,7 +436,7 @@ function DisplayScaleSetting({ B }) {
     { value: 1.2, label: "Extra Large" },
   ];
   return (
-    <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       {options.map(o => (
         <button key={o.value} onClick={() => setScale(o.value)} style={{
           padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer",
@@ -590,6 +591,7 @@ function DataTab({ B, showToast }) {
 
 export default function SettingsView() {
   const B = useTheme();
+  const isMobile = useIsMobile();
   const { currentUser, users, addUser, removeUser, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState("General");
   const [toast, setToast] = useState("");
@@ -635,17 +637,17 @@ export default function SettingsView() {
 
   /* ========== styles ========== */
   const s = {
-    page: { padding: 32, maxWidth: 1100, margin: "0 auto" },
+    page: { padding: isMobile ? 16 : 32, maxWidth: 1100, margin: "0 auto" },
     h1: { fontSize: 28, fontWeight: 700, color: B.text, margin: 0 },
     subtitle: { color: B.muted, fontSize: 14, marginTop: 4 },
-    tabs: { display: "flex", gap: 4, marginTop: 24, marginBottom: 24, borderBottom: "1px solid " + B.border, paddingBottom: 0 },
-    tab: (active) => ({ padding: "10px 20px", fontSize: 14, fontWeight: active ? 600 : 400, color: active ? B.green : B.muted, background: "none", border: "none", borderBottom: active ? "2px solid " + B.green : "2px solid transparent", cursor: "pointer", marginBottom: -1 }),
+    tabs: { display: "flex", gap: 4, marginTop: 24, marginBottom: 24, borderBottom: "1px solid " + B.border, paddingBottom: 0, overflowX: "auto", whiteSpace: "nowrap" },
+    tab: (active) => ({ padding: "10px 20px", fontSize: 14, fontWeight: active ? 600 : 400, color: active ? B.green : B.muted, background: "none", border: "none", borderBottom: active ? "2px solid " + B.green : "2px solid transparent", cursor: "pointer", marginBottom: -1, flexShrink: 0, whiteSpace: "nowrap" }),
     label: { fontSize: 13, fontWeight: 600, color: B.muted, marginBottom: 6, display: "block" },
     input: { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 14, boxSizing: "border-box" },
     select: { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid " + B.border, background: B.darker, color: B.text, fontSize: 14, boxSizing: "border-box" },
     btn: (bg, fg) => ({ padding: "9px 20px", borderRadius: 8, border: "none", background: bg || B.green, color: fg || "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" }),
     btnSm: (bg, fg) => ({ padding: "5px 12px", borderRadius: 6, border: "none", background: bg || B.border, color: fg || B.text, fontWeight: 500, fontSize: 12, cursor: "pointer" }),
-    row: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 },
+    row: { display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 16 },
     field: { marginBottom: 16 },
     sectionTitle: { fontSize: 16, fontWeight: 600, color: B.text, marginBottom: 12, marginTop: 20 },
     badge: (color) => ({ display: "inline-block", padding: "3px 10px", borderRadius: 999, fontSize: 11, fontWeight: 600, background: color + "22", color }),
@@ -692,7 +694,7 @@ export default function SettingsView() {
         {DAYS.map(day => {
           const h = settings.businessHours?.[day] || { open: "06:00", close: "21:00", closed: false };
           return (
-            <div key={day} style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr auto", gap: 12, alignItems: "center" }}>
+            <div key={day} style={{ display: "grid", gridTemplateColumns: isMobile ? "70px 1fr 1fr auto" : "120px 1fr 1fr auto", gap: isMobile ? 6 : 12, alignItems: "center" }}>
               <span style={{ fontSize: 14, color: B.text, fontWeight: 500 }}>{day}</span>
               <input type="time" style={{ ...s.input, opacity: h.closed ? 0.3 : 1 }} value={h.open} disabled={h.closed} onChange={e => updateHours(day, "open", e.target.value)} />
               <input type="time" style={{ ...s.input, opacity: h.closed ? 0.3 : 1 }} value={h.close} disabled={h.closed} onChange={e => updateHours(day, "close", e.target.value)} />
@@ -711,14 +713,14 @@ export default function SettingsView() {
       {/* Push Notifications */}
       <h3 style={s.sectionTitle}>Push Notifications</h3>
       <div style={{ background: B.darker, borderRadius: 10, padding: 16, border: "1px solid " + B.border, marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>Browser Notification Permission</div>
             <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>
               Status: <span style={{ fontWeight: 700, color: getPermissionStatus() === "granted" ? B.green : getPermissionStatus() === "denied" ? B.red : B.orange }}>{getPermissionStatus()}</span>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {getPermissionStatus() !== "granted" && (
               <button style={s.btn()} onClick={async () => {
                 const result = await requestPermission();
@@ -806,7 +808,7 @@ export default function SettingsView() {
           <input style={s.input} value={integrations.stripe?.publishableKey} onChange={e => setIntegrations(prev => ({ ...prev, stripe: { ...(prev.stripe || {}), publishableKey: e.target.value } }))} placeholder="pk_live_..." />
         </div>
         <p style={{ fontSize: 12, color: B.muted, margin: "0 0 16px" }}>Secret key should be configured server-side only. Never expose it in the client.</p>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button style={s.btn()} onClick={() => {
             setIntegrations(prev => ({ ...prev, stripe: { ...(prev.stripe || {}), connected: !!prev.stripe?.publishableKey } }));
             showToast(integrations.stripe?.publishableKey ? "Stripe connection successful!" : "Please enter a publishable key first.");
@@ -851,7 +853,7 @@ export default function SettingsView() {
       <Card>
         <h3 style={{ ...s.sectionTitle, margin: 0, marginBottom: 8 }}>Email & SMS Delivery</h3>
         <p style={{ color: B.muted, fontSize: 13, margin: "0 0 16px" }}>Choose how emails and SMS messages are sent from your gym.</p>
-        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
           {[
             { key: "platform", label: "GymKit Platform", desc: "Emails & SMS sent through GymKit's accounts. No setup needed.", color: B.accent },
             { key: "byok", label: "Your Own Keys", desc: "Use your own Resend & Twilio accounts. You control and pay directly.", color: B.blue || "#3b82f6" },
@@ -871,6 +873,47 @@ export default function SettingsView() {
         {(integrations.messagingMode || "platform") === "platform" && (
           <div style={{ padding: 12, borderRadius: 8, background: B.accent + "08", border: "1px solid " + B.accent + "20", fontSize: 13, color: B.muted }}>
             Email and SMS are handled by GymKit. No configuration needed — just set up your automations and they'll work.
+          </div>
+        )}
+      </Card>
+
+      {/* AI Assistant (OpenRouter) */}
+      <Card>
+        <h3 style={{ ...s.sectionTitle, margin: 0, marginBottom: 8 }}>AI Assistant</h3>
+        <p style={{ color: B.muted, fontSize: 13, margin: "0 0 16px" }}>Powers voice-memo progress report drafting. Choose how AI requests are billed.</p>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          {[
+            { key: "platform", label: "GymKit Platform", desc: "AI runs through GymKit's account. No setup needed.", color: B.accent },
+            { key: "byok", label: "Your Own Keys", desc: "Use your own OpenRouter account. You control and pay directly.", color: B.blue || "#3b82f6" },
+          ].map(opt => (
+            <button key={opt.key} onClick={() => setIntegrations(prev => ({ ...prev, aiMode: opt.key }))}
+              style={{
+                flex: 1, padding: 14, borderRadius: 10, cursor: "pointer", textAlign: "left",
+                border: (integrations.aiMode || "platform") === opt.key ? `2px solid ${opt.color}` : `1px solid ${B.border}`,
+                background: (integrations.aiMode || "platform") === opt.key ? opt.color + "10" : B.dark,
+                transition: "all 0.15s",
+              }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: (integrations.aiMode || "platform") === opt.key ? opt.color : B.text, marginBottom: 4 }}>{opt.label}</div>
+              <div style={{ fontSize: 12, color: B.muted }}>{opt.desc}</div>
+            </button>
+          ))}
+        </div>
+        {(integrations.aiMode || "platform") === "platform" ? (
+          <div style={{ padding: 12, borderRadius: 8, background: B.accent + "08", border: "1px solid " + B.accent + "20", fontSize: 13, color: B.muted }}>
+            AI report drafting is handled by GymKit. No configuration needed.
+          </div>
+        ) : (
+          <div style={{ ...s.row, marginTop: 4 }}>
+            <div>
+              <label style={s.label}>OpenRouter API Key</label>
+              <input style={s.input} type="password" value={integrations.openrouterApiKey || ""} placeholder="sk-or-v1-..."
+                onChange={e => setIntegrations(prev => ({ ...prev, openrouterApiKey: e.target.value }))} />
+            </div>
+            <div>
+              <label style={s.label}>Model (optional)</label>
+              <input style={s.input} value={integrations.openrouterModel || ""} placeholder="anthropic/claude-haiku-4.5"
+                onChange={e => setIntegrations(prev => ({ ...prev, openrouterModel: e.target.value }))} />
+            </div>
           </div>
         )}
       </Card>
@@ -895,7 +938,7 @@ export default function SettingsView() {
           </div>
         </div>
         <p style={{ fontSize: 12, color: B.muted, margin: "0 0 16px" }}>Enter your Resend API key to enable automated email sending. From email must use a verified domain.</p>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button style={s.btn()} onClick={async () => {
             if (!integrations.resendApiKey) { showToast("Please enter a Resend API key first."); return; }
             try {
@@ -969,7 +1012,7 @@ export default function SettingsView() {
           <input style={s.input} value={integrations.twilioFrom || ""} onChange={e => setIntegrations(prev => ({ ...prev, twilioFrom: e.target.value }))} placeholder="+15551234567" />
         </div>
         <p style={{ fontSize: 12, color: B.muted, margin: "0 0 16px" }}>Enter your Twilio credentials to enable automated SMS sending.</p>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button style={s.btn()} onClick={async () => {
             if (!integrations.twilioSid || !integrations.twilioToken) { showToast("Please enter Twilio SID and Auth Token."); return; }
             try {
@@ -1016,7 +1059,7 @@ export default function SettingsView() {
         </div>
         <div style={s.field}>
           <label style={s.label}>Webhook URL</label>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input style={{ ...s.input, flex: 1 }} readOnly value={`https://hooks.gymkit.io/${localStorage.getItem("hf_gym_id") || "default"}/events`} />
             <button style={s.btn()} onClick={() => { navigator.clipboard.writeText(`https://hooks.gymkit.io/${localStorage.getItem("hf_gym_id") || "default"}/events`); showToast("Copied!"); }}>Copy</button>
           </div>
@@ -1060,7 +1103,7 @@ export default function SettingsView() {
 
   /* ========== Branding ========== */
   const renderBranding = () => (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
+    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 20, alignItems: "start" }}>
       <Card>
         <h3 style={{ ...s.sectionTitle, marginTop: 0 }}>White-Label Branding</h3>
         <div style={s.field}>
@@ -1174,7 +1217,7 @@ export default function SettingsView() {
       <div style={{ display: "grid", gap: 16 }}>
         {locations.map(loc => (
           <div key={loc.id} style={{ background: B.darker, borderRadius: 10, padding: 16, border: "1px solid " + B.border }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div>
                 <label style={s.label}>Location Name</label>
                 <input style={s.input} value={loc.name} onChange={e => setLocations(prev => prev.map(l => l.id === loc.id ? { ...l, name: e.target.value } : l))} />
@@ -1222,6 +1265,7 @@ export default function SettingsView() {
     <div style={{ display: "grid", gap: 20 }}>
       <Card>
         <h3 style={{ ...s.sectionTitle, marginTop: 0 }}>User Accounts</h3>
+        <div style={{ overflowX: "auto" }}>
         <table style={s.table}>
           <thead>
             <tr>
@@ -1298,6 +1342,7 @@ export default function SettingsView() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
 
       <Card>
@@ -1356,6 +1401,7 @@ export default function SettingsView() {
         </div>
 
         <h4 style={{ fontSize: 14, fontWeight: 600, color: B.text, marginBottom: 10, marginTop: 4 }}>Level Thresholds</h4>
+        <div style={{ overflowX: "auto" }}>
         <table style={s.table}>
           <thead>
             <tr>
@@ -1403,6 +1449,7 @@ export default function SettingsView() {
             ))}
           </tbody>
         </table>
+        </div>
         <button style={{ ...s.btn(B.border, B.text), marginTop: 10 }} onClick={() => {
           const nextLvl = gam.levels.length + 1;
           const lastPts = gam.levels[gam.levels.length - 1]?.points || 0;
@@ -1410,7 +1457,7 @@ export default function SettingsView() {
         }}>+ Add Level</button>
 
         <h4 style={{ fontSize: 14, fontWeight: 600, color: B.text, marginBottom: 10, marginTop: 24 }}>Points Per Action</h4>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
           {[
             { key: "checkin", label: "Check-in" },
             { key: "workout", label: "Workout Completed" },
@@ -1437,7 +1484,7 @@ export default function SettingsView() {
         <h3 style={{ ...s.sectionTitle, marginTop: 0 }}>Badges</h3>
         <div style={{ display: "grid", gap: 12 }}>
           {(gam.badges || []).map((badge, idx) => (
-            <div key={badge.id} style={{ display: "grid", gridTemplateColumns: "60px 1fr 1fr 1fr auto auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 10, background: B.darker, border: "1px solid " + B.border }}>
+            <div key={badge.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "60px 1fr 1fr 1fr auto auto", gap: 10, alignItems: "center", padding: 12, borderRadius: 10, background: B.darker, border: "1px solid " + B.border }}>
               <EmojiPickerBtn value={badge.icon} onChange={icon => {
                 const updated = [...gam.badges];
                 updated[idx] = { ...updated[idx], icon };

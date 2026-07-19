@@ -34,14 +34,19 @@ test.describe('multi-user realtime', () => {
     if (!(await login(client.page, creds.demoClient.email, creds.demoClient.pin))) { test.skip(true, 'client login broken (already recorded)'); return; }
     await client.page.waitForTimeout(2000);
 
-    // Client opens the coach chat (home card "Message Your Coach" — clickable card, may not be a <button>)
+    // Client opens the coach chat via the messenger icon in the FB-style home header
     let sent = false;
     try {
-      await client.page.getByText('Message Your Coach', { exact: false }).first().click({ timeout: 5000 });
+      await client.page.getByText('💬', { exact: true }).first().click({ timeout: 5000 });
       await client.page.waitForTimeout(1200);
     } catch {
-      for (const label of ['Message', 'Chat', 'Coach']) {
-        if (await clickIfVisible(client.page, label, { timeout: 2500 })) break;
+      try {
+        await client.page.getByText('Message Your Coach', { exact: false }).first().click({ timeout: 4000 });
+        await client.page.waitForTimeout(1200);
+      } catch {
+        for (const label of ['Message', 'Chat', 'Coach']) {
+          if (await clickIfVisible(client.page, label, { timeout: 2500 })) break;
+        }
       }
     }
     const input = client.page.locator('input[placeholder="Aa"], textarea, input[placeholder*="essage" i], input[placeholder*="Type" i]').first();
@@ -89,9 +94,11 @@ test.describe('multi-user realtime', () => {
     if (!(await login(client.page, creds.demoClient.email, creds.demoClient.pin))) { test.skip(true, 'client login broken'); return; }
     await client.page.waitForTimeout(2000);
 
-    // Navigate to the Book tab, then tap a session's exact "Book" button
-    await client.page.locator('nav button:has-text("Book"), button:has-text("Book")').first().click({ timeout: 5000 }).catch(() => {});
-    await client.page.waitForTimeout(1200);
+    // Booking lives under the Train tab now
+    await client.page.locator('button:has-text("Train")').last().click({ timeout: 5000 }).catch(() => {});
+    await client.page.waitForTimeout(1000);
+    await client.page.locator('button:has-text("Book Sessions")').first().click({ timeout: 4000 }).catch(() => {});
+    await client.page.waitForTimeout(1000);
     await client.page.locator('button', { hasText: /^Book$/ }).first().click({ timeout: 5000 }).catch(() => {});
     await client.page.waitForTimeout(1800);
 

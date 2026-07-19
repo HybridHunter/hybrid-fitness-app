@@ -47,9 +47,11 @@ test.describe('client journey (mobile)', () => {
 
     // Book a session: go to the Book tab, then tap a session's exact "Book" button
     try { await page.getByText('Book a Session', { exact: false }).first().waitFor({ timeout: 2000 }); } catch {
-      // Not on the Book tab — tap the nav item containing "Book"
-      await page.locator('nav button:has-text("Book"), button:has-text("Book")').first().click({ timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(1200);
+      // Booking lives under the Train tab now — tap Train, then the Book segment
+      await page.locator('button:has-text("Train")').last().click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(1000);
+      await page.locator('button:has-text("Book Sessions")').first().click({ timeout: 4000 }).catch(() => {});
+      await page.waitForTimeout(1000);
     }
     const bookBtn = page.locator('button', { hasText: /^Book$/ }).first();
     let booked = false;

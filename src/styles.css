@@ -5,7 +5,11 @@ body { margin: 0; }
 @media (max-width: 768px) {
   .hide-mobile { display: none !important; }
   .full-width-mobile { width: 100% !important; max-width: 100% !important; }
+  html, body { overflow-x: hidden; }
 }
+
+/* Media never wider than its container */
+img, svg, video, canvas { max-width: 100%; }
 
 /* Print styles */
 @media print {

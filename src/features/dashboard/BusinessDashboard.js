@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembershipEvents } from "../../hooks/useMembershipEvents";
@@ -546,7 +547,7 @@ function FunnelEditorModal({ stages, onSave, onClose, B }) {
       background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
     }} onClick={onClose}>
       <div style={{
-        background: B.card, borderRadius: 14, padding: 28, width: 580, maxWidth: "95vw",
+        background: B.card, borderRadius: 14, padding: 28, width: "min(580px, calc(100vw - 24px))", maxWidth: "95vw",
         maxHeight: "85vh", overflow: "auto", border: "1px solid " + B.border,
         boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
       }} onClick={e => e.stopPropagation()}>
@@ -707,7 +708,7 @@ function FunnelDataEntryModal({ stages, allFunnelData, period, cashCollected, on
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }} onClick={onClose}>
-      <div style={{ background: B.card, borderRadius: 14, padding: 28, width: 580, maxWidth: "95vw", maxHeight: "85vh", overflow: "auto", border: "1px solid " + B.border, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: B.card, borderRadius: 14, padding: 28, width: "min(580px, calc(100vw - 24px))", maxWidth: "95vw", maxHeight: "85vh", overflow: "auto", border: "1px solid " + B.border, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: B.text }}>Funnel Data</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", color: B.dim, fontSize: 20, cursor: "pointer", padding: 4 }}>x</button>
@@ -813,6 +814,7 @@ function FunnelDataEntryModal({ stages, allFunnelData, period, cashCollected, on
 /* ========== Main Dashboard ========== */
 export default function BusinessDashboard() {
   const B = useTheme();
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
   const { members } = useMembers();
@@ -1833,7 +1835,7 @@ export default function BusinessDashboard() {
               Ad Spend: {fmtDollar(effectiveAdSpend)}<br />
               <strong>ROAS = {fmtDollar(cashCollected)} / {fmtDollar(effectiveAdSpend)} = {roas.toFixed(2)}x</strong>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
               <div style={{
                 padding: 16, borderRadius: 8, textAlign: "center",
                 background: "#22c55e12", border: "1px solid #22c55e30",
@@ -2294,7 +2296,7 @@ export default function BusinessDashboard() {
       {/* ============ SECTION 4: Sales Funnel + Marketing Metrics ============ */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "1fr 1fr",
+        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
         gap: 20, marginBottom: sectionGap,
       }}>
         {/* Left: Sales Funnel */}
@@ -2352,7 +2354,7 @@ export default function BusinessDashboard() {
           <div style={{ fontSize: 14, fontWeight: 700, color: B.text, marginBottom: 16 }}>Marketing Metrics</div>
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
+            gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
             gap: 10,
           }}>
             {/* Row 1 */}
@@ -2451,7 +2453,7 @@ export default function BusinessDashboard() {
       </div>
 
       {/* ============ Today's Schedule + Recent Activity ============ */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 340px", gap: 16 }}>
         {/* Recent Activity */}
         <Card style={{ padding: 20 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: B.text, marginBottom: 12 }}>Recent Activity</div>

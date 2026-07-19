@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { useMembers } from "../../hooks/useMembers";
 import Card from "../../components/ui/Card";
 
@@ -251,6 +252,7 @@ function downloadTemplate() {
 /* ── Main Component ─────────────────────────────────────────── */
 export default function DataMigrationView() {
   const B = useTheme();
+  const isMobile = useIsMobile();
   const { addMember, updateMember } = useMembers();
   const [migrationHistory, setMigrationHistory] = useLocalStorage("hf_migration_history", []);
   const [plans] = useLocalStorage("hf_plans", []);
@@ -754,7 +756,7 @@ export default function DataMigrationView() {
         <>
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(260, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
             gap: 16,
           }}>
             {PLATFORMS.map(p => (
@@ -824,7 +826,7 @@ export default function DataMigrationView() {
       {/* ── STEP 2: Import Method ──────────────────────────── */}
       {step === 2 && platform && platform.id !== "manual" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: "grid", gridTemplateColumns: platform.id !== "csv" ? "1fr 1fr" : "1fr", gap: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: (platform.id !== "csv" && !isMobile) ? "1fr 1fr" : "1fr", gap: 20 }}>
             {/* API Import */}
             {platform.id !== "csv" && API_FIELDS[platform.id] && (
               <Card style={{
@@ -1050,7 +1052,7 @@ export default function DataMigrationView() {
                   </tbody>
                 </table>
               </div>
-              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
                 <button
                   onClick={() => setManualEntries(prev => [...prev, { firstName: "", lastName: "", email: "", phone: "", plan: "", notes: "" }])}
                   style={sSmallBtn}

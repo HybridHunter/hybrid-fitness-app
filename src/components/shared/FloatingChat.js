@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { useMembers } from "../../hooks/useMembers";
 import { resizeImage } from "./ImageUpload";
 
 function getInitials(name) {
@@ -25,6 +26,8 @@ function ChatBox({ chat, onClose, onMinimize, B, conversations, setConversations
   const imgRef = useRef(null);
   const myId = "coach";
 
+  const { members } = useMembers();
+  const chatMember = members.find(m => m.id === chat.memberId);
   const conv = conversations.find(c => c.participants?.includes(chat.memberId));
   const messages = conv?.messages || [];
 
@@ -92,16 +95,28 @@ function ChatBox({ chat, onClose, onMinimize, B, conversations, setConversations
               const imageUrl = m.imageUrl || legacyImg?.[1];
               const displayText = legacyImg ? rawText.replace(legacyImg[0], "").trim() : rawText;
               return (
-                <div key={m.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "80%" }}>
-                  <div style={{
-                    padding: "6px 10px", borderRadius: isMe ? "10px 10px 2px 10px" : "10px 10px 10px 2px",
-                    background: isMe ? B.accent : B.darker, color: isMe ? "#fff" : B.text,
-                    fontSize: 13, lineHeight: 1.4, wordBreak: "break-word",
-                  }}>
-                    {imageUrl && <img src={imageUrl} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block" }} />}
-                    {displayText}
+                <div key={m.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "84%", display: "flex", gap: 6, flexDirection: isMe ? "row-reverse" : "row", alignItems: "flex-end" }}>
+                  {!isMe && (
+                    <div style={{
+                      width: 22, height: 22, borderRadius: 11, flexShrink: 0,
+                      background: chatMember?.photo ? `url(${chatMember.photo}) center/cover` : B.accent + "33",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, fontWeight: 800, color: B.accent,
+                    }}>
+                      {!chatMember?.photo && (chatMember?.firstName || "M").slice(0, 1)}
+                    </div>
+                  )}
+                  <div>
+                    <div style={{
+                      padding: "6px 10px", borderRadius: isMe ? "10px 10px 2px 10px" : "10px 10px 10px 2px",
+                      background: isMe ? B.accent : B.darker, color: isMe ? "#fff" : B.text,
+                      fontSize: 13, lineHeight: 1.4, wordBreak: "break-word",
+                    }}>
+                      {imageUrl && <img src={imageUrl} alt="" style={{ maxWidth: "100%", borderRadius: 6, display: "block" }} />}
+                      {displayText}
+                    </div>
+                    <div style={{ fontSize: 9, color: B.dim, marginTop: 1, textAlign: isMe ? "right" : "left" }}>{timeAgo(m.timestamp ?? m.createdAt)}</div>
                   </div>
-                  <div style={{ fontSize: 9, color: B.dim, marginTop: 1, textAlign: isMe ? "right" : "left" }}>{timeAgo(m.timestamp ?? m.createdAt)}</div>
                 </div>
               );
             })}

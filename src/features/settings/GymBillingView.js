@@ -248,7 +248,7 @@ export default function GymBillingView() {
                 {isCancelled && <span style={{ color: B.red, fontWeight: 700, marginLeft: 8 }}>Cancels {subscription.cancelAt ? new Date(subscription.cancelAt).toLocaleDateString() : "at period end"}</span>}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {subscription.stripeCustomerId && (
                 <button onClick={openBillingPortal} disabled={portalLoading} style={s.btn(B.accent, "#fff")}>
                   {portalLoading ? "Loading..." : "Manage Billing"}

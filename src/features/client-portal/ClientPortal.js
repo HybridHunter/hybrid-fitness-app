@@ -194,6 +194,7 @@ export default function ClientPortal() {
 
   // Community sub-tab state
   const [communitySubTab, setCommunitySubTab] = useState("feed");
+  const [trainSection, setTrainSection] = useState(null); // "book" | "workouts" — null = smart default
   const [activeChallengeId, setActiveChallengeId] = useState(null);
   const [checkinText, setCheckinText] = useState("");
   const [checkinProof, setCheckinProof] = useState("");
@@ -395,20 +396,12 @@ export default function ClientPortal() {
   const memberLoading = !member && !membersLoaded;
   const isFrozen = member?.membershipStatus === "frozen";
 
-  /* ─────────── HOME TAB ─────────── */
-  const renderHome = () => {
-    const gam = member.gamification || {};
-    const recentPosts = [...(communityPosts || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 3);
-    const today = todayISO();
-    const xpForNext = (gam.level || 1) * 200;
-    const xpPct = Math.min(100, ((gam.xp || 0) / xpForNext) * 100);
 
+  /* ─────────── HOME TAB (Facebook-style feed) ─────────── */
+  const renderHome = () => {
     // Count unread messages
     const myConvs = (Array.isArray(messages) ? messages : []).filter(c => c.participants?.includes(myId));
     const unreadMsgCount = myConvs.reduce((sum, c) => sum + (c.messages || []).filter(m => !m.read && m.senderId !== myId).length, 0);
-
-    // Next upcoming session
-    const nextSession = todayClasses.length > 0 ? todayClasses[0] : null;
 
     return (
       <div style={{ padding: "0 16px" }}>
@@ -440,7 +433,7 @@ export default function ClientPortal() {
         </div>
 
         {/* "What's on your mind?" composer row */}
-        <div onClick={() => switchTab("community")} style={{
+        <div onClick={() => { setCommunitySubTab("feed"); setActiveChallengeId(null); document.getElementById("home-feed")?.scrollIntoView({ behavior: "smooth" }); }} style={{
           display: "flex", alignItems: "center", gap: 10, padding: "10px 0 12px",
           borderBottom: `1px solid ${B.border}`, marginBottom: 10, cursor: "pointer",
         }}>
@@ -477,12 +470,70 @@ export default function ClientPortal() {
                 Your Progress Report is ready!
               </div>
               <div style={{ fontSize: 12, color: "#ffffffdd", marginTop: 2 }}>
-                Your coach reviewed your week of {unseenReports[0].weekOf} — tap to see your wins
+                Your coach just reviewed your progress — tap to see your wins
               </div>
             </div>
             <div style={{ fontSize: 18, color: "#fff", fontWeight: 800 }}>{"→"}</div>
           </div>
         )}
+
+        {/* Unread Messages */}
+        {unreadCount > 0 && (
+          <div style={{
+            ...cardStyle, background: `linear-gradient(135deg, #3b82f615 0%, ${B.card} 100%)`,
+            border: `1px solid #3b82f640`, cursor: "pointer",
+          }} onClick={openCoachChat}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12, background: "#3b82f622",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+              }}>&#x1F4AC;</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: B.text }}>
+                  {unreadCount} unread message{unreadCount > 1 ? "s" : ""}
+                </div>
+                <div style={mutedText}>Tap to view</div>
+              </div>
+              <div style={{
+                width: 24, height: 24, borderRadius: 12, background: "#ef4444",
+                color: "#fff", fontSize: 13, fontWeight: 800, display: "flex",
+                alignItems: "center", justifyContent: "center",
+              }}>{unreadCount}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Community — full feed/challenges/resources now live on Home */}
+        <div id="home-feed" style={{ margin: "0 -16px" }}>
+          {renderCommunity()}
+        </div>
+
+        <div style={{ height: 20 }} />
+      </div>
+    );
+  };
+
+  /* ─────────── DASH TAB (stats + sessions + coach) ─────────── */
+  const renderDash = () => {
+    const gam = member.gamification || {};
+    const today = todayISO();
+    const xpForNext = (gam.level || 1) * 200;
+    const xpPct = Math.min(100, ((gam.xp || 0) / xpForNext) * 100);
+
+    // Count unread messages
+    const myConvs = (Array.isArray(messages) ? messages : []).filter(c => c.participants?.includes(myId));
+    const unreadMsgCount = myConvs.reduce((sum, c) => sum + (c.messages || []).filter(m => !m.read && m.senderId !== myId).length, 0);
+
+    // Next upcoming session
+    const nextSession = todayClasses.length > 0 ? todayClasses[0] : null;
+
+    return (
+      <div style={{ padding: "0 16px" }}>
+        <div style={{ textAlign: "center", padding: "6px 0 0", opacity: 0.3 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: B.muted, margin: "0 auto" }} />
+        </div>
+
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Dashboard</h1>
 
         {/* Hero Greeting Card */}
         <div style={{
@@ -553,7 +604,7 @@ export default function ClientPortal() {
                 {fmtTime(nextSession.startTime)} - {fmtTime(nextSession.endTime)} &middot; {nextSession.instructor}
               </div>
               <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                <button onClick={() => switchTab("workouts")} style={touchBtn(B.accent, B.darker, { flex: 1, fontSize: 14 })}>
+                <button onClick={() => { setTrainSection("workouts"); switchTab("train"); }} style={touchBtn(B.accent, B.darker, { flex: 1, fontSize: 14 })}>
                   {"\uD83C\uDFCB\uFE0F"} View Workout
                 </button>
                 {isCheckedInForClass(nextSession.id) ? (
@@ -581,7 +632,7 @@ export default function ClientPortal() {
           <div style={{ ...cardStyle, textAlign: "center", padding: "20px 16px", marginBottom: 16 }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>{"\uD83C\uDFCA"}</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: B.text }}>No sessions booked today</div>
-            <button onClick={() => switchTab("book")} style={{ ...touchBtn(B.accent, B.darker, { marginTop: 12, fontSize: 14 }), display: "inline-flex" }}>
+            <button onClick={() => { setTrainSection("book"); switchTab("train"); }} style={{ ...touchBtn(B.accent, B.darker, { marginTop: 12, fontSize: 14 }), display: "inline-flex" }}>
               Book a Session
             </button>
           </div>
@@ -644,7 +695,7 @@ export default function ClientPortal() {
                         onClick={() => {
                           setActiveChallengeId(ch.id);
                           setCommunitySubTab("challenges");
-                          switchTab("community");
+                          switchTab("home");
                         }}
                         style={touchBtn(B.accent, B.darker, { width: "100%", fontSize: 13, minHeight: 38, padding: "8px 16px", boxSizing: "border-box" })}
                       >
@@ -687,71 +738,6 @@ export default function ClientPortal() {
           </div>
           <span style={{ color: B.accent, fontSize: 18 }}>{"\u203A"}</span>
         </div>
-
-        {/* Unread Messages */}
-        {unreadCount > 0 && (
-          <div style={{
-            ...cardStyle, background: `linear-gradient(135deg, #3b82f615 0%, ${B.card} 100%)`,
-            border: `1px solid #3b82f640`, cursor: "pointer",
-          }} onClick={openCoachChat}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{
-                width: 40, height: 40, borderRadius: 12, background: "#3b82f622",
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-              }}>&#x1F4AC;</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: B.text }}>
-                  {unreadCount} unread message{unreadCount > 1 ? "s" : ""}
-                </div>
-                <div style={mutedText}>Tap to view</div>
-              </div>
-              <div style={{
-                width: 24, height: 24, borderRadius: 12, background: "#ef4444",
-                color: "#fff", fontSize: 13, fontWeight: 800, display: "flex",
-                alignItems: "center", justifyContent: "center",
-              }}>{unreadCount}</div>
-            </div>
-          </div>
-        )}
-
-        {/* Recent Community Posts */}
-        {recentPosts.length > 0 && (
-          <>
-            <h3 style={sectionTitle}>&#x1F465; Community</h3>
-            {recentPosts.map(post => (
-              <div key={post.id} style={cardStyle}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: 10,
-                    background: B.accent + "22", color: B.accent,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 12, fontWeight: 700,
-                  }}>{getInitials(post.authorName)}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{post.authorName}</div>
-                    <div style={{ fontSize: 11, color: B.muted }}>{timeAgo(post.createdAt)}</div>
-                  </div>
-                  {post.category && (
-                    <span style={{ ...pillBadge(B.accent + "15", B.accent), fontSize: 10 }}>{post.category}</span>
-                  )}
-                </div>
-                <p style={{ fontSize: 14, color: B.text, margin: 0, lineHeight: 1.5, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                  {post.content}
-                </p>
-                {post.mediaType === "image" && post.mediaUrl && (
-                  <img src={post.mediaUrl} alt="" loading="lazy" style={{ width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 8, marginTop: 8 }} />
-                )}
-                {post.mediaType === "video" && post.mediaUrl && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: B.accent, fontWeight: 600 }}>{"\uD83C\uDFA5"} Video attached — tap to view</div>
-                )}
-                <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 10 }}>
-                  <span style={{ fontSize: 13, color: B.muted }}>&#x2764;&#xFE0F; {post.likes?.length || 0}</span>
-                  <span style={{ fontSize: 13, color: B.muted }}>&#x1F4AC; {post.comments?.length || 0}</span>
-                </div>
-              </div>
-            ))}
-          </>
-        )}
 
         <div style={{ height: 20 }} />
       </div>
@@ -1077,7 +1063,7 @@ export default function ClientPortal() {
             <div style={{ fontSize: 40, marginBottom: 12 }}>&#x1F4AD;</div>
             <div style={{ fontSize: 16, fontWeight: 600, color: B.text, marginBottom: 4 }}>No workout today</div>
             <div style={{ ...mutedText, fontSize: 14 }}>Book a session to see your personalized workout here.</div>
-            <button onClick={() => switchTab("book")} style={touchBtn(B.accent, B.darker, { marginTop: 16, fontSize: 14 })}>
+            <button onClick={() => { setTrainSection("book"); switchTab("train"); }} style={touchBtn(B.accent, B.darker, { marginTop: 16, fontSize: 14 })}>
               &#x1F4C5; Book a Session
             </button>
           </div>
@@ -1363,6 +1349,67 @@ export default function ClientPortal() {
         )}
 
         <div style={{ height: 20 }} />
+      </div>
+    );
+  };
+
+  /* ─────────── TRAIN TAB (Book + Workouts) ─────────── */
+  const renderTrain = () => {
+    const today = todayISO();
+    const nextSession = todayClasses.length > 0 ? todayClasses[0] : null;
+    const hasRemoteToday = (remoteWorkouts || []).some(rw =>
+      rw.memberId === myId && rw.status === "active" && rw.startDate <= today && rw.endDate >= today
+    );
+
+    // Frozen members without a hold end date can't book — hide that segment
+    const bookingHidden = isFrozen && !member?.holdEndDate;
+
+    // Smart default: workouts if a remote workout is assigned or a session is booked today; else book
+    const smartDefault = hasRemoteToday || nextSession ? "workouts" : "book";
+    const section = bookingHidden ? "workouts" : (trainSection || smartDefault);
+
+    const segPill = (key) => ({
+      flex: 1, padding: "10px 0", borderRadius: 20, border: "none", cursor: "pointer",
+      fontSize: 13, fontWeight: 700,
+      background: section === key ? B.accent : "transparent",
+      color: section === key ? B.darker : B.muted,
+      transition: "all 0.15s",
+    });
+
+    return (
+      <div>
+        <div style={{ padding: "0 16px" }}>
+          {/* Next session hero card */}
+          {nextSession && (
+            <div style={{ ...cardStyle, display: "flex", alignItems: "center", gap: 12, margin: "16px 0 4px" }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: B.accent + "22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{"📅"}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: B.accent, textTransform: "uppercase", letterSpacing: 1 }}>Next session</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: B.text, marginTop: 2 }}>{nextSession.name}</div>
+                <div style={{ fontSize: 12, color: B.muted, marginTop: 1 }}>
+                  Today &middot; {fmtTime(nextSession.startTime)} - {fmtTime(nextSession.endTime)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Segmented control: Book Sessions / My Workouts */}
+          {!bookingHidden && (
+            <div style={{
+              display: "flex", gap: 4, margin: "12px 0 0", padding: 4,
+              background: B.card, border: `1px solid ${B.border}`, borderRadius: 24,
+            }}>
+              <button onClick={() => setTrainSection("book")} style={segPill("book")}>
+                {"📅"} Book Sessions
+              </button>
+              <button onClick={() => setTrainSection("workouts")} style={segPill("workouts")}>
+                {"🏋️"} My Workouts
+              </button>
+            </div>
+          )}
+        </div>
+
+        {section === "book" ? renderBook() : renderWorkouts()}
       </div>
     );
   };
@@ -2155,7 +2202,7 @@ export default function ClientPortal() {
                 padding: "11px 0", borderTop: `1px solid ${B.border}`, cursor: "pointer",
               }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Week of {r.weekOf}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>Report — {r.weekOf}</div>
                   <div style={{ fontSize: 11, color: B.muted, marginTop: 2 }}>
                     {r.seenAt ? `Viewed ${new Date(r.seenAt).toLocaleDateString()}` : "New — not viewed yet"}
                     {r.coachName ? ` · ${r.coachName}` : ""}
@@ -2417,7 +2464,7 @@ export default function ClientPortal() {
                 display: "flex", alignItems: "center", justifyContent: "space-between",
                 padding: "10px 0", borderTop: `1px solid ${B.border}`, cursor: "pointer",
               }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: B.text }}>Week of {r.weekOf}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: B.text }}>Report — {r.weekOf}</div>
                 <div style={{ fontSize: 12, color: B.accent, fontWeight: 700 }}>{r.seenAt ? "View" : "NEW"} {"→"}</div>
               </div>
             ))}
@@ -3306,15 +3353,14 @@ export default function ClientPortal() {
 
   const ALL_TABS = [
     { key: "home", label: "Home", icon: "\uD83C\uDFE0" },
-    { key: "workouts", label: "Workouts", icon: "\uD83C\uDFCB\uFE0F" },
-    { key: "community", label: "Community", icon: "\uD83D\uDC65" },
-    { key: "book", label: "Book", icon: "\uD83D\uDCC5" },
+    { key: "dash", label: "Dash", icon: "\uD83D\uDCCA" },
+    { key: "train", label: "Train", icon: "\uD83C\uDFCB\uFE0F" },
     { key: "progress", label: "Progress", icon: "\uD83D\uDCC8" },
     { key: "profile", label: "Profile", icon: "\uD83D\uDC64" },
   ];
 
-  // Frozen members get limited access, but can book if they have a hold end date
-  const FROZEN_TABS = new Set(["community", "workouts", "progress", "profile", ...(member?.holdEndDate ? ["book"] : [])]);
+  // Frozen members keep all tabs; booking is gated inside renderTrain (hidden unless holdEndDate)
+  const FROZEN_TABS = new Set(["home", "dash", "train", "progress", "profile"]);
   const TABS = isFrozen ? ALL_TABS.filter(t => FROZEN_TABS.has(t.key)) : ALL_TABS;
 
   const frozenNotice = (
@@ -3327,10 +3373,9 @@ export default function ClientPortal() {
 
   const renderContent = () => {
     switch (activeTab) {
-      case "home": return isFrozen ? frozenNotice : renderHome();
-      case "workouts": return renderWorkouts();
-      case "community": return renderCommunity();
-      case "book": return isFrozen && !member?.holdEndDate ? frozenNotice : renderBook();
+      case "home": return renderHome();
+      case "dash": return isFrozen ? frozenNotice : renderDash();
+      case "train": return renderTrain();
       case "progress": return renderProgress();
       case "profile": return renderProfile();
       default: return renderHome();
@@ -3408,7 +3453,7 @@ export default function ClientPortal() {
                 padding: "7px 14px", cursor: "pointer",
               }}>Close ✕</button>
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: "uppercase", color: "#ffffffcc" }}>
-                Week of {r.weekOf}
+                Progress Report · {r.weekOf}
               </div>
               <div style={{ fontSize: 28, fontWeight: 900, color: "#fff", lineHeight: 1.15, marginTop: 6 }}>
                 You showed up. {"💪"}
@@ -3428,7 +3473,7 @@ export default function ClientPortal() {
               )}
               {items(r.targetReview).length > 0 && (
                 <div style={{ ...cardStyle, marginBottom: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 900, color: B.text, marginBottom: 6 }}>{"📋"} Last Week's Targets — How We Did</div>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: B.text, marginBottom: 6 }}>{"📋"} Targets From Your Last Report</div>
                   {items(r.targetReview).map((t, i) => {
                     const border = t.startsWith("✅") ? B.accent : t.startsWith("❌") ? "#ef4444" : "#f59e0b";
                     return (
@@ -3442,7 +3487,7 @@ export default function ClientPortal() {
               )}
               {wins.length > 0 && (
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 15, fontWeight: 900, color: B.text, margin: "4px 0 8px" }}>{"🏆"} Wins From This Week</div>
+                  <div style={{ fontSize: 15, fontWeight: 900, color: B.text, margin: "4px 0 8px" }}>{"🏆"} Your Wins</div>
                   {wins.map((w, i) => (
                     <div key={i} style={{
                       display: "flex", alignItems: "center", gap: 12, marginBottom: 8,
@@ -3471,14 +3516,14 @@ export default function ClientPortal() {
               )}
               {items(r.actionSteps).length > 0 && (
                 <div style={{ ...cardStyle, background: "#111", marginBottom: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 900, color: "#fff", marginBottom: 4 }}>{"🚀"} This Week's Mission</div>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: "#fff", marginBottom: 4 }}>{"🚀"} Your Mission</div>
                   {items(r.actionSteps).map((t, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #ffffff1f" }}>
                       <div style={{ width: 18, height: 18, border: `2px solid ${B.accent}`, borderRadius: 5, flexShrink: 0 }} />
                       <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", lineHeight: 1.4 }}>{t}</div>
                     </div>
                   ))}
-                  <div style={{ fontSize: 11, color: B.accent, fontWeight: 700, marginTop: 8 }}>Check these off — you review them together next week.</div>
+                  <div style={{ fontSize: 11, color: B.accent, fontWeight: 700, marginTop: 8 }}>Check these off — review them with your coach in your next report.</div>
                 </div>
               )}
               {r.notes && (
@@ -3515,6 +3560,11 @@ export default function ClientPortal() {
             {/* Header */}
             <div style={{ background: B.card, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, borderBottom: "1px solid " + B.border }}>
               <button onClick={() => setClientChatOpen(null)} style={{ background: "none", border: "none", color: B.text, fontSize: 20, cursor: "pointer", padding: 4 }}>{"\u2190"}</button>
+              <div style={{
+                width: 32, height: 32, borderRadius: 16, flexShrink: 0, background: B.accent + "22",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13, fontWeight: 800, color: B.accent,
+              }}>C</div>
               <div style={{ flex: 1, fontWeight: 700, fontSize: 16, color: B.text }}>Coach</div>
             </div>
             {/* Messages */}
@@ -3522,12 +3572,24 @@ export default function ClientPortal() {
               {chatMsgs.map(msg => {
                 const isMe = msg.senderId === myMemberId;
                 return (
-                  <div key={msg.id} style={{ alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "75%" }}>
-                    <div style={{ padding: "10px 14px", borderRadius: 18, fontSize: 14, lineHeight: 1.4, background: isMe ? B.accent : B.card, color: isMe ? "#fff" : B.text, borderBottomRightRadius: isMe ? 4 : 18, borderBottomLeftRadius: isMe ? 18 : 4 }}>
-                      {msg.text}
+                  <div key={msg.id} style={{ display: "flex", flexDirection: isMe ? "row-reverse" : "row", alignItems: "flex-end", gap: 6, alignSelf: isMe ? "flex-end" : "flex-start", maxWidth: "80%" }}>
+                    <div style={{
+                      width: 26, height: 26, borderRadius: 13, flexShrink: 0,
+                      background: isMe
+                        ? (member?.photo ? `url(${member.photo}) center/cover` : B.accent)
+                        : B.accent + "22",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, fontWeight: 800, color: isMe ? "#fff" : B.accent,
+                    }}>
+                      {isMe ? (!member?.photo && (member?.firstName || "?").slice(0, 1)) : "C"}
                     </div>
-                    <div style={{ fontSize: 10, color: B.dim, marginTop: 2, textAlign: isMe ? "right" : "left" }}>
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ padding: "10px 14px", borderRadius: 18, fontSize: 14, lineHeight: 1.4, background: isMe ? B.accent : B.card, color: isMe ? "#fff" : B.text, borderBottomRightRadius: isMe ? 4 : 18, borderBottomLeftRadius: isMe ? 18 : 4 }}>
+                        {msg.text}
+                      </div>
+                      <div style={{ fontSize: 10, color: B.dim, marginTop: 2, textAlign: isMe ? "right" : "left" }}>
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                      </div>
                     </div>
                   </div>
                 );

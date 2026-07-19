@@ -37,25 +37,27 @@ export default function StoriesBar({ me }) {
   const [text, setText] = useState("");
   const [bg, setBg] = useState(TEXT_BGS[0]);
   const [image, setImage] = useState(null);
+  const [video, setVideo] = useState(null);
+  const [muted, setMuted] = useState(true);
   const fileRef = useRef(null);
   const advanceTimer = useRef(null);
 
   const active = activeStories(stories).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   const post = () => {
-    if (!image && !text.trim()) return;
+    if (!image && !video && !text.trim()) return;
     const story = {
       id: crypto.randomUUID(),
       authorId: me.id, authorName: me.name, authorPhoto: me.photo || "",
-      mediaType: image ? "image" : "text",
-      image: image || "", text: text.trim(), bg,
+      mediaType: video ? "video" : image ? "image" : "text",
+      image: image || "", video: video || "", text: text.trim(), bg,
       createdAt: new Date().toISOString(),
       views: [],
     };
     // Prune expired while writing to keep the blob small
     setStories(prev => [...activeStories(prev), story]);
     setComposing(false);
-    setText(""); setImage(null); setBg(TEXT_BGS[0]);
+    setText(""); setImage(null); setVideo(null); setBg(TEXT_BGS[0]);
   };
 
   const openStory = (idx) => {
@@ -71,7 +73,7 @@ export default function StoriesBar({ me }) {
         if (v == null) return null;
         return v + 1 < active.length ? (openStory(v + 1), v + 1) : null;
       });
-    }, 6000);
+    }, s?.mediaType === "video" ? 15000 : 6000);
   };
   const closeViewer = () => { clearTimeout(advanceTimer.current); setViewing(null); };
 
@@ -79,7 +81,16 @@ export default function StoriesBar({ me }) {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    try { setImage(await resizeImage(f, 480)); } catch { alert("Could not read that image."); }
+    if (f.type.startsWith("video/")) {
+      // Keep videos small — they live in the shared gym blob for 24h
+      if (f.size > 8 * 1024 * 1024) { alert("Video too large — keep it under 8MB (about 20-30 seconds)."); return; }
+      const reader = new FileReader();
+      reader.onload = () => { setVideo(reader.result); setImage(null); };
+      reader.onerror = () => alert("Could not read that video.");
+      reader.readAsDataURL(f);
+      return;
+    }
+    try { setImage(await resizeImage(f, 720)); setVideo(null); } catch { alert("Could not read that image."); }
   };
 
   const seen = (s) => (s.views || []).includes(me.id);
@@ -112,8 +123,14 @@ export default function StoriesBar({ me }) {
           <div key={s.id} onClick={() => openStory(i)} style={{
             minWidth: 92, width: 92, height: 140, borderRadius: 14, overflow: "hidden", cursor: "pointer",
             position: "relative", flexShrink: 0,
-            background: s.mediaType === "image" ? `url(${s.image}) center/cover` : s.bg,
+            background: s.mediaType === "image" ? `url(${s.image}) center/cover` : s.mediaType === "video" ? "#111" : s.bg,
           }}>
+            {s.mediaType === "video" && (
+              <>
+                <video src={s.video} muted preload="metadata" playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+                <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", fontSize: 22, textShadow: "0 1px 6px #000" }}>{"▶️"}</div>
+              </>
+            )}
             <div style={{
               position: "absolute", top: 8, left: 8, width: 32, height: 32, borderRadius: 16,
               border: `3px solid ${seen(s) ? "#999" : B.accent}`,
@@ -169,10 +186,7 @@ export default function StoriesBar({ me }) {
               <button onClick={closeViewer} style={{ background: "#ffffff22", border: "none", borderRadius: 16, color: "#fff", fontSize: 14, fontWeight: 800, padding: "6px 14px", cursor: "pointer" }}>✕</button>
             </div>
             <div
-              style={{
-                flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-                background: s.mediaType === "text" ? s.bg : "#000", position: "relative",
-              }}
+              style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#000", minHeight: 0 }}
               onClick={(e) => {
                 const goBack = e.clientX < window.innerWidth / 3;
                 clearTimeout(advanceTimer.current);
@@ -181,12 +195,45 @@ export default function StoriesBar({ me }) {
                 else closeViewer();
               }}
             >
-              {s.mediaType === "image"
-                ? <img src={s.image} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-                : <div style={{ color: "#fff", fontSize: 26, fontWeight: 800, textAlign: "center", padding: 28, lineHeight: 1.35 }}>{s.text}</div>}
-              {s.mediaType === "image" && s.text && (
-                <div style={{ position: "absolute", bottom: 40, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 16, fontWeight: 700, textShadow: "0 1px 6px #000", padding: "0 20px" }}>{s.text}</div>
-              )}
+              {/* 9:16 story frame — media autocrops to fill it (like Meta stories) */}
+              <div style={{
+                position: "relative", aspectRatio: "9 / 16", height: "100%",
+                maxWidth: "100vw", maxHeight: "100%", margin: "0 auto",
+                background: s.mediaType === "text" ? s.bg : "#111",
+                borderRadius: 12, overflow: "hidden",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {s.mediaType === "image" && (
+                  <img src={s.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                )}
+                {s.mediaType === "video" && (
+                  <>
+                    <video
+                      key={s.id}
+                      src={s.video}
+                      autoPlay
+                      playsInline
+                      loop
+                      muted={muted}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setMuted(m => !m); }}
+                      style={{
+                        position: "absolute", bottom: 14, right: 14, width: 38, height: 38, borderRadius: 19,
+                        background: "#00000088", border: "1px solid #ffffff44", color: "#fff",
+                        fontSize: 16, cursor: "pointer",
+                      }}
+                    >{muted ? "🔇" : "🔊"}</button>
+                  </>
+                )}
+                {s.mediaType === "text" && (
+                  <div style={{ color: "#fff", fontSize: 26, fontWeight: 800, textAlign: "center", padding: 28, lineHeight: 1.35 }}>{s.text}</div>
+                )}
+                {s.mediaType !== "text" && s.text && (
+                  <div style={{ position: "absolute", bottom: 40, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 16, fontWeight: 700, textShadow: "0 1px 6px #000", padding: "0 20px" }}>{s.text}</div>
+                )}
+              </div>
             </div>
           </div>
         );
@@ -201,18 +248,21 @@ export default function StoriesBar({ me }) {
               <button onClick={() => setComposing(false)} style={{ background: "none", border: "none", color: B.muted, fontSize: 18, cursor: "pointer" }}>✕</button>
             </div>
 
-            {/* Preview */}
+            {/* Preview — 9:16 like the real story */}
             <div style={{
-              height: 300, borderRadius: 14, overflow: "hidden", position: "relative",
-              background: image ? `url(${image}) center/cover` : bg,
+              aspectRatio: "9 / 16", maxHeight: 340, margin: "0 auto", borderRadius: 14, overflow: "hidden", position: "relative",
+              background: image ? `url(${image}) center/cover` : video ? "#111" : bg,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              {!image && (
+              {video && (
+                <video src={video} autoPlay muted loop playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              )}
+              {!image && !video && (
                 <div style={{ color: "#fff", fontSize: 20, fontWeight: 800, textAlign: "center", padding: 20, lineHeight: 1.35 }}>
                   {text || "Say something..."}
                 </div>
               )}
-              {image && text && (
+              {(image || video) && text && (
                 <div style={{ position: "absolute", bottom: 14, left: 0, right: 0, textAlign: "center", color: "#fff", fontSize: 14, fontWeight: 700, textShadow: "0 1px 6px #000", padding: "0 14px" }}>{text}</div>
               )}
             </div>
@@ -220,7 +270,7 @@ export default function StoriesBar({ me }) {
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={image ? "Add a caption (optional)" : "Type your story..."}
+              placeholder={(image || video) ? "Add a caption (optional)" : "Type your story..."}
               style={{
                 width: "100%", boxSizing: "border-box", marginTop: 12, background: B.dark, color: B.text,
                 border: `1px solid ${B.border}`, borderRadius: 10, padding: "10px 12px", fontSize: 14, outline: "none",
@@ -231,27 +281,27 @@ export default function StoriesBar({ me }) {
               <button onClick={() => fileRef.current?.click()} style={{
                 background: B.dark, border: `1px solid ${B.border}`, borderRadius: 10, color: B.text,
                 fontSize: 13, fontWeight: 700, padding: "9px 14px", cursor: "pointer",
-              }}>📷 Photo</button>
-              {!image && TEXT_BGS.map(g => (
+              }}>📷 Photo / Video</button>
+              {!image && !video && TEXT_BGS.map(g => (
                 <div key={g} onClick={() => setBg(g)} style={{
                   width: 26, height: 26, borderRadius: 13, background: g, cursor: "pointer",
                   border: bg === g ? "2.5px solid #fff" : `2.5px solid ${B.card}`,
                   boxShadow: bg === g ? `0 0 0 2px ${B.accent}` : "none", flexShrink: 0,
                 }} />
               ))}
-              {image && (
-                <button onClick={() => setImage(null)} style={{ background: "none", border: "none", color: B.red || "#ef4444", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Remove photo</button>
+              {(image || video) && (
+                <button onClick={() => { setImage(null); setVideo(null); }} style={{ background: "none", border: "none", color: B.red || "#ef4444", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Remove media</button>
               )}
             </div>
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
+            <input ref={fileRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={handleFile} />
 
             <button
               onClick={post}
-              disabled={!image && !text.trim()}
+              disabled={!image && !video && !text.trim()}
               style={{
-                width: "100%", marginTop: 14, background: (image || text.trim()) ? B.accent : B.border,
+                width: "100%", marginTop: 14, background: (image || video || text.trim()) ? B.accent : B.border,
                 border: "none", borderRadius: 12, color: "#fff", fontSize: 15, fontWeight: 800,
-                padding: "12px 0", cursor: (image || text.trim()) ? "pointer" : "default",
+                padding: "12px 0", cursor: (image || video || text.trim()) ? "pointer" : "default",
               }}
             >Share to {`the gym`} 🚀</button>
           </div>

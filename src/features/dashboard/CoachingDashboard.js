@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
@@ -87,6 +88,7 @@ function getScoreColor(val) {
 /* ========== component ========== */
 export default function CoachingDashboard() {
   const B = useTheme();
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const _gp = (p) => `/gym/${localStorage.getItem("hf_gym_id") || "default"}/${p}`;
   const { currentUser } = useAuth();
@@ -226,7 +228,7 @@ export default function CoachingDashboard() {
   const timeStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" });
 
   return (
-    <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto" }}>
+    <div style={{ padding: isMobile ? 14 : 24, maxWidth: 1400, margin: "0 auto" }}>
 
       {/* ===== POST-SHIFT CHECK-IN BANNER ===== */}
       {pendingCheckins.length > 0 && (
@@ -244,7 +246,7 @@ export default function CoachingDashboard() {
             </div>
             <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>Log your hours, breaks, and client wins.</div>
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {pendingCheckins.map(dateStr => (
               <button key={dateStr} onClick={() => setShowShiftCheckin(dateStr)} style={{
                 padding: "8px 16px", borderRadius: 8, border: "none", background: B.accent, color: "#fff",
@@ -278,7 +280,7 @@ export default function CoachingDashboard() {
         </div>
 
         {/* Quick Member Lookup */}
-        <div style={{ position: "relative", minWidth: 280 }}>
+        <div style={{ position: "relative", minWidth: isMobile ? 0 : 280, width: isMobile ? "100%" : undefined }}>
           <input
             placeholder="Search clients..."
             value={searchQuery}
@@ -341,7 +343,7 @@ export default function CoachingDashboard() {
         {todaySessions.length === 0 ? (
           <Card><p style={{ color: B.muted, margin: 0, fontSize: 16 }}>No sessions scheduled for today.</p></Card>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 100%), 1fr))", gap: 16 }}>
             {todaySessions.map(cls => {
               const startMin = timeToMinutes(cls.startTime);
               const endMin = timeToMinutes(cls.endTime);
@@ -507,7 +509,7 @@ export default function CoachingDashboard() {
       </div>
 
       {/* ===== TWO-COLUMN LAYOUT for sections 3+4, 5+7 ===== */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 28 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 24, marginBottom: 28 }}>
 
         {/* ===== SECTION 3: AT-RISK MEMBERS ===== */}
         <Card style={{ padding: 20 }}>

@@ -120,7 +120,7 @@ test.describe('weekly progress reports', () => {
     await client.page.locator('button:has-text("Progress")').last().click();
     await client.page.waitForTimeout(1500);
     const progressText = await client.page.locator('#root').innerText();
-    if (!/Progress Reports/i.test(progressText) || !/Week of/i.test(progressText)) {
+    if (!/Progress Reports/i.test(progressText) || !/Report —/.test(progressText)) {
       reportFlow('client@report', 'history', 'Report history not visible under the Progress tab.');
     } else if (!/Viewed/i.test(progressText)) {
       reportFlow('client@report', 'history', 'History does not show the viewed state for a seen report.');

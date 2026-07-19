@@ -355,11 +355,11 @@ export default function IntegrationsView() {
             {integrations.zapier?.apiKey ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{
-                  display: "flex", alignItems: "center", gap: 8,
+                  display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
                   background: B.dark, borderRadius: 8, border: `1px solid ${B.border}`,
                   padding: "10px 14px",
                 }}>
-                  <code style={{ flex: 1, fontSize: 13, color: B.text, fontFamily: "monospace" }}>
+                  <code style={{ flex: 1, fontSize: 13, color: B.text, fontFamily: "monospace", wordBreak: "break-all", minWidth: 120 }}>
                     {showApiKey ? integrations.zapier.apiKey : "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"}
                   </code>
                   <button onClick={() => setShowApiKey(v => !v)} style={btnOutline}>{showApiKey ? "Hide" : "Show"}</button>
@@ -532,6 +532,8 @@ export default function IntegrationsView() {
           <div>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: B.text, margin: "0 0 14px" }}>Sync Log</h3>
             <div style={{ borderRadius: 10, border: `1px solid ${B.border}`, overflow: "hidden" }}>
+              <div style={{ overflowX: "auto" }}>
+              <div style={{ minWidth: 640 }}>
               {/* Log Header */}
               <div style={{
                 display: "grid", gridTemplateColumns: "150px 120px 120px 80px 1fr",
@@ -566,6 +568,8 @@ export default function IntegrationsView() {
                   <span style={{ fontSize: 12, color: B.muted }}>{entry.details}</span>
                 </div>
               ))}
+              </div>
+              </div>
             </div>
           </div>
 

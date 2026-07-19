@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { useMembers } from "../../hooks/useMembers";
 import { useAuth } from "../../context/AuthContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
@@ -33,12 +34,12 @@ function formatDate(d) {
 // MemberProfile remounted the input on every keystroke, losing focus).
 function EditableRow({ label, field, value, type, B, s, editingField, editValue, setEditValue, saveEdit, startEdit, cancelEdit }) {
   const isEditing = editingField === field;
-  const inputStyle = { background: B.darker, border: "1px solid " + B.accent + "60", borderRadius: 6, color: B.text, padding: "5px 8px", fontSize: 13, outline: "none", flex: 1, maxWidth: 260 };
+  const inputStyle = { background: B.darker, border: "1px solid " + B.accent + "60", borderRadius: 6, color: B.text, padding: "5px 8px", fontSize: 13, outline: "none", flex: 1, maxWidth: 260, minWidth: 120 };
   return (
     <div style={s.infoRow}>
       <span style={s.infoLabel}>{label}</span>
       {isEditing ? (
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
           {type === "textarea" ? (
             <textarea value={editValue} onChange={e => setEditValue(e.target.value)} style={{ ...inputStyle, minHeight: 50, resize: "vertical", fontFamily: "inherit" }} autoFocus />
           ) : (
@@ -147,6 +148,8 @@ export default function MemberProfile() {
   const [editNotePhotos, setEditNotePhotos] = useState([]);
   // Must be before any early returns to avoid hook ordering issues
   const [overviewSections, setOverviewSections] = useState({ info: true, movement: true, notes: true, billing: true, stats: true, body: false, history: false });
+  const isMobile = useIsMobile();
+  const isNarrow = useIsMobile(900); // 2-column overview collapses below 900px
 
   const member = getMember(id);
 
@@ -209,15 +212,15 @@ export default function MemberProfile() {
   const s = {
     page: { minHeight: "100%" },
     backBtn: { background: "transparent", border: "1px solid " + B.border, borderRadius: 8, padding: "7px 16px", color: B.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 20, display: "inline-flex", alignItems: "center", gap: 6 },
-    header: { display: "flex", alignItems: "center", gap: 22, marginBottom: 28, flexWrap: "wrap" },
+    header: { display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 12 : 22, marginBottom: 28, flexWrap: "wrap" },
     avatarLg: { width: 80, height: 80, borderRadius: "50%", background: statusColor + "22", color: statusColor, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 28, flexShrink: 0 },
-    headerInfo: { flex: 1 },
+    headerInfo: { flex: 1, minWidth: 0 },
     name: { fontSize: 24, fontWeight: 800, color: B.text, lineHeight: 1.2 },
     metaRow: { display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center", marginTop: 6 },
     metaText: { fontSize: 13, color: B.muted },
     badge: (color) => ({ display: "inline-block", padding: "3px 12px", borderRadius: 14, fontSize: 12, fontWeight: 700, background: color + "22", color: color, textTransform: "capitalize" }),
-    tabs: { display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid " + B.border, paddingBottom: 0 },
-    tab: (active) => ({ padding: "10px 18px", fontSize: 13, fontWeight: 600, color: active ? B.accent : B.muted, background: "transparent", border: "none", borderBottom: active ? "2px solid " + B.accent : "2px solid transparent", cursor: "pointer", marginBottom: -1, transition: "all .15s" }),
+    tabs: { display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid " + B.border, paddingBottom: 0, overflowX: "auto", WebkitOverflowScrolling: "touch" },
+    tab: (active) => ({ padding: "10px 18px", fontSize: 13, fontWeight: 600, color: active ? B.accent : B.muted, background: "transparent", border: "none", borderBottom: active ? "2px solid " + B.accent : "2px solid transparent", cursor: "pointer", marginBottom: -1, transition: "all .15s", whiteSpace: "nowrap", flexShrink: 0 }),
     card: { background: B.card, borderRadius: 12, border: "1px solid " + B.border, padding: 20, marginBottom: 16 },
     cardTitle: { fontSize: 14, fontWeight: 700, color: B.text, marginBottom: 14 },
     infoRow: { display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid " + B.border + "44" },
@@ -230,7 +233,7 @@ export default function MemberProfile() {
     // Movement scores
     scoreRow: { display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid " + B.border + "44" },
     scoreLabel: { width: 60, fontSize: 13, fontWeight: 700, color: B.text },
-    scoreBar: { display: "flex", gap: 4, flex: 1, alignItems: "center" },
+    scoreBar: { display: "flex", gap: 4, flex: 1, alignItems: "center", flexWrap: "wrap" },
     scoreCell: (active, value) => {
       let bg = B.border + "44";
       let fg = B.dim;
@@ -322,12 +325,12 @@ export default function MemberProfile() {
       </div>
 
       {/* Two-column layout: main content left, notes + actions right */}
-      <div style={{ display: "grid", gridTemplateColumns: typeof window !== "undefined" && window.innerWidth < 900 ? "1fr" : "1fr 340px", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isNarrow ? "1fr" : "1fr 340px", gap: 16, alignItems: "start" }}>
       {/* LEFT COLUMN */}
       <div>
 
       {/* Quick Actions */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <button onClick={() => { setTab("Notes"); }} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
           {"\uD83D\uDCDD"} Notes
         </button>
@@ -763,7 +766,7 @@ export default function MemberProfile() {
         {/* Add Scan Modal */}
         {scanModalOpen && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setScanModalOpen(false)}>
-            <div style={{ background: B.dark, borderRadius: 14, border: "1px solid " + B.border, padding: 28, width: 520, maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ background: B.dark, borderRadius: 14, border: "1px solid " + B.border, padding: isMobile ? 18 : 28, width: "min(520px, calc(100vw - 24px))", maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
               <div style={{ fontSize: 18, fontWeight: 800, color: B.text, marginBottom: 18 }}>Add InBody Scan</div>
 
               <div style={{ marginBottom: 14 }}>
@@ -771,12 +774,12 @@ export default function MemberProfile() {
                 <input style={{ ...s_input, marginTop: 4 }} type="date" value={scanForm.date} onChange={e => setScanForm(p => ({ ...p, date: e.target.value }))} />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
                 {scanField("Weight (lbs)", "weight", "175")}
                 {scanField("Body Fat %", "bodyFatPercent", "22.5")}
                 {scanField("SMM (lbs)", "skeletalMuscleMass", "65.0")}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
                 {scanField("BMI", "bmi", "24.5")}
                 {scanField("BMR (kcal)", "bmr", "1650")}
                 {scanField("Body Fat Mass", "bodyFatMass", "35.0")}
@@ -787,7 +790,7 @@ export default function MemberProfile() {
               </div>
 
               <div style={{ fontSize: 14, fontWeight: 700, color: B.text, marginBottom: 10 }}>Segmental Lean (lbs)</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
                 {scanField("Left Arm", "leftArm", "6.5")}
                 {scanField("Right Arm", "rightArm", "6.8")}
                 {scanField("Trunk", "trunk", "45.0")}
@@ -1198,7 +1201,7 @@ export default function MemberProfile() {
 
   return (
     <div style={s.page}>
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20, flexWrap: "wrap" }}>
         <button style={s.backBtn} onClick={() => navigate(_gp("members"))}>
           &#8592; Back to Clients
         </button>
@@ -1388,7 +1391,7 @@ export default function MemberProfile() {
           background: credToast.type === "error" ? "#7f1d1d" : "#14532d",
           color: credToast.type === "error" ? "#fca5a5" : "#86efac",
           padding: "12px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.3)", maxWidth: 360,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.3)", maxWidth: "min(360px, calc(100vw - 48px))",
         }}>
           {credToast.msg}
         </div>
@@ -1484,7 +1487,7 @@ export default function MemberProfile() {
             <p style={{ color: B.text, fontSize: 14, margin: "0 0 8px" }}>
               Change <strong>{member.firstName} {member.lastName}</strong>'s plan?
             </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", margin: "8px 0 16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", margin: "8px 0 16px", flexWrap: "wrap" }}>
               <div style={{ padding: "6px 12px", borderRadius: 8, background: B.red + "15", color: B.red, fontSize: 13, fontWeight: 600 }}>
                 {planChangePrompt.oldPlan.name} (${planChangePrompt.oldPlan.price})
               </div>

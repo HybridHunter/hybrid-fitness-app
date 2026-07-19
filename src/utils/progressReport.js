@@ -43,17 +43,17 @@ export function buildProgressReportHtml(report, member, branding = getBranding()
       ${branding.logo
         ? `<img src="${branding.logo}" alt="${esc(gymName)}" style="max-height:48px;max-width:200px;" />`
         : `<div style="font-size:22px;font-weight:900;color:#111;">${esc(gymName)}</div>`}
-      <div style="font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#999;">Weekly Progress Report</div>
+      <div style="font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#999;">Progress Report</div>
     </div>`;
 
   const hero = `
     <div style="background:linear-gradient(135deg, ${color} 0%, ${dark} 100%);padding:40px 36px 34px;color:#fff;">
-      <div style="font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;opacity:.85;">Week of ${esc(weekLabel)}</div>
+      <div style="font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;opacity:.85;">Progress Report · ${esc(weekLabel)}</div>
       <div style="font-size:38px;font-weight:900;line-height:1.1;margin-top:8px;">${esc(member.firstName)}, you showed up. 💪</div>
       <div style="font-size:16px;margin-top:10px;opacity:.95;">
         ${wins.length > 0
-          ? `<strong>${wins.length} win${wins.length === 1 ? "" : "s"}</strong> in the books this week — momentum is building.`
-          : `Another week of work in the books — momentum is building.`}
+          ? `<strong>${wins.length} win${wins.length === 1 ? "" : "s"}</strong> in the books since your last report — momentum is building.`
+          : `More work in the books — momentum is building.`}
       </div>
     </div>`;
 
@@ -61,14 +61,14 @@ export function buildProgressReportHtml(report, member, branding = getBranding()
     <div style="margin:28px 36px 0;background:#f6f8f2;border:2px dashed ${color};border-radius:16px;padding:18px 22px;">
       <div style="font-size:11px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:${dark};">🧭 Your North Star</div>
       <div style="font-size:19px;font-weight:800;color:#1a1a1a;margin-top:6px;line-height:1.4;">${esc(report.goal)}</div>
-      <div style="font-size:12px;color:#888;margin-top:4px;">Every week is a step toward this. Keep it in sight.</div>
+      <div style="font-size:12px;color:#888;margin-top:4px;">Every session is a step toward this. Keep it in sight.</div>
     </div>` : "";
 
   const targetsBlock = targets.length === 0 ? "" : `
     <div style="margin:28px 36px 0;">
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="font-size:22px;">📋</div>
-        <div style="font-size:17px;font-weight:900;color:#1a1a1a;">Last Week's Targets — How We Did</div>
+        <div style="font-size:17px;font-weight:900;color:#1a1a1a;">Targets From Your Last Report — How We Did</div>
       </div>
       ${targets.map(t => {
         const hit = t.startsWith("✅"), partial = t.startsWith("🟡"), miss = t.startsWith("❌");
@@ -85,7 +85,7 @@ export function buildProgressReportHtml(report, member, branding = getBranding()
     <div style="margin:28px 36px 0;">
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="font-size:24px;">🏆</div>
-        <div style="font-size:20px;font-weight:900;color:#1a1a1a;">Wins From This Week</div>
+        <div style="font-size:20px;font-weight:900;color:#1a1a1a;">Your Wins</div>
       </div>
       ${wins.length === 0 ? `<p style="color:#999;">—</p>` : wins.map((w, i) => `
         <div style="display:flex;align-items:center;gap:14px;background:linear-gradient(90deg, ${color}1a, ${color}08);border-left:5px solid ${color};border-radius:12px;padding:14px 18px;margin-top:10px;">
@@ -110,14 +110,14 @@ export function buildProgressReportHtml(report, member, branding = getBranding()
     <div style="margin:28px 36px 0;background:#111;border-radius:16px;padding:22px 24px;color:#fff;">
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="font-size:22px;">🚀</div>
-        <div style="font-size:17px;font-weight:900;">This Week's Mission</div>
+        <div style="font-size:17px;font-weight:900;">Your Mission</div>
       </div>
       ${actions.length === 0 ? `<p style="color:#888;">—</p>` : actions.map((t, i) => `
         <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #ffffff1f;">
           <div style="width:22px;height:22px;border:2px solid ${color};border-radius:6px;flex-shrink:0;"></div>
           <div style="font-size:15px;font-weight:600;line-height:1.4;">${esc(t)}</div>
         </div>`).join("")}
-      <div style="font-size:12px;color:${color};font-weight:700;margin-top:12px;">Check these off — we'll review them together next week.</div>
+      <div style="font-size:12px;color:${color};font-weight:700;margin-top:12px;">Check these off — we'll review them in your next report.</div>
     </div>`;
 
   const notesBlock = report.notes ? `
