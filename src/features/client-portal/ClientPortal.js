@@ -167,6 +167,9 @@ export default function ClientPortal() {
   const [challenges, setChallenges] = useLocalStorage("hf_challenges", []);
   const [resources] = useLocalStorage("hf_resources", []);
   const [remoteWorkouts, setRemoteWorkouts] = useLocalStorage("hf_remote_workouts", []);
+  const [clientTasks, setClientTasks] = useLocalStorage("hf_client_tasks", []);
+  const [courses] = useLocalStorage("hf_courses", []);
+  const [courseProgress, setCourseProgress] = useLocalStorage("hf_course_progress", []);
 
   // Video modal
   const [videoModal, setVideoModal] = useState(null);
@@ -202,6 +205,13 @@ export default function ClientPortal() {
   const [showNewPost, setShowNewPost] = useState(false);
   const [expandedPostId, setExpandedPostId] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
+
+  // Coach-assigned tasks UI state
+  const [showDoneTasks, setShowDoneTasks] = useState(false);
+  const [viewedDocTasks, setViewedDocTasks] = useState({}); // taskId -> true once the doc was opened
+  const [docOverlay, setDocOverlay] = useState(null); // { name, dataUrl } — inline image doc viewer
+  const [courseViewerId, setCourseViewerId] = useState(null); // courseId for the full-screen course viewer
+  const [courseLessonPath, setCourseLessonPath] = useState(null); // { moduleIdx, lessonIdx }
 
   // Member data
   const member = useMemo(() => {
@@ -332,6 +342,101 @@ export default function ClientPortal() {
     if (!myId) return [];
     return (challenges || []).filter(c => c.participants?.includes(myId));
   }, [challenges, myId]);
+
+  // ── Coach-assigned tasks (hf_client_tasks) ──
+  // Visible = mine + pending + scheduled for today or earlier (future-scheduled stay hidden)
+  const visibleTasks = useMemo(() => {
+    if (!myId) return [];
+    const today = todayISO();
+    return (Array.isArray(clientTasks) ? clientTasks : [])
+      .filter(t => t.memberId === myId && t.status === "pending" && (t.scheduledFor || "") <= today)
+      .sort((a, b) => (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99"));
+  }, [clientTasks, myId]);
+
+  // Completed in the last 7 days — shown in the collapsed "Done recently" list
+  const recentDoneTasks = useMemo(() => {
+    if (!myId) return [];
+    const cutoff = Date.now() - 7 * 86400000;
+    return (Array.isArray(clientTasks) ? clientTasks : [])
+      .filter(t => t.memberId === myId && t.status === "done" && t.completedAt && new Date(t.completedAt).getTime() >= cutoff)
+      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+  }, [clientTasks, myId]);
+
+  const markTaskDone = (taskId) => {
+    setClientTasks(prev => (Array.isArray(prev) ? prev : []).map(t =>
+      t.id === taskId ? { ...t, status: "done", completedAt: new Date().toISOString() } : t
+    ));
+  };
+
+  // Auto-complete: after the client actually creates a community post, mark the
+  // OLDEST visible pending community_post task for this member as done.
+  const completeOldestCommunityTask = () => {
+    if (!myId) return;
+    setClientTasks(prev => {
+      const arr = Array.isArray(prev) ? prev : [];
+      const today = todayISO();
+      const target = arr
+        .filter(t => t.memberId === myId && t.status === "pending" && t.type === "community_post" && (t.scheduledFor || "") <= today)
+        .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""))[0];
+      if (!target) return arr;
+      return arr.map(t => t.id === target.id ? { ...t, status: "done", completedAt: new Date().toISOString() } : t);
+    });
+  };
+
+  // Attach proof to a task (cap 2MB)
+  const handleTaskUpload = (taskId, file) => {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert("File is too large — max 2MB."); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setClientTasks(prev => (Array.isArray(prev) ? prev : []).map(t =>
+        t.id === taskId ? { ...t, upload: { name: file.name, dataUrl: reader.result } } : t
+      ));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Open a doc task: images get an inline overlay; anything else (PDF etc.)
+  // opens a new window with an iframe pointed at the dataUrl.
+  const openTaskDoc = (task) => {
+    const doc = task.doc;
+    if (!doc?.dataUrl) return;
+    if (doc.dataUrl.startsWith("data:image")) {
+      setDocOverlay({ name: doc.name, dataUrl: doc.dataUrl });
+    } else {
+      const w = window.open("", "_blank");
+      if (w) {
+        const safeName = String(doc.name || "Document").replace(/[<>&"]/g, "");
+        w.document.write(`<!DOCTYPE html><html><head><title>${safeName}</title></head><body style="margin:0;background:#111"><iframe src="${doc.dataUrl}" style="border:none;width:100vw;height:100vh"></iframe></body></html>`);
+        w.document.close();
+      }
+    }
+    setViewedDocTasks(prev => ({ ...prev, [task.id]: true }));
+  };
+
+  // Per-member course progress — mirrors ClassroomView's toggleComplete record
+  // shape exactly: { courseId, lessonIds: [...], memberId }
+  const toggleLessonComplete = (courseId, lessonId) => {
+    if (!myId) return;
+    setCourseProgress(prev => {
+      const arr = Array.isArray(prev) ? prev : [];
+      const existing = arr.find(p => p.courseId === courseId && (p.memberId || "admin") === myId);
+      if (existing) {
+        const ids = existing.lessonIds.includes(lessonId) ? existing.lessonIds.filter(id => id !== lessonId) : [...existing.lessonIds, lessonId];
+        return arr.map(p => p === existing ? { ...p, lessonIds: ids } : p);
+      }
+      return [...arr, { courseId, lessonIds: [lessonId], memberId: myId }];
+    });
+  };
+
+  // "Make a Post" — jump to the Home feed composer
+  const goToPostComposer = () => {
+    setCommunitySubTab("feed");
+    setActiveChallengeId(null);
+    setShowNewPost(true);
+    switchTab("home");
+    setTimeout(() => document.getElementById("home-feed")?.scrollIntoView({ behavior: "smooth" }), 400);
+  };
 
   // Current date
   const now = new Date();
@@ -534,6 +639,113 @@ export default function ClientPortal() {
         </div>
 
         <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Dashboard</h1>
+
+        {/* Tasks to Complete — coach-assigned tasks */}
+        {(visibleTasks.length > 0 || recentDoneTasks.length > 0) && (
+          <div style={{ ...cardStyle, marginTop: 12, border: `1px solid ${B.accent}40` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 16 }}>{"✅"}</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: B.text, flex: 1 }}>Tasks to Complete</span>
+              {visibleTasks.length > 0 && (
+                <span style={{
+                  minWidth: 22, height: 22, borderRadius: 11, padding: "0 6px", boxSizing: "border-box",
+                  background: "#ef4444", color: "#fff", fontSize: 12, fontWeight: 800,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                }}>{visibleTasks.length}</span>
+              )}
+            </div>
+            {visibleTasks.length === 0 && (
+              <div style={{ ...mutedText, marginTop: 8 }}>All caught up! {"🎉"}</div>
+            )}
+            {visibleTasks.map((t, ti) => {
+              const icon = { custom: "📝", doc: "📄", course: "🎓", community_post: "📣" }[t.type] || "📝";
+              const overdue = t.dueDate && t.dueDate < today;
+              const smallBtn = { fontSize: 12, minHeight: 32, padding: "6px 14px", borderRadius: 10 };
+              return (
+                <div key={t.id} style={{ padding: "10px 0 2px", borderTop: ti === 0 ? "none" : `1px solid ${B.border}`, marginTop: 10 }}>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <span style={{ fontSize: 18, lineHeight: 1.2 }}>{icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: B.text, lineHeight: 1.3 }}>{t.title}</div>
+                      {t.description && (
+                        <div style={{ fontSize: 12, color: B.muted, marginTop: 2, lineHeight: 1.4 }}>{t.description}</div>
+                      )}
+                      {t.type === "community_post" && t.prompt && (
+                        <div style={{
+                          fontSize: 12, color: B.text, marginTop: 6, padding: "8px 10px", lineHeight: 1.4,
+                          background: B.darker, borderRadius: 8, borderLeft: `3px solid ${B.accent}`,
+                        }}>{"💬"} {t.prompt}</div>
+                      )}
+                      {t.upload && (
+                        <div style={{ fontSize: 11, color: B.accent, fontWeight: 600, marginTop: 4 }}>{"📎"} {t.upload.name}</div>
+                      )}
+                    </div>
+                    {t.dueDate && (
+                      <span style={{
+                        ...pillBadge(overdue ? "#ef444422" : B.darker, overdue ? "#ef4444" : B.muted),
+                        fontSize: 10, alignSelf: "flex-start", flexShrink: 0, border: `1px solid ${overdue ? "#ef444450" : B.border}`,
+                      }}>{overdue ? "Overdue · " : "Due "}{fmtDateShort(t.dueDate + "T00:00:00")}</span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, marginLeft: 28, flexWrap: "wrap", alignItems: "center" }}>
+                    {t.type === "custom" && (
+                      <>
+                        <button onClick={() => markTaskDone(t.id)} style={touchBtn(B.accent, B.darker, smallBtn)}>Mark Done</button>
+                        <label style={{
+                          fontSize: 12, fontWeight: 600, color: B.muted, cursor: "pointer",
+                          padding: "6px 12px", borderRadius: 10, border: `1px dashed ${B.border}`,
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                        }}>
+                          {"📎"} attach
+                          <input type="file" style={{ display: "none" }} onChange={e => { handleTaskUpload(t.id, e.target.files?.[0]); e.target.value = ""; }} />
+                        </label>
+                      </>
+                    )}
+                    {t.type === "doc" && (
+                      <>
+                        <button onClick={() => openTaskDoc(t)} style={touchBtn(B.darker, B.text, { ...smallBtn, border: `1px solid ${B.border}` })}>
+                          {"👁️"} View
+                        </button>
+                        {viewedDocTasks[t.id] && (
+                          <button onClick={() => markTaskDone(t.id)} style={touchBtn(B.accent, B.darker, smallBtn)}>Mark Done</button>
+                        )}
+                      </>
+                    )}
+                    {t.type === "course" && (
+                      <>
+                        <button onClick={() => { setCourseViewerId(t.courseId); setCourseLessonPath(null); }} style={touchBtn(B.accent, B.darker, smallBtn)}>
+                          Open Course
+                        </button>
+                        <button onClick={() => markTaskDone(t.id)} style={touchBtn(B.darker, B.muted, { ...smallBtn, border: `1px solid ${B.border}` })}>Mark Done</button>
+                      </>
+                    )}
+                    {t.type === "community_post" && (
+                      <button onClick={goToPostComposer} style={touchBtn(B.accent, B.darker, smallBtn)}>Make a Post</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {recentDoneTasks.length > 0 && (
+              <div style={{ marginTop: 10, borderTop: `1px solid ${B.border}`, paddingTop: 8 }}>
+                <div onClick={() => setShowDoneTasks(v => !v)} style={{
+                  fontSize: 12, fontWeight: 700, color: B.muted, cursor: "pointer",
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <span>Done recently ({recentDoneTasks.length})</span>
+                  <span style={{ fontSize: 10 }}>{showDoneTasks ? "▲" : "▼"}</span>
+                </div>
+                {showDoneTasks && recentDoneTasks.map(t => (
+                  <div key={t.id} style={{ display: "flex", gap: 8, padding: "6px 0 0", fontSize: 12, color: B.muted, alignItems: "center" }}>
+                    <span style={{ color: B.green || "#22c55e", fontWeight: 800 }}>{"✓"}</span>
+                    <span style={{ flex: 1, textDecoration: "line-through", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+                    <span style={{ fontSize: 11, flexShrink: 0 }}>{fmtDateShort(t.completedAt)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Hero Greeting Card */}
         <div style={{
@@ -1476,6 +1688,8 @@ export default function ClientPortal() {
           comments: [],
         };
         setCommunityPosts(prev => [post, ...prev]);
+        // Auto-complete the oldest pending community_post task for this member
+        completeOldestCommunityTask();
         setNewPostText("");
         setShowNewPost(false);
       };
@@ -3435,6 +3649,193 @@ export default function ClientPortal() {
       {/* Remote Workout Full-Screen Mode */}
       {remoteWorkoutMode && renderRemoteWorkoutMode()}
 
+      {/* Course Viewer — minimal full-screen client course reader */}
+      {courseViewerId && (() => {
+        const closeCourse = () => { setCourseViewerId(null); setCourseLessonPath(null); };
+        const course = (Array.isArray(courses) ? courses : []).find(c => c.id === courseViewerId);
+        if (!course) {
+          return (
+            <div style={{ position: "fixed", inset: 0, zIndex: 4000, background: B.darker, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>{"🎓"}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: B.text }}>Course not found</div>
+                <p style={{ ...mutedText, marginTop: 6 }}>This course may have been removed by your coach.</p>
+                <button onClick={closeCourse} style={touchBtn(B.accent, B.darker, { marginTop: 16 })}>Close</button>
+              </div>
+            </div>
+          );
+        }
+        // Per-member completed lesson set (same matching as ClassroomView)
+        const completedSet = new Set();
+        (Array.isArray(courseProgress) ? courseProgress : [])
+          .filter(p => p.courseId === course.id && (p.memberId || "admin") === myId)
+          .forEach(p => (p.lessonIds || []).forEach(l => completedSet.add(l)));
+        const modules = course.modules || [];
+        const totalLessons = modules.reduce((s, m) => s + (m.lessons || []).filter(l => l.published).length, 0);
+        const doneLessons = modules.reduce((s, m) => s + (m.lessons || []).filter(l => l.published && completedSet.has(l.id)).length, 0);
+        const activeMod = courseLessonPath ? modules[courseLessonPath.moduleIdx] : null;
+        const activeLesson = activeMod ? (activeMod.lessons || [])[courseLessonPath.lessonIdx] : null;
+        const ytId = activeLesson ? getYTId(activeLesson.videoUrl) : null;
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 4000, background: B.darker, overflowY: "auto" }}>
+            <div style={{ maxWidth: 480, margin: "0 auto", paddingBottom: 40 }}>
+              {/* Hero header */}
+              <div style={{ background: `linear-gradient(150deg, ${B.accent} 0%, ${B.accent}77 100%)`, padding: "20px 20px 24px", position: "relative" }}>
+                <button onClick={closeCourse} style={{
+                  position: "absolute", top: 14, right: 14, background: "#ffffff2e",
+                  border: "none", borderRadius: 16, color: "#fff", fontSize: 13, fontWeight: 800,
+                  padding: "7px 14px", cursor: "pointer",
+                }}>Close ✕</button>
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, textTransform: "uppercase", color: "#ffffffcc" }}>
+                  {"🎓"} Course
+                </div>
+                <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", lineHeight: 1.2, marginTop: 6, paddingRight: 80 }}>
+                  {course.title || "Untitled Course"}
+                </div>
+                <div style={{ fontSize: 13, color: "#ffffffdd", marginTop: 8 }}>
+                  {doneLessons} / {totalLessons} lessons complete
+                </div>
+                <div style={{ height: 6, borderRadius: 3, background: "#ffffff33", overflow: "hidden", marginTop: 8 }}>
+                  <div style={{ height: "100%", width: `${totalLessons ? Math.round((doneLessons / totalLessons) * 100) : 0}%`, background: "#fff", borderRadius: 3, transition: "width .3s ease" }} />
+                </div>
+              </div>
+
+              {!activeLesson ? (
+                /* ── Module → lesson list ── */
+                <div style={{ padding: 16 }}>
+                  {course.description && (
+                    <p style={{ ...mutedText, fontSize: 13, lineHeight: 1.5, margin: "0 0 14px" }}>{course.description}</p>
+                  )}
+                  {modules.map((mod, mi) => {
+                    const pubLessons = (mod.lessons || []).filter(l => l.published);
+                    const modDone = pubLessons.filter(l => completedSet.has(l.id)).length;
+                    const allDone = pubLessons.length > 0 && modDone === pubLessons.length;
+                    return (
+                      <div key={mod.id || mi} style={{ ...cardStyle, padding: 0, overflow: "hidden" }}>
+                        <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 8, background: B.darker + "66", borderBottom: pubLessons.length > 0 ? `1px solid ${B.border}` : "none" }}>
+                          <div style={{ flex: 1, fontSize: 14, fontWeight: 800, color: B.text }}>{mod.title || `Module ${mi + 1}`}</div>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: allDone ? (B.green || "#22c55e") : B.muted }}>
+                            {allDone ? "✓ " : ""}{modDone}/{pubLessons.length}
+                          </span>
+                        </div>
+                        {pubLessons.length === 0 && (
+                          <div style={{ padding: "10px 14px", fontSize: 12, color: B.dim }}>No lessons yet</div>
+                        )}
+                        {pubLessons.map(l => {
+                          const li = (mod.lessons || []).indexOf(l);
+                          const isDone = completedSet.has(l.id);
+                          return (
+                            <div key={l.id} onClick={() => setCourseLessonPath({ moduleIdx: mi, lessonIdx: li })} style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                              cursor: "pointer", borderTop: `1px solid ${B.border}40`,
+                            }}>
+                              <span style={{
+                                width: 20, height: 20, borderRadius: 10, flexShrink: 0,
+                                background: isDone ? (B.green || "#22c55e") : "transparent",
+                                border: isDone ? "none" : `2px solid ${B.dim}`,
+                                color: "#fff", fontSize: 11, fontWeight: 900,
+                                display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box",
+                              }}>{isDone ? "✓" : ""}</span>
+                              <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: B.text }}>{l.title || "Untitled lesson"}</span>
+                              <span style={{ color: B.dim, fontSize: 14 }}>{"›"}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                  {modules.length === 0 && (
+                    <div style={{ ...cardStyle, textAlign: "center", padding: "32px 20px" }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>{"📭"}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>No content yet</div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* ── Lesson detail ── */
+                <div style={{ padding: 16 }}>
+                  <button onClick={() => setCourseLessonPath(null)} style={{
+                    background: "none", border: "none", color: B.accent, fontSize: 13, fontWeight: 700,
+                    cursor: "pointer", padding: "4px 0", marginBottom: 8,
+                  }}>{"←"} All lessons</button>
+                  <h2 style={{ fontSize: 20, fontWeight: 800, color: B.text, margin: "0 0 14px", lineHeight: 1.3 }}>{activeLesson.title}</h2>
+
+                  {/* Video (YouTube thumbnail — opens in new tab) */}
+                  {ytId && (
+                    <a href={`https://www.youtube.com/watch?v=${ytId}`} target="_blank" rel="noopener noreferrer" style={{
+                      display: "block", position: "relative", borderRadius: 12, overflow: "hidden",
+                      marginBottom: 16, background: "#000", textDecoration: "none",
+                    }}>
+                      <img src={getYTThumb(activeLesson.videoUrl)} alt={activeLesson.title} style={{ width: "100%", display: "block", opacity: 0.85 }} />
+                      <div style={{
+                        position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        <div style={{
+                          width: 54, height: 54, borderRadius: 27, background: "rgba(0,0,0,0.6)",
+                          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#fff",
+                        }}>{"▶"}</div>
+                      </div>
+                    </a>
+                  )}
+
+                  {/* Content */}
+                  {activeLesson.content && (
+                    activeLesson.content.startsWith("<") ? (
+                      <div style={{ fontSize: 14, lineHeight: 1.7, color: B.text, marginBottom: 20 }} dangerouslySetInnerHTML={{ __html: activeLesson.content }} />
+                    ) : (
+                      <div style={{ fontSize: 14, lineHeight: 1.7, color: B.text, marginBottom: 20, whiteSpace: "pre-line" }}>
+                        {activeLesson.content}
+                      </div>
+                    )
+                  )}
+
+                  {/* Resources */}
+                  {(activeLesson.resources || []).length > 0 && (
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: B.text, marginBottom: 8 }}>Resources</div>
+                      {(activeLesson.resources || []).map((res, ri) => (
+                        <a key={ri} href={res.url} target="_blank" rel="noopener noreferrer" style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10,
+                          background: B.card, border: `1px solid ${B.border}`, color: B.accent, textDecoration: "none",
+                          fontSize: 13, fontWeight: 600, marginBottom: 8,
+                        }}>
+                          <span style={{ fontSize: 16 }}>{"📄"}</span>
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{res.name || res.url}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Mark Lesson Complete */}
+                  <button onClick={() => toggleLessonComplete(course.id, activeLesson.id)} style={touchBtn(
+                    completedSet.has(activeLesson.id) ? (B.green || "#22c55e") : B.accent,
+                    completedSet.has(activeLesson.id) ? "#fff" : B.darker,
+                    { width: "100%", boxSizing: "border-box" }
+                  )}>
+                    {completedSet.has(activeLesson.id) ? "✓ Completed — tap to undo" : "Mark Lesson Complete"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Doc task image overlay */}
+      {docOverlay && (
+        <div onClick={() => setDocOverlay(null)} style={{
+          position: "fixed", inset: 0, zIndex: 4100, background: "rgba(0,0,0,0.92)",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 16,
+        }}>
+          <div style={{ color: "#fff", fontWeight: 700, fontSize: 14, marginBottom: 10, textAlign: "center" }}>{docOverlay.name}</div>
+          <img src={docOverlay.dataUrl} alt={docOverlay.name} onClick={e => e.stopPropagation()} style={{ maxWidth: "100%", maxHeight: "78vh", borderRadius: 12 }} />
+          <button onClick={() => setDocOverlay(null)} style={{
+            marginTop: 14, background: "#ffffff2e", border: "none", borderRadius: 16,
+            color: "#fff", fontSize: 13, fontWeight: 800, padding: "7px 16px", cursor: "pointer",
+          }}>Close ✕</button>
+        </div>
+      )}
+
       {/* Progress Report Viewer — celebratory full-screen, opens from any tab */}
       {viewingReport && (() => {
         const r = viewingReport;
@@ -3666,6 +4067,19 @@ export default function ClientPortal() {
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
                   {unreadCount > 9 ? "9+" : unreadCount}
+                </div>
+              )}
+
+              {/* Pending tasks badge on Dash */}
+              {tab.key === "dash" && visibleTasks.length > 0 && (
+                <div style={{
+                  position: "absolute", top: 2, right: "calc(50% - 18px)",
+                  width: 16, height: 16, borderRadius: 8,
+                  background: "#ef4444", color: "#fff",
+                  fontSize: 9, fontWeight: 800,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {visibleTasks.length > 9 ? "9+" : visibleTasks.length}
                 </div>
               )}
             </button>
