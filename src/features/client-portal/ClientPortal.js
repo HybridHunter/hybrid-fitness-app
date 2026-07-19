@@ -559,7 +559,7 @@ export default function ClientPortal() {
         </div>
 
         {/* "What's on your mind?" composer row */}
-        <div onClick={() => { setCommunitySubTab("feed"); setActiveChallengeId(null); document.getElementById("home-feed")?.scrollIntoView({ behavior: "smooth" }); }} style={{
+        <div onClick={goToPostComposer} style={{
           display: "flex", alignItems: "center", gap: 10, padding: "10px 0 12px",
           borderBottom: `1px solid ${B.border}`, marginBottom: 10, cursor: "pointer",
         }}>
@@ -1791,16 +1791,6 @@ export default function ClientPortal() {
 
       return (
         <div>
-          {/* Compose button */}
-          {!showNewPost && (
-            <button
-              onClick={() => setShowNewPost(true)}
-              style={touchBtn(B.accent, B.darker, { width: "100%", marginBottom: 16, fontSize: 14, boxSizing: "border-box" })}
-            >
-              &#x270F;&#xFE0F; New Post
-            </button>
-          )}
-
           {/* Compose form */}
           {showNewPost && (
             <div style={{ ...cardStyle, border: `2px solid ${B.accent}40` }}>

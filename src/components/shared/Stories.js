@@ -70,8 +70,15 @@ function StoryCamera({ onCapture, onClose }) {
     let rec;
     try {
       const opts = { videoBitsPerSecond: 1_200_000, audioBitsPerSecond: 64_000 };
-      if (MediaRecorder.isTypeSupported("video/mp4")) opts.mimeType = "video/mp4";
-      else if (MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) opts.mimeType = "video/webm;codecs=vp8,opus";
+      // Prefer H.264/AAC in mp4 — the only combo that plays on EVERY device
+      // (iPhones cannot play webm; Chrome's plain video/mp4 may mux VP9).
+      const preferred = [
+        "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+        "video/mp4;codecs=avc1",
+        "video/mp4",
+        "video/webm;codecs=vp8,opus",
+      ].find(t => MediaRecorder.isTypeSupported(t));
+      if (preferred) opts.mimeType = preferred;
       rec = new MediaRecorder(streamRef.current, opts);
     } catch {
       try { rec = new MediaRecorder(streamRef.current); } catch { setError("Recording not supported here — use the upload button instead."); return; }
@@ -282,6 +289,7 @@ export default function StoriesBar({ me }) {
     if (!f) return;
     if (f.type.startsWith("video/")) {
       if (f.size > 8 * 1024 * 1024) { alert("Video too large — keep it under 8MB (about 20-30 seconds)."); return; }
+      if (/webm|mkv/i.test(f.type) && !window.confirm("Heads up: this video format (webm) won't play on iPhones. Post anyway?")) return;
       const reader = new FileReader();
       reader.onload = () => { setVideo(reader.result); setImage(null); };
       reader.onerror = () => alert("Could not read that video.");

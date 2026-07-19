@@ -443,6 +443,57 @@ export default function GamificationView() {
         <div style={s.subtitle}>Track progress, earn badges, and compete</div>
       </div>
 
+      {/* Treasure Maps */}
+      <div style={s.section}>
+        <div style={{ ...s.sectionTitle, justifyContent: "space-between" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>{"🗺️"} Treasure Maps</span>
+          <button style={s.tmBtn(B.accent, true)} onClick={() => openMapEditor(null)}>+ New Map</button>
+        </div>
+        <div style={s.card}>
+          {mapList.length === 0 && (
+            <div style={{ textAlign: "center", padding: 24, color: B.dim, fontSize: 14 }}>
+              No treasure maps yet. Create one to turn a task list into a treasure hunt with a reward at the end.
+            </div>
+          )}
+          {mapList.map((map) => {
+            const prog = mapProgress(map);
+            return (
+              <div key={map.id} style={s.tmRow}>
+                <button
+                  style={s.tmToggle(map.enabled)}
+                  onClick={() => toggleTreasureMap(map)}
+                  title={map.enabled ? "Turn off (hides the map for clients; tasks are kept)" : "Turn on (assigns tasks to all active members)"}
+                >
+                  <span style={s.tmKnob(map.enabled)} />
+                </button>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: B.text }}>
+                    {map.name}
+                    {map.enabled && <span style={{ fontSize: 10, fontWeight: 800, color: B.accent, marginLeft: 8, background: B.accent + "1c", padding: "2px 8px", borderRadius: 8 }}>LIVE</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>
+                    {"💰"} {map.incentive} &middot; {(map.tasks || []).length} stop{(map.tasks || []).length !== 1 ? "s" : ""} &middot; {mapDeadlineSummary(map)}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: prog.assigned > 0 && prog.completed === prog.assigned ? "#22c55e" : B.muted, whiteSpace: "nowrap" }}>
+                  {prog.assigned > 0 ? prog.completed + "/" + prog.assigned + " members completed" : "Not assigned yet"}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button style={s.tmBtn("#3b82f6", false)} onClick={() => openMapEditor(map)}>Edit</button>
+                  <button style={s.tmBtn(B.red, false)} onClick={() => deleteTreasureMap(map)}>Delete</button>
+                </div>
+              </div>
+            );
+          })}
+          <div style={s.tmFinePrint}>
+            Toggling a map ON assigns its stops as tasks to all active members and shows the treasure map on their dashboard.
+            Members who join later are not auto-assigned &mdash; toggle the map off and on again to include them.
+            Toggling OFF hides the map but keeps task history.
+          </div>
+        </div>
+      </div>
+
+
       {/* Global Stats */}
       <div style={s.section}>
         <div style={s.sectionTitle}>{"\ud83d\udcca"} Gym Overview</div>
@@ -700,56 +751,6 @@ export default function GamificationView() {
               </div>
             );
           })}
-        </div>
-      </div>
-
-      {/* Treasure Maps */}
-      <div style={s.section}>
-        <div style={{ ...s.sectionTitle, justifyContent: "space-between" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>{"🗺️"} Treasure Maps</span>
-          <button style={s.tmBtn(B.accent, true)} onClick={() => openMapEditor(null)}>+ New Map</button>
-        </div>
-        <div style={s.card}>
-          {mapList.length === 0 && (
-            <div style={{ textAlign: "center", padding: 24, color: B.dim, fontSize: 14 }}>
-              No treasure maps yet. Create one to turn a task list into a treasure hunt with a reward at the end.
-            </div>
-          )}
-          {mapList.map((map) => {
-            const prog = mapProgress(map);
-            return (
-              <div key={map.id} style={s.tmRow}>
-                <button
-                  style={s.tmToggle(map.enabled)}
-                  onClick={() => toggleTreasureMap(map)}
-                  title={map.enabled ? "Turn off (hides the map for clients; tasks are kept)" : "Turn on (assigns tasks to all active members)"}
-                >
-                  <span style={s.tmKnob(map.enabled)} />
-                </button>
-                <div style={{ flex: 1, minWidth: 160 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: B.text }}>
-                    {map.name}
-                    {map.enabled && <span style={{ fontSize: 10, fontWeight: 800, color: B.accent, marginLeft: 8, background: B.accent + "1c", padding: "2px 8px", borderRadius: 8 }}>LIVE</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>
-                    {"💰"} {map.incentive} &middot; {(map.tasks || []).length} stop{(map.tasks || []).length !== 1 ? "s" : ""} &middot; {mapDeadlineSummary(map)}
-                  </div>
-                </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: prog.assigned > 0 && prog.completed === prog.assigned ? "#22c55e" : B.muted, whiteSpace: "nowrap" }}>
-                  {prog.assigned > 0 ? prog.completed + "/" + prog.assigned + " members completed" : "Not assigned yet"}
-                </div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button style={s.tmBtn("#3b82f6", false)} onClick={() => openMapEditor(map)}>Edit</button>
-                  <button style={s.tmBtn(B.red, false)} onClick={() => deleteTreasureMap(map)}>Delete</button>
-                </div>
-              </div>
-            );
-          })}
-          <div style={s.tmFinePrint}>
-            Toggling a map ON assigns its stops as tasks to all active members and shows the treasure map on their dashboard.
-            Members who join later are not auto-assigned &mdash; toggle the map off and on again to include them.
-            Toggling OFF hides the map but keeps task history.
-          </div>
         </div>
       </div>
 
