@@ -273,6 +273,9 @@ export default function ClientPortal() {
     .filter(r => r.memberId === member?.id && r.status === "delivered")
     .sort((a, b) => (b.weekOf || "").localeCompare(a.weekOf || ""));
   const unseenReports = myDeliveredReports.filter(r => !r.seenAt);
+  const unreadMsgCount = (Array.isArray(messages) ? messages : [])
+    .filter(c => c.participants?.includes(myId))
+    .reduce((sum, c) => sum + (c.messages || []).filter(m => !m.read && m.senderId !== myId).length, 0);
 
   // Open (or create) the coach conversation and show the chat modal.
   // Shared by the Profile tab button, the home "Message Your Coach" card,
@@ -654,6 +657,46 @@ export default function ClientPortal() {
 
 
   /* ─────────── HOME TAB (Facebook-style feed) ─────────── */
+  const handleCreatePost = () => {
+    const text = newPostText.trim();
+    if (!text && !newPostImage && !newPostVideo) return;
+    const post = {
+      id: crypto.randomUUID(),
+      authorId: myId,
+      authorName: `${member.firstName || "Member"} ${member.lastName || ""}`.trim(),
+      content: text,
+      category: "General",
+      createdAt: new Date().toISOString(),
+      likes: [],
+      comments: [],
+      mediaType: newPostVideo ? "video" : newPostImage ? "image" : null,
+      mediaUrl: newPostVideo || newPostImage || "",
+      tagged: newPostTags, // [{id, name}]
+    };
+    setCommunityPosts(prev => [post, ...prev]);
+    // Auto-complete the oldest pending community_post task for this member
+    completeOldestCommunityTask();
+    setNewPostText("");
+    setNewPostImage(null); setNewPostVideo(null); setNewPostTags([]); setShowTagPicker(false);
+    setShowNewPost(false);
+  };
+
+  const handlePostMedia = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.type.startsWith("video/")) {
+      if (f.size > 8 * 1024 * 1024) { alert("Video too large — keep it under 8MB (about 20-30 seconds)."); return; }
+      const reader = new FileReader();
+      reader.onload = () => { setNewPostVideo(reader.result); setNewPostImage(null); };
+      reader.onerror = () => alert("Could not read that video.");
+      reader.readAsDataURL(f);
+      return;
+    }
+    try { setNewPostImage(await resizeImage(f, 900)); setNewPostVideo(null); } catch { alert("Could not read that image."); }
+  };
+
+
   const renderHome = () => {
     // Count unread messages
     const myConvs = (Array.isArray(messages) ? messages : []).filter(c => c.participants?.includes(myId));
@@ -661,33 +704,6 @@ export default function ClientPortal() {
 
     return (
       <div style={{ padding: "0 16px" }}>
-        {/* Facebook-style top bar: gym name + messenger */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0 4px" }}>
-          <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: -0.5, color: B.accent }}>
-            {(() => { try { return JSON.parse(localStorage.getItem("hf_branding") || "{}").gymName || "GymKit"; } catch { return "GymKit"; } })()}
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            {unseenReports.length > 0 && (
-              <div onClick={() => openReport(unseenReports[0])} style={{
-                width: 40, height: 40, borderRadius: 20, background: B.card, border: `1px solid ${B.border}`,
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", position: "relative",
-              }}>
-                {"🔔"}
-                <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unseenReports.length}</div>
-              </div>
-            )}
-            <div onClick={openCoachChat} style={{
-              width: 40, height: 40, borderRadius: 20, background: B.card, border: `1px solid ${B.border}`,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", position: "relative",
-            }}>
-              {"💬"}
-              {unreadMsgCount > 0 && (
-                <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadMsgCount}</div>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* "What's on your mind?" composer row */}
         <div onClick={goToPostComposer} style={{
           display: "flex", alignItems: "center", gap: 10, padding: "10px 0 12px",
@@ -1935,45 +1951,6 @@ export default function ClientPortal() {
           return { ...p, comments: [...(p.comments || []), comment] };
         }));
         setCommentInputs(prev => ({ ...prev, [postId]: "" }));
-      };
-
-      const handleCreatePost = () => {
-        const text = newPostText.trim();
-        if (!text && !newPostImage && !newPostVideo) return;
-        const post = {
-          id: crypto.randomUUID(),
-          authorId: myId,
-          authorName: `${member.firstName || "Member"} ${member.lastName || ""}`.trim(),
-          content: text,
-          category: "General",
-          createdAt: new Date().toISOString(),
-          likes: [],
-          comments: [],
-          mediaType: newPostVideo ? "video" : newPostImage ? "image" : null,
-          mediaUrl: newPostVideo || newPostImage || "",
-          tagged: newPostTags, // [{id, name}]
-        };
-        setCommunityPosts(prev => [post, ...prev]);
-        // Auto-complete the oldest pending community_post task for this member
-        completeOldestCommunityTask();
-        setNewPostText("");
-        setNewPostImage(null); setNewPostVideo(null); setNewPostTags([]); setShowTagPicker(false);
-        setShowNewPost(false);
-      };
-
-      const handlePostMedia = async (e) => {
-        const f = e.target.files?.[0];
-        e.target.value = "";
-        if (!f) return;
-        if (f.type.startsWith("video/")) {
-          if (f.size > 8 * 1024 * 1024) { alert("Video too large — keep it under 8MB (about 20-30 seconds)."); return; }
-          const reader = new FileReader();
-          reader.onload = () => { setNewPostVideo(reader.result); setNewPostImage(null); };
-          reader.onerror = () => alert("Could not read that video.");
-          reader.readAsDataURL(f);
-          return;
-        }
-        try { setNewPostImage(await resizeImage(f, 900)); setNewPostVideo(null); } catch { alert("Could not read that image."); }
       };
 
       return (
@@ -4381,6 +4358,46 @@ export default function ClientPortal() {
           {checkInMsg}
         </div>
       )}
+
+      {/* Persistent header — gym name on Home, tab name elsewhere; chat always top-right */}
+      {(() => {
+        const gymName = (() => { try { return JSON.parse(localStorage.getItem("hf_branding") || "{}").gymName || "GymKit"; } catch { return "GymKit"; } })();
+        const titleMap = { home: gymName, dash: "Dashboard", train: "Train", progress: "Progress", profile: "Profile" };
+        const title = titleMap[activeTab] || gymName;
+        return (
+          <div style={{
+            position: "sticky", top: 0, zIndex: 200,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "12px 16px", background: B.darker + "f2",
+            backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
+            borderBottom: `1px solid ${B.border}55`,
+          }}>
+            <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: -0.5, color: activeTab === "home" ? B.accent : B.text }}>
+              {title}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {unseenReports.length > 0 && (
+                <div onClick={() => openReport(unseenReports[0])} style={{
+                  width: 40, height: 40, borderRadius: 20, background: B.card, border: `1px solid ${B.border}`,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", position: "relative",
+                }}>
+                  {"🔔"}
+                  <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unseenReports.length}</div>
+                </div>
+              )}
+              <div onClick={openCoachChat} style={{
+                width: 40, height: 40, borderRadius: 20, background: B.card, border: `1px solid ${B.border}`,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", position: "relative",
+              }}>
+                {"💬"}
+                {unreadMsgCount > 0 && (
+                  <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadMsgCount}</div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tab Content */}
       <div style={fadeStyle}>

@@ -191,8 +191,12 @@ function StoryMedia({ s, cover, controlsMuted, onUnmute }) {
         playsInline
         loop
         muted={cover ? true : controlsMuted}
-        preload="metadata"
-        onLoadedMetadata={(e) => { try { e.target.currentTime = 0.01; } catch {} }}
+        preload={cover ? "metadata" : "auto"}
+        // Tiles: nudge to a real first frame (poster). Active player: DON'T seek —
+        // seeking in onLoadedMetadata cancels autoplay and freezes on one frame.
+        onLoadedMetadata={cover ? (e) => { try { e.target.currentTime = 0.01; } catch {} } : undefined}
+        onLoadedData={!cover ? (e) => { e.target.play().catch(() => {}); } : undefined}
+        onCanPlay={!cover ? (e) => { e.target.play().catch(() => {}); } : undefined}
         onError={() => setFailed(true)}
         style={{ width: "100%", height: "100%", objectFit: "cover" }}
       />
@@ -480,7 +484,7 @@ export default function StoriesBar({ me }) {
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
               {video && (
-                <video src={cleanDataUrl(video)} autoPlay muted loop playsInline onLoadedMetadata={(e) => { try { e.target.currentTime = 0.01; } catch {} }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <video src={cleanDataUrl(video)} autoPlay muted loop playsInline preload="auto" onCanPlay={(e) => e.target.play().catch(() => {})} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               )}
               {!image && !video && (
                 <div style={{ color: "#fff", fontSize: 20, fontWeight: 800, textAlign: "center", padding: 20, lineHeight: 1.35 }}>
