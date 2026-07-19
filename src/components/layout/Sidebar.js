@@ -151,6 +151,7 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
         height: "100vh",
         boxShadow: "4px 0 24px rgba(0,0,0,0.4)",
         transform: open ? "translateX(0)" : "translateX(-100%)",
+        willChange: "transform",
       }
     : {};
 
@@ -175,9 +176,10 @@ export default function Sidebar({ collapsed, mobile, open, onToggle, onClose }) 
         borderRight: `1px solid ${B.border}`,
         display: "flex",
         flexDirection: "column",
-        transition: "width 0.2s ease, transform 0.2s ease",
+        transition: "width 0.2s ease, transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)",
         overflowY: "auto",
         overflowX: "hidden",
+        WebkitOverflowScrolling: "touch",
         ...mobileStyles,
       }}
     >

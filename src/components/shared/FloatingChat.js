@@ -65,10 +65,11 @@ function ChatBox({ chat, onClose, onMinimize, B, conversations, setConversations
   };
 
   return (
-    <div style={{
+    <div className="hf-fade-in" style={{
       width: 320, height: chat.minimized ? 42 : 400, borderRadius: "10px 10px 0 0",
       background: B.card, border: "1px solid " + B.border, boxShadow: "0 -4px 20px rgba(0,0,0,0.25)",
-      display: "flex", flexDirection: "column", overflow: "hidden", transition: "height 0.2s",
+      display: "flex", flexDirection: "column", overflow: "hidden",
+      transition: "height 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
     }}>
       {/* Header */}
       <div onClick={onMinimize} style={{
@@ -129,7 +130,14 @@ function ChatBox({ chat, onClose, onMinimize, B, conversations, setConversations
             <input ref={imgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={async e => {
               const file = e.target.files?.[0];
               if (!file) return;
-              const url = await resizeImage(file);
+              let url;
+              try {
+                url = await resizeImage(file);
+              } catch (err) {
+                alert(err?.message || "Could not process that image file.");
+                e.target.value = "";
+                return;
+              }
               const now = new Date().toISOString();
               const msg = { id: crypto.randomUUID(), senderId: myId, text: "", content: "", imageUrl: url, timestamp: now, createdAt: now, read: false };
               if (conv) { setConversations(prev => prev.map(c => c.id === conv.id ? { ...c, messages: [...c.messages, msg], lastActivity: msg.timestamp } : c)); }

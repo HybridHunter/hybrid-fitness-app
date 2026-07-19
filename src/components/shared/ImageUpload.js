@@ -17,8 +17,16 @@ function supportsWebp() {
 // bandwidth costs down we prefer WebP (≈25-35% smaller than JPEG at equal
 // quality, and it keeps transparency so logos survive too); JPEG is the
 // fallback. quality defaults to 0.72 — visually clean, far lighter than raw.
+// Reject absurdly large source files before we even read them into memory —
+// a 50MB photo would just hang the tab decoding it, and it resizes down anyway.
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
+
 function resizeImage(file, maxSize = 800, quality = 0.72) {
   return new Promise((resolve, reject) => {
+    if (file && file.size > MAX_UPLOAD_BYTES) {
+      reject(new Error("That image is too large — please choose one under 20MB."));
+      return;
+    }
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Could not read file"));
     reader.onload = (ev) => {
@@ -68,8 +76,8 @@ export default function ImageUpload({ onUpload, label, maxSize = 800, style = {}
     try {
       const dataUrl = await resizeImage(file, maxSize);
       onUpload(dataUrl);
-    } catch {
-      alert("Could not process that image file.");
+    } catch (err) {
+      alert(err?.message || "Could not process that image file.");
     }
     e.target.value = "";
   };
@@ -100,8 +108,8 @@ export function ImageUploadZone({ value, onChange, maxSize = 800, label }) {
     try {
       const dataUrl = await resizeImage(file, maxSize);
       onChange(dataUrl);
-    } catch {
-      alert("Could not process that image file.");
+    } catch (err) {
+      alert(err?.message || "Could not process that image file.");
     }
     e.target.value = "";
   };
@@ -113,8 +121,8 @@ export function ImageUploadZone({ value, onChange, maxSize = 800, label }) {
     try {
       const dataUrl = await resizeImage(file, maxSize);
       onChange(dataUrl);
-    } catch {
-      alert("Could not process that image file.");
+    } catch (err) {
+      alert(err?.message || "Could not process that image file.");
     }
   };
 

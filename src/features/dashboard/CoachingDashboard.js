@@ -342,7 +342,7 @@ export default function CoachingDashboard() {
       <div style={{ marginBottom: 28 }}>
         <h2 style={sectionTitle}>Today&rsquo;s Sessions</h2>
         {todaySessions.length === 0 ? (
-          <Card><p style={{ color: B.muted, margin: 0, fontSize: 16 }}>No sessions scheduled for today.</p></Card>
+          <Card><p style={{ color: B.muted, margin: 0, fontSize: 16 }}>No sessions scheduled today. Enjoy the breather!</p></Card>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 100%), 1fr))", gap: 16 }}>
             {todaySessions.map(cls => {
@@ -494,6 +494,7 @@ export default function CoachingDashboard() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16 }}>
           {[
             { label: "Check In Client", icon: "&#10003;", route: "/checkin", color: B.green },
+            { label: "Add Client", icon: "&#43;", route: "/members", color: B.accent },
             { label: "Open Session View", icon: "&#9654;", route: "/command", color: B.blue || B.accent },
             { label: "New Assessment", icon: "&#9881;", route: "/assessments", color: B.purple },
             { label: "Send Message", icon: "&#9993;", route: "/messages", color: B.orange },
@@ -517,7 +518,7 @@ export default function CoachingDashboard() {
         <Card style={{ padding: 20 }}>
           <h2 style={{ ...sectionTitle, marginBottom: 16 }}>At-Risk Clients</h2>
           {atRiskMembers.length === 0 ? (
-            <p style={{ color: B.muted, margin: 0 }}>All clients are active. No one flagged.</p>
+            <p style={{ color: B.muted, margin: 0 }}>Everyone's been in recently — no at-risk clients right now.</p>
           ) : (
             <>
               {atRiskMembers.slice(0, 5).map(m => {
@@ -577,7 +578,7 @@ export default function CoachingDashboard() {
             </div>
           </div>
           {todayCheckins.length === 0 ? (
-            <p style={{ color: B.muted, margin: 0 }}>No check-ins yet today.</p>
+            <p style={{ color: B.muted, margin: 0 }}>No check-ins yet — they'll appear here as clients arrive.</p>
           ) : (
             <div style={{ maxHeight: 300, overflowY: "auto" }}>
               {todayCheckins.map(a => {
@@ -639,7 +640,7 @@ export default function CoachingDashboard() {
       <div style={{ marginBottom: 28 }}>
         <h2 style={sectionTitle}>Recent Assessments</h2>
         {recentAssessments.length === 0 ? (
-          <Card><p style={{ color: B.muted, margin: 0, fontSize: 16 }}>No assessments recorded yet.</p></Card>
+          <Card><p style={{ color: B.muted, margin: 0, fontSize: 16 }}>No assessments yet. Start one from New Assessment above.</p></Card>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
             {recentAssessments.map((a, idx) => {

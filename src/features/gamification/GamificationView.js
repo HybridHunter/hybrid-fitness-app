@@ -483,14 +483,18 @@ export default function GamificationView() {
 
       {/* Treasure Maps */}
       <div style={s.section}>
-        <div style={{ ...s.sectionTitle, justifyContent: "space-between" }}>
+        <div style={{ ...s.sectionTitle, justifyContent: "space-between", marginBottom: 4 }}>
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>{"🗺️"} Treasure Maps</span>
           <button style={s.tmBtn(B.accent, true)} onClick={() => openMapEditor(null)}>+ New Map</button>
         </div>
+        <div style={{ ...s.subtitle, marginBottom: 16 }}>Turn a series of tasks into a guided quest — clients follow the map and unlock a reward at the finish.</div>
         <div style={s.card}>
           {mapList.length === 0 && (
-            <div style={{ textAlign: "center", padding: 24, color: B.dim, fontSize: 14 }}>
-              No treasure maps yet. Create one to turn a task list into a treasure hunt with a reward at the end.
+            <div style={{ textAlign: "center", padding: 32, color: B.dim, fontSize: 14 }}>
+              <div style={{ fontSize: 40, marginBottom: 10, opacity: 0.6 }}>{"🗺️"}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: B.text, marginBottom: 6 }}>Start your first treasure hunt</div>
+              <div style={{ marginBottom: 16 }}>Chain together workouts, courses, or check-ins into a quest with a reward at the end — a fun way to keep clients moving.</div>
+              <button style={s.tmBtn(B.accent, true)} onClick={() => openMapEditor(null)}>+ Create a Treasure Map</button>
             </div>
           )}
           {mapList.map((map) => {

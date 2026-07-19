@@ -203,22 +203,26 @@ function Section({ title, children, B }) {
 function OverviewTab({ B, members, payments, attendance, membershipEvents, plans }) {
   const isMobile = useIsMobile();
   const tt = ChartTooltip({ B });
-  const activeCount = members.filter(m => !!m.membershipPlanId).length;
-  const revenueData = buildRevenueByMonth(payments);
-  const revenueLast6 = revenueData.slice(6);
-  const signUpsData = buildSignUpsByMonth(membershipEvents);
-  const signUpsLast6 = signUpsData.slice(6);
-  const now = new Date();
-  const thisMonthKey = now.toISOString().slice(0, 7);
-  const monthRevenue = payments.filter(p => p.status === "paid" && p.date && p.date.startsWith(thisMonthKey)).reduce((s, p) => s + (p.amount || 0), 0);
-  const last30 = new Date(now); last30.setDate(last30.getDate() - 30);
-  const last30Attendance = attendance.filter(a => !a.noShow && new Date(a.checkInTime || a.date) >= last30);
-  const avgAttendance = last30Attendance.length > 0 ? (last30Attendance.length / 30).toFixed(1) : "0";
-  const churnData = buildChurnRate(members, membershipEvents);
-  const latestChurn = churnData.length > 0 ? churnData[churnData.length - 1].rate : 0;
-  const monthName = now.toLocaleString("default", { month: "long", year: "numeric" });
-  const hasRevData = revenueLast6.some(d => d.revenue > 0);
-  const hasSignUpData = signUpsLast6.some(d => d.signUps > 0);
+  // Memoize aggregations so they don't recompute on every render (e.g. resize/hover).
+  const { activeCount, revenueLast6, signUpsLast6, monthRevenue, avgAttendance, latestChurn, monthName, hasRevData, hasSignUpData } = useMemo(() => {
+    const activeCount = members.filter(m => !!m.membershipPlanId).length;
+    const revenueData = buildRevenueByMonth(payments);
+    const revenueLast6 = revenueData.slice(6);
+    const signUpsData = buildSignUpsByMonth(membershipEvents);
+    const signUpsLast6 = signUpsData.slice(6);
+    const now = new Date();
+    const thisMonthKey = now.toISOString().slice(0, 7);
+    const monthRevenue = payments.filter(p => p.status === "paid" && p.date && p.date.startsWith(thisMonthKey)).reduce((s, p) => s + (p.amount || 0), 0);
+    const last30 = new Date(now); last30.setDate(last30.getDate() - 30);
+    const last30Attendance = attendance.filter(a => !a.noShow && new Date(a.checkInTime || a.date) >= last30);
+    const avgAttendance = last30Attendance.length > 0 ? (last30Attendance.length / 30).toFixed(1) : "0";
+    const churnData = buildChurnRate(members, membershipEvents);
+    const latestChurn = churnData.length > 0 ? churnData[churnData.length - 1].rate : 0;
+    const monthName = now.toLocaleString("default", { month: "long", year: "numeric" });
+    const hasRevData = revenueLast6.some(d => d.revenue > 0);
+    const hasSignUpData = signUpsLast6.some(d => d.signUps > 0);
+    return { activeCount, revenueLast6, signUpsLast6, monthRevenue, avgAttendance, latestChurn, monthName, hasRevData, hasSignUpData };
+  }, [members, payments, attendance, membershipEvents]);
   return (
     <>
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28 }}>
@@ -275,9 +279,9 @@ function RevenueTab({ B, payments, members, plans }) {
   const tt = ChartTooltip({ B });
   const thStyle = { padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: B.muted, textTransform: "uppercase", letterSpacing: 0.6, borderBottom: "1px solid " + B.border };
   const tdStyle = { padding: "10px 14px", fontSize: 13, color: B.text, borderBottom: "1px solid " + B.border };
-  const revenueByMonth = buildRevenueByMonth(payments);
-  const revenueByPlan = buildRevenueByPlan(payments, plans);
-  const topRevenueMembers = buildTopRevenueMembers(payments, members, plans);
+  const revenueByMonth = useMemo(() => buildRevenueByMonth(payments), [payments]);
+  const revenueByPlan = useMemo(() => buildRevenueByPlan(payments, plans), [payments, plans]);
+  const topRevenueMembers = useMemo(() => buildTopRevenueMembers(payments, members, plans), [payments, members, plans]);
   const hasRevData = revenueByMonth.some(d => d.revenue > 0);
   const hasPlanData = revenueByPlan.length > 0 && revenueByPlan.some(d => d.value > 0);
   return (
@@ -365,10 +369,10 @@ function RevenueTab({ B, payments, members, plans }) {
 function MembersTab({ B, members, membershipEvents }) {
   const isMobile = useIsMobile();
   const tt = ChartTooltip({ B });
-  const memberGrowth = buildMemberGrowth(members);
-  const signUpsCancellations = buildSignUpsCancellations(membershipEvents);
-  const memberStatusDist = buildMemberStatusDist(members);
-  const churnRate = buildChurnRate(members, membershipEvents);
+  const memberGrowth = useMemo(() => buildMemberGrowth(members), [members]);
+  const signUpsCancellations = useMemo(() => buildSignUpsCancellations(membershipEvents), [membershipEvents]);
+  const memberStatusDist = useMemo(() => buildMemberStatusDist(members), [members]);
+  const churnRate = useMemo(() => buildChurnRate(members, membershipEvents), [members, membershipEvents]);
   const hasGrowthData = memberGrowth.some(d => d.total > 0);
   const hasSUCData = signUpsCancellations.some(d => d.signUps > 0 || d.cancellations > 0);
   const hasStatusData = memberStatusDist.some(d => d.value > 0);
@@ -457,10 +461,10 @@ function MembersTab({ B, members, membershipEvents }) {
 function AttendanceTab({ B, attendance }) {
   const isMobile = useIsMobile();
   const tt = ChartTooltip({ B });
-  const attendanceByDay = buildAttendanceByDay(attendance);
-  const checkInsPerMonth = buildCheckInsPerMonth(attendance);
-  const heatData = buildHeatData(attendance);
-  const maxVal = Math.max(...heatData.flat(), 1);
+  const attendanceByDay = useMemo(() => buildAttendanceByDay(attendance), [attendance]);
+  const checkInsPerMonth = useMemo(() => buildCheckInsPerMonth(attendance), [attendance]);
+  const heatData = useMemo(() => buildHeatData(attendance), [attendance]);
+  const maxVal = useMemo(() => Math.max(...heatData.flat(), 1), [heatData]);
   const cellColor = (val) => {
     const ratio = val / maxVal;
     if (ratio < 0.15) return B.darker;

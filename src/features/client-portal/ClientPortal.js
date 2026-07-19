@@ -705,7 +705,9 @@ export default function ClientPortal() {
     return (
       <div style={{ padding: "0 16px" }}>
         {/* "What's on your mind?" composer row */}
-        <div onClick={goToPostComposer} style={{
+        <div onClick={goToPostComposer} data-press role="button" tabIndex={0} aria-label="Create a post"
+          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goToPostComposer(); } }}
+          style={{
           display: "flex", alignItems: "center", gap: 10, padding: "10px 0 12px",
           borderBottom: `1px solid ${B.border}`, marginBottom: 10, cursor: "pointer",
         }}>
@@ -729,6 +731,8 @@ export default function ClientPortal() {
         {unseenReports.length > 0 && (
           <div
             onClick={() => openReport(unseenReports[0])}
+            data-press role="button" tabIndex={0} aria-label="Open your new progress report"
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openReport(unseenReports[0]); } }}
             style={{
               margin: "16px 0 4px", padding: "16px 18px", borderRadius: 16, cursor: "pointer",
               background: `linear-gradient(135deg, ${B.accent}, ${B.accent}bb)`,
@@ -901,7 +905,7 @@ export default function ClientPortal() {
               {visibleTasks.length > 0 && (
                 <span style={{
                   minWidth: 22, height: 22, borderRadius: 11, padding: "0 6px", boxSizing: "border-box",
-                  background: "#ef4444", color: "#fff", fontSize: 12, fontWeight: 800,
+                  background: B.red, color: "#fff", fontSize: 12, fontWeight: 800,
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                 }}>{visibleTasks.length}</span>
               )}
@@ -934,8 +938,8 @@ export default function ClientPortal() {
                     </div>
                     {t.dueDate && (
                       <span style={{
-                        ...pillBadge(overdue ? "#ef444422" : B.darker, overdue ? "#ef4444" : B.muted),
-                        fontSize: 10, alignSelf: "flex-start", flexShrink: 0, border: `1px solid ${overdue ? "#ef444450" : B.border}`,
+                        ...pillBadge(overdue ? B.red + "22" : B.darker, overdue ? B.red : B.muted),
+                        fontSize: 10, alignSelf: "flex-start", flexShrink: 0, border: `1px solid ${overdue ? B.red + "50" : B.border}`,
                       }}>{overdue ? "Overdue · " : "Due "}{fmtDateShort(t.dueDate + "T00:00:00")}</span>
                     )}
                   </div>
@@ -1393,6 +1397,7 @@ export default function ClientPortal() {
                             <img
                               src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
                               alt=""
+                              loading="lazy"
                               style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.85 }}
                             />
                             <div style={{
@@ -2472,7 +2477,7 @@ export default function ClientPortal() {
                   const isMe = row.memberId === myId;
                   return (
                     <div key={row.memberId} style={{
-                      display: "flex", alignItems: "center", gap: 10, padding: "8px 0",
+                      display: "flex", alignItems: "center", gap: 10,
                       borderBottom: i < leaderboard.length - 1 ? `1px solid ${B.border}20` : "none",
                       background: isMe ? B.accent + "08" : "transparent",
                       borderRadius: isMe ? 8 : 0, padding: isMe ? "8px 8px" : "8px 0",
@@ -2790,7 +2795,7 @@ export default function ClientPortal() {
             style={{ position: "relative", width: 88, margin: "0 auto 16px", cursor: "pointer" }}
           >
             {member.photo ? (
-              <img src={member.photo} alt="" style={{
+              <img src={member.photo} alt={`${firstName}'s profile photo`} loading="lazy" style={{
                 width: 88, height: 88, borderRadius: 28, objectFit: "cover",
                 display: "block", boxShadow: `0 8px 24px ${B.accent}33`,
               }} />
@@ -3380,6 +3385,7 @@ export default function ClientPortal() {
                     <img
                       src={currentEx.g}
                       alt={currentEx.n}
+                      loading="lazy"
                       style={{ width: "100%", display: "block", borderRadius: 12 }}
                     />
                   </div>
@@ -3395,6 +3401,7 @@ export default function ClientPortal() {
                     <img
                       src={getYTThumb(currentEx.u)}
                       alt={currentEx.n}
+                      loading="lazy"
                       style={{ width: "100%", height: "100%", objectFit: "cover" }}
                     />
                     <div style={{
@@ -3751,11 +3758,40 @@ export default function ClientPortal() {
   };
 
   if (memberLoading) {
+    const skelBar = (w, h = 14) => ({
+      width: w, height: h, borderRadius: 7, background: B.border,
+      animation: "cpPulse 1.2s ease-in-out infinite",
+    });
     return (
-      <div style={{ ...shell, display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-        <div style={{ textAlign: "center", padding: 40 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>{"\uD83C\uDFCB\uFE0F"}</div>
-          <h2 style={{ color: B.text, fontSize: 20, margin: "0 0 8px" }}>Loading your profile...</h2>
+      <div className="cp-portal" style={shell}>
+        <style>{`@keyframes cpSpin{to{transform:rotate(360deg)}}@keyframes cpPulse{0%,100%{opacity:.5}50%{opacity:1}}`}</style>
+        {/* Header placeholder */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${B.border}55` }}>
+          <div style={{ ...skelBar(120, 22) }} />
+          <div style={{ width: 40, height: 40, borderRadius: 20, background: B.border, animation: "cpPulse 1.2s ease-in-out infinite" }} />
+        </div>
+        <div style={{ padding: 16 }}>
+          {/* Hero card skeleton */}
+          <div style={{ ...cardStyle, padding: "22px 18px" }}>
+            <div style={skelBar(160, 24)} />
+            <div style={{ ...skelBar(100), marginTop: 10 }} />
+            <div style={{ ...skelBar("100%", 8), marginTop: 18 }} />
+          </div>
+          {/* Card skeletons */}
+          {[0, 1].map(i => (
+            <div key={i} style={{ ...cardStyle }}>
+              <div style={skelBar("70%")} />
+              <div style={{ ...skelBar("45%"), marginTop: 8 }} />
+            </div>
+          ))}
+          <div style={{ textAlign: "center", marginTop: 28, color: B.muted }}>
+            <div style={{
+              width: 30, height: 30, margin: "0 auto 12px", borderRadius: "50%",
+              border: `3px solid ${B.border}`, borderTopColor: B.accent,
+              animation: "cpSpin 0.8s linear infinite",
+            }} />
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Loading your gym\u2026</div>
+          </div>
         </div>
       </div>
     );
@@ -3799,7 +3835,7 @@ export default function ClientPortal() {
   }
 
   return (
-    <div style={shell}>
+    <div className="cp-portal" style={shell}>
       {/* Remote Workout Full-Screen Mode */}
       {remoteWorkoutMode && renderRemoteWorkoutMode()}
 
@@ -3920,7 +3956,7 @@ export default function ClientPortal() {
                       display: "block", position: "relative", borderRadius: 12, overflow: "hidden",
                       marginBottom: 16, background: "#000", textDecoration: "none",
                     }}>
-                      <img src={getYTThumb(activeLesson.videoUrl)} alt={activeLesson.title} style={{ width: "100%", display: "block", opacity: 0.85 }} />
+                      <img src={getYTThumb(activeLesson.videoUrl)} alt={activeLesson.title} loading="lazy" style={{ width: "100%", display: "block", opacity: 0.85 }} />
                       <div style={{
                         position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
                       }}>
@@ -4053,13 +4089,13 @@ export default function ClientPortal() {
             {newPostImage && (
               <div style={{ position: "relative", marginTop: 8 }}>
                 <img src={newPostImage} alt="" style={{ width: "100%", maxHeight: 300, objectFit: "cover", borderRadius: 12 }} />
-                <button onClick={() => setNewPostImage(null)} style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer" }}>✕</button>
+                <button onClick={() => setNewPostImage(null)} aria-label="Remove photo" style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer" }}>✕</button>
               </div>
             )}
             {newPostVideo && (
               <div style={{ position: "relative", marginTop: 8 }}>
-                <video src={newPostVideo} controls playsInline style={{ width: "100%", maxHeight: 300, borderRadius: 12, background: "#000" }} />
-                <button onClick={() => setNewPostVideo(null)} style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer", zIndex: 2 }}>✕</button>
+                <video src={newPostVideo} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 300, borderRadius: 12, background: "#000" }} />
+                <button onClick={() => setNewPostVideo(null)} aria-label="Remove video" style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer", zIndex: 2 }}>✕</button>
               </div>
             )}
           </div>
@@ -4328,21 +4364,27 @@ export default function ClientPortal() {
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               {unseenReports.length > 0 && (
-                <div onClick={() => openReport(unseenReports[0])} style={{
+                <div onClick={() => openReport(unseenReports[0])} role="button" tabIndex={0} data-press
+                  aria-label={`${unseenReports.length} new progress report${unseenReports.length === 1 ? "" : "s"}`}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openReport(unseenReports[0]); } }}
+                  style={{
                   width: 40, height: 40, borderRadius: 20, background: B.card, border: `1px solid ${B.border}`,
                   display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", position: "relative",
                 }}>
                   {"🔔"}
-                  <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unseenReports.length}</div>
+                  <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: B.red, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unseenReports.length}</div>
                 </div>
               )}
-              <div onClick={openCoachChat} style={{
+              <div onClick={openCoachChat} role="button" tabIndex={0} data-press
+                aria-label={unreadMsgCount > 0 ? `Messages, ${unreadMsgCount} unread` : "Messages"}
+                onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openCoachChat(); } }}
+                style={{
                 width: 40, height: 40, borderRadius: 20, background: B.card, border: `1px solid ${B.border}`,
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, cursor: "pointer", position: "relative",
               }}>
                 {"💬"}
                 {unreadMsgCount > 0 && (
-                  <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: "#ef4444", color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadMsgCount}</div>
+                  <div style={{ position: "absolute", top: -3, right: -3, width: 18, height: 18, borderRadius: 9, background: B.red, color: "#fff", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadMsgCount}</div>
                 )}
               </div>
             </div>
@@ -4363,6 +4405,8 @@ export default function ClientPortal() {
             <button
               key={tab.key}
               onClick={() => switchTab(tab.key)}
+              aria-label={tab.label}
+              aria-current={isActive ? "page" : undefined}
               style={{
                 flex: 1, display: "flex", flexDirection: "column",
                 alignItems: "center", justifyContent: "center", gap: 1,
@@ -4405,7 +4449,7 @@ export default function ClientPortal() {
                 <div style={{
                   position: "absolute", top: 2, right: "calc(50% - 18px)",
                   width: 16, height: 16, borderRadius: 8,
-                  background: "#ef4444", color: "#fff",
+                  background: B.red, color: "#fff",
                   fontSize: 9, fontWeight: 800,
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
@@ -4418,7 +4462,7 @@ export default function ClientPortal() {
                 <div style={{
                   position: "absolute", top: 2, right: "calc(50% - 18px)",
                   width: 16, height: 16, borderRadius: 8,
-                  background: "#ef4444", color: "#fff",
+                  background: B.red, color: "#fff",
                   fontSize: 9, fontWeight: 800,
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
@@ -4448,6 +4492,7 @@ export default function ClientPortal() {
               <h3 style={{ fontSize: 17, fontWeight: 700, color: "#fff", margin: 0 }}>{videoModal.name}</h3>
               <button
                 onClick={() => setVideoModal(null)}
+                aria-label="Close video"
                 style={{
                   width: 36, height: 36, borderRadius: 18, border: "none",
                   background: "rgba(255,255,255,0.15)", color: "#fff",
@@ -4492,11 +4537,27 @@ export default function ClientPortal() {
       {/* Edit Profile Modal */}
       <EditProfileModal isOpen={editProfileOpen} onClose={() => setEditProfileOpen(false)} />
 
-      {/* Inline keyframes for toast animation */}
+      {/* Inline keyframes + interaction polish */}
       <style>{`
         @keyframes slideDown {
           from { opacity: 0; transform: translateX(-50%) translateY(-20px); }
           to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+        @keyframes cpSpin { to { transform: rotate(360deg); } }
+        @keyframes cpPulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+        /* Subtle press feedback on tappable controls */
+        .cp-portal button:active:not(:disabled),
+        .cp-portal [data-press]:active {
+          transform: scale(0.97);
+        }
+        .cp-portal button, .cp-portal [data-press] {
+          -webkit-tap-highlight-color: transparent;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cp-portal *, .cp-portal *::before, .cp-portal *::after {
+            animation-duration: 0.001ms !important;
+            transition-duration: 0.001ms !important;
+          }
         }
       `}</style>
     </div>

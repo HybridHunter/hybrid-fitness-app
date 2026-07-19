@@ -46,6 +46,10 @@ let pollerStarted = false;
 async function runPoll() {
   try {
     if (pollRegistry.size === 0) return;
+    // Skip network while the tab is backgrounded — saves cost + battery.
+    // The visibilitychange listener re-runs a fresh poll the moment we're
+    // visible again, so no data goes stale while hidden.
+    if (typeof document !== "undefined" && document.hidden) return;
     const gymId = getGymId();
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/data_store?select=key,value&gym_id=eq.${encodeURIComponent(gymId)}`,

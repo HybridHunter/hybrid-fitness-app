@@ -485,7 +485,7 @@ export default function BillingView() {
   const filteredPayments = useMemo(() => {
     if (paymentFilter === "all") return payments;
     if (paymentFilter === "cash") return payments.filter(p => p.method === "Cash");
-    if (paymentFilter === "check") return payments.filter(p => p.method.startsWith("Check"));
+    if (paymentFilter === "check") return payments.filter(p => (p.method || "").startsWith("Check"));
     return payments.filter(p => p.status === paymentFilter);
   }, [payments, paymentFilter]);
 
@@ -870,7 +870,7 @@ export default function BillingView() {
                   })}
                   {members.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ ...tdStyle, textAlign: "center", padding: 32, color: B.dim }}>No members found. Add members to start billing.</td>
+                      <td colSpan={7} style={{ ...tdStyle, textAlign: "center", padding: 32, color: B.dim }}>No clients yet. Add clients to start billing.</td>
                     </tr>
                   )}
                 </tbody>
@@ -887,6 +887,14 @@ export default function BillingView() {
             <h2 style={sectionTitle}>Membership Plans</h2>
             <button onClick={() => { setEditPlan(null); setShowPlanModal(true); }} style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>+ New Plan</button>
           </div>
+          {plans.length === 0 && (
+            <Card style={{ padding: 40, textAlign: "center" }}>
+              <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>{"💳"}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: B.text, marginBottom: 6 }}>No membership plans yet</div>
+              <div style={{ fontSize: 13, color: B.dim, marginBottom: 16 }}>Create your first plan so clients can be billed and assigned memberships.</div>
+              <button onClick={() => { setEditPlan(null); setShowPlanModal(true); }} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>+ New Plan</button>
+            </Card>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 14 }}>
             {plans.map(p => {
               const memberCount = planMemberCounts[p.id] || 0;

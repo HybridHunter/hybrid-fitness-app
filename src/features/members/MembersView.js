@@ -229,8 +229,8 @@ export default function MembersView() {
     return dates;
   }, [attendance]);
 
-  // filtering + sorting
-  const filtered = members.filter((m) => {
+  // filtering + sorting (memoized — avoids re-running the full filter/sort on every render)
+  const filtered = useMemo(() => members.filter((m) => {
     const q = search.toLowerCase();
     const matchesSearch = !q ||
       `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) ||
@@ -284,7 +284,7 @@ export default function MembersView() {
       }
       default: return 0;
     }
-  });
+  }), [members, search, statusFilter, sortBy, filters, plans, lastAttendanceDate, attendanceCounts]);
 
   const openAdd = () => { setEditId(null); setForm(emptyForm()); setModalOpen(true); };
   const openEdit = (m) => {
@@ -761,7 +761,21 @@ export default function MembersView() {
 
       {/* Member Cards */}
       {filtered.length === 0 ? (
-        <div style={s.empty}>No clients match your filters.</div>
+        members.length === 0 ? (
+          <div style={s.empty}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: B.text, marginBottom: 6 }}>No clients yet</div>
+            <div style={{ marginBottom: 16 }}>Add your first client to start tracking check-ins, plans, and progress.</div>
+            <button style={s.addBtn} onClick={openAdd}>+ Add Client</button>
+          </div>
+        ) : (
+          <div style={s.empty}>
+            <div style={{ marginBottom: 12 }}>No clients match your search or filters.</div>
+            <button
+              onClick={() => { setSearch(""); setStatusFilter("All"); setFilters({ plan: "", birthMonth: "", gender: "", ageMin: "", ageMax: "", joinedAfter: "", joinedBefore: "", absentDays: "", minAttendance: "", maxAttendance: "" }); }}
+              style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.accent, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >Clear filters</button>
+          </div>
+        )
       ) : (
         <div style={s.grid}>
           {filtered.map((m) => {

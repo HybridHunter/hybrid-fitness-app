@@ -376,7 +376,7 @@ export default function CheckInView() {
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 13, fontWeight: 700, color: B.accent
                   }}>
-                    {m ? m.firstName[0] + m.lastName[0] : "??"}
+                    {m ? ((m.firstName?.[0] || "") + (m.lastName?.[0] || "")).toUpperCase() || "??" : "??"}
                   </div>
                   <div>
                     <span style={{ fontSize: 14, fontWeight: 600, color: B.text }}>

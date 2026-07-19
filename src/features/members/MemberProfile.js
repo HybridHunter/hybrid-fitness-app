@@ -343,6 +343,12 @@ export default function MemberProfile() {
         }} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: B.accent, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
           {"\uD83D\uDCE9"} Message
         </button>
+        <button onClick={() => setTab("Tasks")} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+          {"\u2705"} Assign Task
+        </button>
+        <button onClick={() => setTab("Progress Reports")} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+          {"\uD83D\uDCC4"} New Report
+        </button>
         <button onClick={handleSendCredentials} disabled={sendingCreds}
           style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid " + B.border, background: "transparent", color: B.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: sendingCreds ? 0.6 : 1 }}>
           {sendingCreds ? "Sending..." : "Send Credentials"}

@@ -48,29 +48,33 @@ export default function Shell({ theme, onToggleTheme, children, style }) {
       />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden", position: "relative" }}>
-        {/* Mobile backdrop */}
-        {isMobile && sidebarOpen && (
+        {/* Mobile backdrop — kept mounted so it can fade in/out smoothly */}
+        {isMobile && (
           <div
             onClick={closeSidebar}
+            aria-hidden={!sidebarOpen}
             style={{
               position: "fixed",
               inset: 0,
               background: "rgba(0,0,0,0.5)",
               zIndex: 998,
+              opacity: sidebarOpen ? 1 : 0,
+              pointerEvents: sidebarOpen ? "auto" : "none",
+              transition: "opacity 0.25s ease",
             }}
           />
         )}
 
-        {/* Sidebar: inline on desktop, overlay on mobile */}
-        {(sidebarOpen || !isMobile) && (
-          <Sidebar
-            collapsed={!sidebarOpen && !isMobile}
-            mobile={isMobile}
-            open={sidebarOpen}
-            onToggle={toggleSidebar}
-            onClose={closeSidebar}
-          />
-        )}
+        {/* Sidebar: inline on desktop, overlay on mobile.
+            Always mounted so the mobile drawer slides via transform and its
+            close animation actually plays (unmounting would snap it away). */}
+        <Sidebar
+          collapsed={!sidebarOpen && !isMobile}
+          mobile={isMobile}
+          open={sidebarOpen}
+          onToggle={toggleSidebar}
+          onClose={closeSidebar}
+        />
 
         <main
           style={{

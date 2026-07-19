@@ -351,6 +351,18 @@ export default function ScheduleView() {
         </div>
       </Card>
 
+      {/* Empty state — no sessions on the schedule yet */}
+      {classes.length === 0 && (
+        <Card style={{marginBottom:16,padding:28,textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:10,opacity:0.5}}>{"🗓️"}</div>
+          <div style={{fontSize:16,fontWeight:700,color:B.text,marginBottom:6}}>No sessions on the schedule yet</div>
+          <div style={{fontSize:13,color:B.dim,marginBottom:16}}>Add your first session, then tap any session on the calendar to book members and manage waitlists.</div>
+          <button onClick={()=>{setForm({...EMPTY_FORM});setShowNewModal(true)}} style={btn({background:B.accent,color:B.darker,fontSize:14,padding:"10px 20px"})}>
+            + New Session
+          </button>
+        </Card>
+      )}
+
       {/* Calendar Grid — horizontally scrollable on small screens */}
       <Card style={{padding:0,overflow:"hidden"}}>
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>

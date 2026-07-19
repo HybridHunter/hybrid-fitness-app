@@ -1,8 +1,39 @@
-* { box-sizing: border-box; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; overflow-x: hidden; width: 100%; -webkit-text-size-adjust: 100%; }
-html { touch-action: pan-x pan-y; }
+html { touch-action: pan-x pan-y; scroll-behavior: smooth; }
 body { touch-action: pan-y; overscroll-behavior-x: none; }
 input, textarea, select { font-size: 16px; } /* prevents iOS auto-zoom on focus */
+
+/* Respect users who prefer reduced motion — kill smooth scroll + long anims */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Reusable motion utilities ─────────────────────────────────────
+   Shared shimmer skeleton + fade-in so components animate consistently
+   without each shipping its own <style> block. */
+@keyframes hfShimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.hf-skeleton {
+  background: linear-gradient(90deg, rgba(128,128,128,0.10) 25%, rgba(128,128,128,0.22) 37%, rgba(128,128,128,0.10) 63%);
+  background-size: 800px 100%;
+  animation: hfShimmer 1.4s ease-in-out infinite;
+  border-radius: 8px;
+}
+@keyframes hfFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hf-fade-in {
+  animation: hfFadeIn 0.22s ease-out both;
+}
 
 /* Responsive utilities */
 @media (max-width: 768px) {
