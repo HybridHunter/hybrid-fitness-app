@@ -1664,6 +1664,8 @@ export default function CommunityFeed() {
   const [composeCategory, setComposeCategory] = useState("General");
   const [composeMediaType, setComposeMediaType] = useState(null);
   const [composeMediaUrl, setComposeMediaUrl] = useState("");
+  const [composeTags, setComposeTags] = useState([]); // [{id, name}]
+  const [showTagPicker, setShowTagPicker] = useState(false);
   const [composePollOptions, setComposePollOptions] = useState(["", ""]);
   const [expandedComments, setExpandedComments] = useState({});
   const [commentInputs, setCommentInputs] = useState({});
@@ -1802,9 +1804,12 @@ export default function CommunityFeed() {
       likes: [],
       comments: [],
       pinned: false,
+      tagged: composeTags,
       createdAt: new Date().toISOString(),
     };
     setPosts((prev) => [newPost, ...prev]);
+    setComposeTags([]);
+    setShowTagPicker(false);
     setComposeText("");
     setComposeCategory("General");
     setComposeMediaType(null);
@@ -2045,13 +2050,32 @@ export default function CommunityFeed() {
 
               {/* Media type inputs */}
               {composeMediaType === "video" && (
-                <input value={composeMediaUrl} onChange={(e) => setComposeMediaUrl(e.target.value)}
-                  placeholder="Paste YouTube URL..."
-                  style={{
-                    width: "100%", background: B.dark, border: `1px solid ${B.border}`, borderRadius: 8,
-                    padding: "8px 12px", color: B.text, fontSize: 13, marginBottom: 8, outline: "none",
-                    boxSizing: "border-box"
-                  }}/>
+                <div style={{ marginBottom: 8 }}>
+                  <input value={composeMediaUrl.startsWith("data:") ? "" : composeMediaUrl} onChange={(e) => setComposeMediaUrl(e.target.value)}
+                    placeholder="Paste YouTube URL..."
+                    style={{
+                      width: "100%", background: B.dark, border: `1px solid ${B.border}`, borderRadius: 8,
+                      padding: "8px 12px", color: B.text, fontSize: 13, marginBottom: 6, outline: "none",
+                      boxSizing: "border-box"
+                    }}/>
+                  <label style={{
+                    display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer",
+                    background: B.accent + "15", color: B.accent, border: `1px dashed ${B.accent}40`,
+                    borderRadius: 8, padding: "7px 12px", fontSize: 12, fontWeight: 600,
+                  }}>
+                    {composeMediaUrl.startsWith("data:") ? "✓ Video attached — tap to replace" : "📤 or upload a video (max 8MB)"}
+                    <input type="file" accept="video/*" style={{ display: "none" }} onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f) return;
+                      if (f.size > 8 * 1024 * 1024) { alert("Video too large — keep it under 8MB."); return; }
+                      const reader = new FileReader();
+                      reader.onload = () => setComposeMediaUrl(reader.result);
+                      reader.onerror = () => alert("Could not read that video.");
+                      reader.readAsDataURL(f);
+                    }} />
+                  </label>
+                </div>
               )}
               {composeMediaType === "image" && (
                 <div style={{ marginBottom: 8 }}>
@@ -2086,6 +2110,33 @@ export default function CommunityFeed() {
                 </div>
               )}
 
+              {/* Tag picker */}
+              {showTagPicker && (
+                <div style={{ margin: "8px 0", maxHeight: 180, overflowY: "auto", border: `1px solid ${B.border}`, borderRadius: 10 }}>
+                  {members.filter(m => (m.membershipStatus || "active") !== "inactive").map(m => {
+                    const tagged = composeTags.some(t => t.id === m.id);
+                    return (
+                      <div key={m.id}
+                        onClick={() => setComposeTags(prev => tagged ? prev.filter(t => t.id !== m.id) : [...prev, { id: m.id, name: `${m.firstName} ${m.lastName || ""}`.trim() }])}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", cursor: "pointer", borderBottom: `1px solid ${B.border}40`, background: tagged ? B.accent + "12" : "transparent" }}>
+                        <div style={{ width: 24, height: 24, borderRadius: 12, background: m.photo ? `url(${m.photo}) center/cover` : B.accent + "26", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: B.accent }}>
+                          {!m.photo && (m.firstName || "?").slice(0, 1)}
+                        </div>
+                        <span style={{ fontSize: 13, color: B.text, flex: 1 }}>{m.firstName} {m.lastName}</span>
+                        {tagged && <span style={{ color: B.accent, fontWeight: 800 }}>✓</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {composeTags.length > 0 && (
+                <div style={{ margin: "4px 0 8px", fontSize: 12, color: B.muted }}>
+                  with {composeTags.map(t => (
+                    <span key={t.id} onClick={() => setComposeTags(prev => prev.filter(x => x.id !== t.id))} style={{ color: B.accent, fontWeight: 700, cursor: "pointer", marginRight: 6 }}>@{t.name} ✕</span>
+                  ))}
+                </div>
+              )}
+
               {/* Toolbar */}
               <div style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -2107,6 +2158,10 @@ export default function CommunityFeed() {
                   </button>
                   <button style={{ ...toolbarBtn, opacity: 0.4, cursor: "default" }}>
                     <span style={{ fontSize: 16 }}>GIF</span>
+                  </button>
+                  <button onClick={() => setShowTagPicker(v => !v)}
+                    style={{ ...toolbarBtn, background: showTagPicker || composeTags.length ? `${B.accent}18` : "transparent", color: showTagPicker || composeTags.length ? B.accent : B.muted }}>
+                    <span style={{ fontSize: 15 }}>{"🏷️"}</span> Tag{composeTags.length ? ` (${composeTags.length})` : ""}
                   </button>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -2269,6 +2324,17 @@ export default function CommunityFeed() {
                   )}
                 </div>
 
+                {/* Media: uploaded video (data URL) */}
+                {post.mediaType === "video" && !ytId && (post.mediaUrl || "").startsWith("data:") && (
+                  <video src={post.mediaUrl} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 360, borderRadius: 10, marginBottom: 10, background: "#000" }} />
+                )}
+                {(post.tagged || []).length > 0 && (
+                  <div style={{ fontSize: 12, color: B.muted, marginBottom: 8 }}>
+                    with {(post.tagged || []).map((t, i) => (
+                      <span key={t.id || i} style={{ color: B.accent, fontWeight: 700 }}>@{t.name}{i < post.tagged.length - 1 ? ", " : ""}</span>
+                    ))}
+                  </div>
+                )}
                 {/* Media: YouTube */}
                 {post.mediaType === "video" && ytId && (
                   <div style={{

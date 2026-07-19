@@ -202,6 +202,10 @@ export default function ClientPortal() {
   const [checkinText, setCheckinText] = useState("");
   const [checkinProof, setCheckinProof] = useState("");
   const [newPostText, setNewPostText] = useState("");
+  const [newPostImage, setNewPostImage] = useState(null);
+  const [newPostVideo, setNewPostVideo] = useState(null);
+  const [newPostTags, setNewPostTags] = useState([]); // [{id, name}]
+  const [showTagPicker, setShowTagPicker] = useState(false);
   const [showNewPost, setShowNewPost] = useState(false);
   const [expandedPostId, setExpandedPostId] = useState(null);
   const [commentInputs, setCommentInputs] = useState({});
@@ -619,6 +623,46 @@ export default function ClientPortal() {
   };
 
   /* ─────────── DASH TAB (stats + sessions + coach) ─────────── */
+  const renderResources = () => {
+      const resList = resources || [];
+      return (
+        <div>
+          {resList.length === 0 && (
+            <div style={{ ...cardStyle, textAlign: "center", padding: "32px 20px" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>&#x1F4DA;</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: B.text }}>No resources yet</div>
+              <div style={{ ...mutedText, marginTop: 4 }}>Your coach will add resources here soon.</div>
+            </div>
+          )}
+          {resList.map(res => (
+            <div
+              key={res.id}
+              style={{ ...cardStyle, cursor: "pointer" }}
+              onClick={() => { if (res.url) window.open(res.url, "_blank"); }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12, background: B.accent + "15",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+                }}>{RESOURCE_ICONS[res.type] || "\uD83D\uDD17"}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{res.title}</div>
+                  {res.description && (
+                    <div style={{ fontSize: 12, color: B.muted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {res.description}
+                    </div>
+                  )}
+                </div>
+                {res.category && (
+                  <span style={{ ...pillBadge(B.accent + "15", B.accent), fontSize: 10, flexShrink: 0 }}>{res.category}</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    };
+
   const renderDash = () => {
     const gam = member.gamification || {};
     const today = todayISO();
@@ -950,6 +994,14 @@ export default function ClientPortal() {
           </div>
           <span style={{ color: B.accent, fontSize: 18 }}>{"\u203A"}</span>
         </div>
+
+        {/* Resources (moved here from Community) */}
+        {(resources || []).length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 800, color: B.text, margin: "16px 0 10px" }}>{"\ud83d\udcda"} Resources</h3>
+            {renderResources()}
+          </div>
+        )}
 
         <div style={{ height: 20 }} />
       </div>
@@ -1676,7 +1728,7 @@ export default function ClientPortal() {
 
       const handleCreatePost = () => {
         const text = newPostText.trim();
-        if (!text) return;
+        if (!text && !newPostImage && !newPostVideo) return;
         const post = {
           id: crypto.randomUUID(),
           authorId: myId,
@@ -1686,12 +1738,31 @@ export default function ClientPortal() {
           createdAt: new Date().toISOString(),
           likes: [],
           comments: [],
+          mediaType: newPostVideo ? "video" : newPostImage ? "image" : null,
+          mediaUrl: newPostVideo || newPostImage || "",
+          tagged: newPostTags, // [{id, name}]
         };
         setCommunityPosts(prev => [post, ...prev]);
         // Auto-complete the oldest pending community_post task for this member
         completeOldestCommunityTask();
         setNewPostText("");
+        setNewPostImage(null); setNewPostVideo(null); setNewPostTags([]); setShowTagPicker(false);
         setShowNewPost(false);
+      };
+
+      const handlePostMedia = async (e) => {
+        const f = e.target.files?.[0];
+        e.target.value = "";
+        if (!f) return;
+        if (f.type.startsWith("video/")) {
+          if (f.size > 8 * 1024 * 1024) { alert("Video too large — keep it under 8MB (about 20-30 seconds)."); return; }
+          const reader = new FileReader();
+          reader.onload = () => { setNewPostVideo(reader.result); setNewPostImage(null); };
+          reader.onerror = () => alert("Could not read that video.");
+          reader.readAsDataURL(f);
+          return;
+        }
+        try { setNewPostImage(await resizeImage(f, 900)); setNewPostVideo(null); } catch { alert("Could not read that image."); }
       };
 
       return (
@@ -1720,11 +1791,60 @@ export default function ClientPortal() {
                   outline: "none", boxSizing: "border-box", fontFamily: "inherit",
                 }}
               />
-              <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
-                <button onClick={() => { setShowNewPost(false); setNewPostText(""); }} style={touchBtn(B.card, B.muted, { fontSize: 13, minHeight: 36, padding: "6px 16px", border: `1px solid ${B.border}` })}>
+              {/* Media preview */}
+              {newPostImage && (
+                <div style={{ position: "relative", marginTop: 10 }}>
+                  <img src={newPostImage} alt="" style={{ width: "100%", maxHeight: 220, objectFit: "cover", borderRadius: 10 }} />
+                  <button onClick={() => setNewPostImage(null)} style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer" }}>✕</button>
+                </div>
+              )}
+              {newPostVideo && (
+                <div style={{ position: "relative", marginTop: 10 }}>
+                  <video src={newPostVideo} controls playsInline style={{ width: "100%", maxHeight: 240, borderRadius: 10, background: "#000" }} />
+                  <button onClick={() => setNewPostVideo(null)} style={{ position: "absolute", top: 8, right: 8, background: "#000a", border: "none", borderRadius: 12, color: "#fff", fontSize: 12, fontWeight: 800, padding: "4px 10px", cursor: "pointer", zIndex: 2 }}>✕</button>
+                </div>
+              )}
+              {/* Tagged people */}
+              {newPostTags.length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 12, color: B.muted }}>
+                  with{" "}
+                  {newPostTags.map(t => (
+                    <span key={t.id} onClick={() => setNewPostTags(prev => prev.filter(x => x.id !== t.id))} style={{ color: B.accent, fontWeight: 700, cursor: "pointer", marginRight: 6 }}>
+                      @{t.name} ✕
+                    </span>
+                  ))}
+                </div>
+              )}
+              {showTagPicker && (
+                <div style={{ marginTop: 8, maxHeight: 160, overflowY: "auto", border: `1px solid ${B.border}`, borderRadius: 10, background: B.darker }}>
+                  {(members || []).filter(m => m.id !== member.id && (m.membershipStatus || "active") !== "inactive").map(m => {
+                    const tagged = newPostTags.some(t => t.id === m.id);
+                    return (
+                      <div key={m.id} onClick={() => setNewPostTags(prev => tagged ? prev.filter(t => t.id !== m.id) : [...prev, { id: m.id, name: `${m.firstName} ${m.lastName || ""}`.trim() }])}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", cursor: "pointer", borderBottom: `1px solid ${B.border}40`, background: tagged ? B.accent + "14" : "transparent" }}>
+                        <div style={{ width: 24, height: 24, borderRadius: 12, background: m.photo ? `url(${m.photo}) center/cover` : B.accent + "33", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: B.accent }}>
+                          {!m.photo && (m.firstName || "?").slice(0, 1)}
+                        </div>
+                        <span style={{ fontSize: 13, color: B.text, flex: 1 }}>{m.firstName} {m.lastName}</span>
+                        {tagged && <span style={{ color: B.accent, fontWeight: 800 }}>✓</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <label style={{ ...touchBtn(B.card, B.text, { fontSize: 13, minHeight: 36, padding: "6px 12px", border: `1px solid ${B.border}`, cursor: "pointer" }), display: "inline-flex", alignItems: "center" }}>
+                  {"📷"} Photo/Video
+                  <input type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={handlePostMedia} />
+                </label>
+                <button onClick={() => setShowTagPicker(v => !v)} style={touchBtn(B.card, showTagPicker ? B.accent : B.text, { fontSize: 13, minHeight: 36, padding: "6px 12px", border: `1px solid ${showTagPicker ? B.accent : B.border}` })}>
+                  {"🏷️"} Tag
+                </button>
+                <div style={{ flex: 1 }} />
+                <button onClick={() => { setShowNewPost(false); setNewPostText(""); setNewPostImage(null); setNewPostVideo(null); setNewPostTags([]); setShowTagPicker(false); }} style={touchBtn(B.card, B.muted, { fontSize: 13, minHeight: 36, padding: "6px 16px", border: `1px solid ${B.border}` })}>
                   Cancel
                 </button>
-                <button onClick={handleCreatePost} style={touchBtn(B.accent, B.darker, { fontSize: 13, minHeight: 36, padding: "6px 16px", opacity: newPostText.trim() ? 1 : 0.4 })}>
+                <button onClick={handleCreatePost} style={touchBtn(B.accent, B.darker, { fontSize: 13, minHeight: 36, padding: "6px 16px", opacity: (newPostText.trim() || newPostImage || newPostVideo) ? 1 : 0.4 })}>
                   Post
                 </button>
               </div>
@@ -1769,6 +1889,9 @@ export default function ClientPortal() {
                   <img src={post.mediaUrl} alt="" loading="lazy" style={{ width: "100%", maxHeight: 300, objectFit: "cover", borderRadius: 8, marginBottom: 12 }} />
                 )}
                 {post.mediaType === "video" && post.mediaUrl && (() => {
+                  if (post.mediaUrl.startsWith("data:")) return (
+                    <video src={post.mediaUrl} controls playsInline preload="metadata" style={{ width: "100%", maxHeight: 320, borderRadius: 8, marginBottom: 12, background: "#000" }} />
+                  );
                   const ytMatch = post.mediaUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/);
                   if (ytMatch) return (
                     <div style={{ position: "relative", paddingBottom: "56.25%", height: 0, borderRadius: 8, overflow: "hidden", marginBottom: 12 }}>
@@ -1777,6 +1900,13 @@ export default function ClientPortal() {
                   );
                   return null;
                 })()}
+                {(post.tagged || []).length > 0 && (
+                  <div style={{ fontSize: 12, color: B.muted, marginBottom: 10 }}>
+                    with {(post.tagged || []).map((t, i) => (
+                      <span key={t.id || i} style={{ color: B.accent, fontWeight: 700 }}>@{t.name}{i < post.tagged.length - 1 ? ", " : ""}</span>
+                    ))}
+                  </div>
+                )}
 
                 {/* Like + Comment buttons */}
                 <div style={{ display: "flex", alignItems: "center", gap: 16, paddingTop: 8, borderTop: `1px solid ${B.border}30` }}>
@@ -2284,54 +2414,11 @@ export default function ClientPortal() {
     };
 
     /* ── RESOURCES SUB-SECTION ── */
-    const renderResources = () => {
-      const resList = resources || [];
-      return (
-        <div>
-          {resList.length === 0 && (
-            <div style={{ ...cardStyle, textAlign: "center", padding: "32px 20px" }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>&#x1F4DA;</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: B.text }}>No resources yet</div>
-              <div style={{ ...mutedText, marginTop: 4 }}>Your coach will add resources here soon.</div>
-            </div>
-          )}
-          {resList.map(res => (
-            <div
-              key={res.id}
-              style={{ ...cardStyle, cursor: "pointer" }}
-              onClick={() => { if (res.url) window.open(res.url, "_blank"); }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{
-                  width: 40, height: 40, borderRadius: 12, background: B.accent + "15",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
-                }}>{RESOURCE_ICONS[res.type] || "\uD83D\uDD17"}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: B.text }}>{res.title}</div>
-                  {res.description && (
-                    <div style={{ fontSize: 12, color: B.muted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {res.description}
-                    </div>
-                  )}
-                </div>
-                {res.category && (
-                  <span style={{ ...pillBadge(B.accent + "15", B.accent), fontSize: 10, flexShrink: 0 }}>{res.category}</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      );
-    };
-
     return (
       <div style={{ padding: "0 16px" }}>
         <div style={{ textAlign: "center", padding: "6px 0 0", opacity: 0.3 }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: B.muted, margin: "0 auto" }} />
         </div>
-
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Community</h1>
-        <p style={mutedText}>Connect, challenge, and grow together</p>
 
         {/* Sub-tab pills */}
         <div style={{ display: "flex", gap: 8, margin: "16px 0", overflowX: "auto" }}>
@@ -2341,14 +2428,10 @@ export default function ClientPortal() {
           <button onClick={() => { setCommunitySubTab("challenges"); setActiveChallengeId(null); }} style={subTabPill("challenges", "Challenges")}>
             &#x1F3AF; Challenges
           </button>
-          <button onClick={() => { setCommunitySubTab("resources"); setActiveChallengeId(null); }} style={subTabPill("resources", "Resources")}>
-            &#x1F4DA; Resources
-          </button>
         </div>
 
         {communitySubTab === "feed" && renderFeed()}
         {communitySubTab === "challenges" && renderChallenges()}
-        {communitySubTab === "resources" && renderResources()}
 
         <div style={{ height: 20 }} />
       </div>

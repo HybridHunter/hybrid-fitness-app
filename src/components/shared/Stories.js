@@ -4,10 +4,120 @@
  * Stored in hf_stories (whole-blob per gym, like everything else): photos are
  * resized small (480px) and expired stories are pruned on every write.
  */
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { resizeImage } from "./ImageUpload";
+
+/* In-app camera (Meta-style) — live preview + record via MediaRecorder,
+   no native camera app. Falls back gracefully when getUserMedia is denied. */
+function StoryCamera({ onCapture, onClose }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const recorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+  const [facing, setFacing] = useState("user");
+  const [recording, setRecording] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [error, setError] = useState("");
+
+  const startStream = async (face) => {
+    try {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: face, width: { ideal: 720 }, height: { ideal: 1280 } },
+        audio: true,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
+    } catch (e) {
+      setError("Camera unavailable — check permissions, or use the upload button instead.");
+    }
+  };
+
+  useEffect(() => {
+    startStream(facing);
+    return () => {
+      clearInterval(timerRef.current);
+      try { recorderRef.current?.state === "recording" && recorderRef.current.stop(); } catch {}
+      streamRef.current?.getTracks().forEach(t => t.stop());
+    };
+  }, [facing]);
+
+  const startRecording = () => {
+    if (!streamRef.current) return;
+    chunksRef.current = [];
+    let rec;
+    try {
+      rec = new MediaRecorder(streamRef.current, MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? { mimeType: "video/webm;codecs=vp8,opus" } : undefined);
+    } catch { setError("Recording not supported on this browser — use the upload button instead."); return; }
+    recorderRef.current = rec;
+    rec.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+    rec.onstop = () => {
+      clearInterval(timerRef.current);
+      setRecording(false);
+      const blob = new Blob(chunksRef.current, { type: rec.mimeType || "video/webm" });
+      if (blob.size > 8 * 1024 * 1024) { setError("That clip is too big — keep it under ~25 seconds."); return; }
+      const reader = new FileReader();
+      reader.onload = () => onCapture(reader.result);
+      reader.readAsDataURL(blob);
+    };
+    rec.start();
+    setRecording(true);
+    setElapsed(0);
+    timerRef.current = setInterval(() => {
+      setElapsed(prev => {
+        if (prev + 1 >= 25) { try { rec.stop(); } catch {} }
+        return prev + 1;
+      });
+    }, 1000);
+  };
+
+  const stopRecording = () => { try { recorderRef.current?.stop(); } catch {} };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 6000, background: "#000", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px" }}>
+        <button onClick={onClose} style={{ background: "#ffffff22", border: "none", borderRadius: 16, color: "#fff", fontSize: 14, fontWeight: 800, padding: "7px 14px", cursor: "pointer" }}>✕</button>
+        {recording && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#fff", fontWeight: 800, fontSize: 14 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 5, background: "#ef4444", animation: "pulse 1s infinite" }} />
+            0:{String(elapsed).padStart(2, "0")} / 0:25
+          </div>
+        )}
+        <button onClick={() => setFacing(f => (f === "user" ? "environment" : "user"))} style={{ background: "#ffffff22", border: "none", borderRadius: 16, color: "#fff", fontSize: 16, padding: "7px 12px", cursor: "pointer" }}>🔄</button>
+      </div>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 }}>
+        <div style={{ position: "relative", aspectRatio: "9 / 16", height: "100%", maxWidth: "100vw", borderRadius: 12, overflow: "hidden", background: "#111" }}>
+          <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", transform: facing === "user" ? "scaleX(-1)" : "none" }} />
+          {error && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, color: "#fff", fontSize: 14, textAlign: "center", background: "#000c" }}>{error}</div>
+          )}
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "center", padding: "18px 0 30px" }}>
+        <button
+          onClick={recording ? stopRecording : startRecording}
+          style={{
+            width: 74, height: 74, borderRadius: 37, cursor: "pointer",
+            border: "5px solid #fff", background: "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <div style={{
+            width: recording ? 28 : 56, height: recording ? 28 : 56,
+            borderRadius: recording ? 6 : 28, background: "#ef4444",
+            transition: "all 0.2s",
+          }} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TEXT_BGS = [
@@ -39,6 +149,7 @@ export default function StoriesBar({ me }) {
   const [image, setImage] = useState(null);
   const [video, setVideo] = useState(null);
   const [muted, setMuted] = useState(true);
+  const [filming, setFilming] = useState(false);
   const fileRef = useRef(null);
   const advanceTimer = useRef(null);
 
@@ -239,6 +350,14 @@ export default function StoriesBar({ me }) {
         );
       })()}
 
+      {/* ── In-app camera ── */}
+      {filming && (
+        <StoryCamera
+          onCapture={(dataUrl) => { setVideo(dataUrl); setImage(null); setFilming(false); }}
+          onClose={() => setFilming(false)}
+        />
+      )}
+
       {/* ── Composer ── */}
       {composing && (
         <div style={{ position: "fixed", inset: 0, zIndex: 5000, background: "#000000cc", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -282,6 +401,10 @@ export default function StoriesBar({ me }) {
                 background: B.dark, border: `1px solid ${B.border}`, borderRadius: 10, color: B.text,
                 fontSize: 13, fontWeight: 700, padding: "9px 14px", cursor: "pointer",
               }}>📷 Photo / Video</button>
+              <button onClick={() => setFilming(true)} style={{
+                background: B.accent, border: "none", borderRadius: 10, color: "#fff",
+                fontSize: 13, fontWeight: 700, padding: "9px 14px", cursor: "pointer",
+              }}>🎥 Film</button>
               {!image && !video && TEXT_BGS.map(g => (
                 <div key={g} onClick={() => setBg(g)} style={{
                   width: 26, height: 26, borderRadius: 13, background: g, cursor: "pointer",
