@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLocalStorage } from "./useLocalStorage";
 import { localISO, localMonth } from "../utils/dates";
+import { pruneOldDateBookings } from "../utils/bookings";
 
 
 export function useMembers() {
@@ -113,12 +114,22 @@ export function useMembers() {
     if (lastCleared === todayStr) return; // Only run once per day
 
     let cleared = false;
-    const updated = schedule.map(cls => {
+    const countDateEntries = (obj) => Object.keys(obj || {}).length;
+    const updated = schedule.map(orig => {
+      // Prune stale per-date bookings (dates before today). Today's byDate
+      // entries are kept — they expire naturally once the date passes.
+      let cls = orig;
+      const pruned = pruneOldDateBookings(orig, todayStr);
+      if (countDateEntries(pruned.bookingsByDate) !== countDateEntries(orig.bookingsByDate) ||
+          countDateEntries(pruned.waitlistByDate) !== countDateEntries(orig.waitlistByDate)) {
+        cleared = true;
+        cls = pruned;
+      }
       if (cls.dayOfWeek !== todayDow) return cls;
       if (!cls.bookings || cls.bookings.length === 0) return cls;
       const [eh, em] = (cls.endTime || "23:59").split(":").map(Number);
       const endMin = eh * 60 + em;
-      // If session ended today, clear bookings
+      // If session ended today, clear legacy standing bookings
       if (currentMin > endMin + 30) { // 30 min grace after session ends
         cleared = true;
         return { ...cls, bookings: [], waitlist: [] };

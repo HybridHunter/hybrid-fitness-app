@@ -8,6 +8,7 @@ import { useMembershipEvents } from "../../hooks/useMembershipEvents";
 import Card from "../../components/ui/Card";
 import { CoachShiftSubmissions } from "../coaching/PostShiftCheckin";
 import { localISO, localMonth, parseLocalDate } from "../../utils/dates";
+import { getBookingsOn } from "../../utils/bookings";
 
 /* ========== helpers ========== */
 const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -2483,7 +2484,7 @@ export default function BusinessDashboard() {
             </div>
           ) : (
             todayClasses.map((cls, i) => {
-              const booked = cls.bookings?.length ?? 0;
+              const booked = getBookingsOn(cls, localISO()).length;
               const cap = cls.capacity || "--";
               return (
                 <div key={cls.id || i} style={{

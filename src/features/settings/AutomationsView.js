@@ -3,6 +3,8 @@ import { useTheme } from "../../context/ThemeContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useMembers } from "../../hooks/useMembers";
 import { sendEmail, sendSMS, replaceVariables } from "../../utils/messaging";
+import { localISO } from "../../utils/dates";
+import { getBookingsOn } from "../../utils/bookings";
 
 /* ── Default automations ─────────────────────────────────── */
 const DEFAULT_AUTOMATIONS = [
@@ -189,7 +191,8 @@ export default function AutomationsView() {
     } else if (trigger.includes('booked session') || trigger.includes('session booked')) {
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
       const dow = tomorrow.getDay() === 0 ? 6 : tomorrow.getDay() - 1; // app convention: 0 = Monday
-      scheduleArr.filter(c => c.dayOfWeek === dow).forEach(c => (c.bookings || []).forEach(id => { if (!bookingByMember[id]) bookingByMember[id] = c; }));
+      const tomorrowISO = localISO(tomorrow);
+      scheduleArr.filter(c => c.dayOfWeek === dow).forEach(c => getBookingsOn(c, tomorrowISO).forEach(id => { if (!bookingByMember[id]) bookingByMember[id] = c; }));
       eligibleMembers = activeMembers.filter(m => bookingByMember[m.id]);
     } else {
       // Trigger not computable from local data (e.g. "New member joins") — require explicit confirmation

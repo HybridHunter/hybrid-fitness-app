@@ -4,6 +4,7 @@ import { useMembers } from "../../hooks/useMembers";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
 import { localISO } from "../../utils/dates";
+import { getBookingsOn } from "../../utils/bookings";
 
 const DEFAULT_STATIONS = Array.from({ length: 8 }, (_, i) => ({
   id: `station-${i + 1}`,
@@ -46,9 +47,9 @@ export default function StationSetup() {
     [workouts, effectiveWorkoutId]
   );
 
-  // Booked members from selected class
+  // Booked members from selected class (today's roster: standing + date-scoped)
   const bookedMemberIds = useMemo(
-    () => (selectedClass?.bookings || []),
+    () => (selectedClass ? getBookingsOn(selectedClass, localISO()) : []),
     [selectedClass]
   );
 

@@ -335,12 +335,15 @@ export default function MembersView() {
           data.holdStartDate = holdStart;
           data.holdEndDate = holdEnd;
           logEvent(editId, fullName, "freeze", { oldStatus, newStatus, holdStartDate: holdStart, holdEndDate: holdEnd });
-          // Sessions recur by day-of-week (not tied to dates), so remove the member from
-          // all bookings/waitlists for the hold; they can re-book once the hold ends.
+          // Remove the member from all bookings/waitlists for the hold — both the
+          // standing weekly arrays and every date-scoped entry; they can re-book once the hold ends.
+          const stripDates = (obj) => obj && Object.fromEntries(Object.entries(obj).map(([d, ids]) => [d, (ids || []).filter(id => id !== editId)]));
           setSchedule(prev => (Array.isArray(prev) ? prev : []).map(c => ({
             ...c,
             bookings: (c.bookings || []).filter(id => id !== editId),
             waitlist: (c.waitlist || []).filter(id => id !== editId),
+            ...(c.bookingsByDate ? { bookingsByDate: stripDates(c.bookingsByDate) } : {}),
+            ...(c.waitlistByDate ? { waitlistByDate: stripDates(c.waitlistByDate) } : {}),
           })));
         } else if (oldStatus === "frozen") {
           data.holdStartDate = null;

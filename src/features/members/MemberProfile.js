@@ -10,6 +10,8 @@ import { useMemberChangelog } from "../../hooks/useMemberChangelog";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import PaymentModal from "../../components/shared/PaymentModal";
 import { sendEmail } from "../../utils/messaging";
+import { localISO } from "../../utils/dates";
+import { isBookedOn } from "../../utils/bookings";
 import ProgressPhotos from "./ProgressPhotos";
 import ProfileAvatar from "../../components/shared/ProfileAvatar";
 import ImageUpload from "../../components/shared/ImageUpload";
@@ -70,13 +72,14 @@ function AttendanceSection({ B, s, member, memberAttendance, schedule, overviewS
   const totalAttended = days.filter(d => d.attended).length;
   const todayDow = now.getDay() === 0 ? 6 : now.getDay() - 1;
   const currentMin = now.getHours() * 60 + now.getMinutes();
-  const bookedClasses = (schedule || []).filter(c => c.bookings?.includes(member.id));
   const upcomingRes = [];
   for (let offset = 0; offset < 7 && upcomingRes.length < 5; offset++) {
     const dow = (todayDow + offset) % 7;
-    bookedClasses.filter(c => c.dayOfWeek === dow).sort((a, b) => (a.startTime || "").localeCompare(b.startTime || "")).forEach(c => {
+    const d = new Date(now); d.setDate(d.getDate() + offset);
+    const dISO = localISO(d);
+    // Booked on this specific date: standing weekly booking or a date-scoped one
+    (schedule || []).filter(c => c.dayOfWeek === dow && isBookedOn(c, dISO, member.id)).sort((a, b) => (a.startTime || "").localeCompare(b.startTime || "")).forEach(c => {
       if (offset === 0) { const [eh, em] = (c.endTime || "23:59").split(":").map(Number); if (currentMin >= eh * 60 + em) return; }
-      const d = new Date(now); d.setDate(d.getDate() + offset);
       if (upcomingRes.length < 5) upcomingRes.push({ ...c, _date: d, _offset: offset });
     });
   }

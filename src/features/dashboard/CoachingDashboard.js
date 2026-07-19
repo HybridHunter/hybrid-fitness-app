@@ -8,6 +8,7 @@ import Card from "../../components/ui/Card";
 import { useAuth } from "../../context/AuthContext";
 import { PostShiftCheckinModal } from "../coaching/PostShiftCheckin";
 import { localISO } from "../../utils/dates";
+import { getBookingsOn } from "../../utils/bookings";
 
 /* ========== constants ========== */
 const PATTERNS = ["Squat","Hinge","Lunge","Push","Pull","Core","Carry"];
@@ -352,10 +353,11 @@ export default function CoachingDashboard() {
               // Next upcoming: first class that hasn't started yet
               const nextUpcoming = todaySessions.find(c => timeToMinutes(c.startTime) > currentMinutes);
               const isNext = nextUpcoming && nextUpcoming.id === cls.id;
-              const booked = (cls.bookings || []).length;
+              const todaysBooked = getBookingsOn(cls, todayISO());
+              const booked = todaysBooked.length;
 
               // Check which members in this class are checked in today
-              const bookingMemberIds = new Set(cls.bookings || []);
+              const bookingMemberIds = new Set(todaysBooked);
 
               return (
                 <Card key={cls.id} style={{
@@ -411,7 +413,7 @@ export default function CoachingDashboard() {
                   {/* Member list with quick check-in */}
                   {booked > 0 && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-                      {(cls.bookings || []).map(memberId => {
+                      {todaysBooked.map(memberId => {
                         const m = getMember(memberId);
                         if (!m) return null;
                         const checkedIn = todayCheckins.some(a => a.memberId === memberId && a.classId === cls.id);
@@ -587,7 +589,7 @@ export default function CoachingDashboard() {
 
                 // Try to find which class they might be in
                 const matchedClass = todaySessions.find(cls =>
-                  (cls.bookings || []).includes(a.memberId) &&
+                  getBookingsOn(cls, todayISO()).includes(a.memberId) &&
                   timeToMinutes(cls.startTime) <= checkinTime.getHours() * 60 + checkinTime.getMinutes() + 30 &&
                   timeToMinutes(cls.startTime) >= checkinTime.getHours() * 60 + checkinTime.getMinutes() - 30
                 );

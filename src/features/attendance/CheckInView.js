@@ -6,6 +6,7 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import Card from "../../components/ui/Card";
 import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
 import { localISO } from "../../utils/dates";
+import { getBookingsOn } from "../../utils/bookings";
 
 function fmtTime(iso) {
   const d = new Date(iso);
@@ -119,7 +120,7 @@ export default function CheckInView() {
     if (currentClasses.length === 0) return null;
 
     // Check if member is booked into any current class
-    const bookedClass = currentClasses.find(c => c.bookings && c.bookings.includes(memberId));
+    const bookedClass = currentClasses.find(c => getBookingsOn(c, localISO()).includes(memberId));
     if (bookedClass) return bookedClass;
 
     // If only one class running and member not booked, suggest it
@@ -414,7 +415,7 @@ export default function CheckInView() {
               const endMins = timeToMinutes(cls.endTime);
               const isActive = nowMins >= startMins - 15 && nowMins <= endMins;
               const isPast = nowMins > endMins;
-              const spotsLeft = (cls.capacity || 0) - (cls.bookings ? cls.bookings.length : 0);
+              const spotsLeft = (cls.capacity || 0) - getBookingsOn(cls, localISO()).length;
               return (
                 <div key={cls.id} style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",

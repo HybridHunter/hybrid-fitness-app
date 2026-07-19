@@ -681,7 +681,12 @@ function UtilizationTab({ B, members, schedule, attendance, plans }) {
         a.checkInTime >= startDate && a.checkInTime <= endDate + "T23:59:59"
       ).length;
 
-      const classBookings = (cls.bookings || []).length * occurrences; // approximate
+      // Approximate: standing weekly bookings for every occurrence, plus any
+      // date-scoped bookings that fall inside the selected range
+      const dateScopedInRange = Object.entries(cls.bookingsByDate || {})
+        .filter(([d]) => d >= startDate && d <= endDate)
+        .reduce((sum, [, ids]) => sum + (ids?.length || 0), 0);
+      const classBookings = (cls.bookings || []).length * occurrences + dateScopedInRange;
 
       return {
         id: cls.id,

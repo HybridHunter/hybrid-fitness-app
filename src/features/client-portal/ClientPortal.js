@@ -10,6 +10,7 @@ import { DEFAULT_MATRIX } from "../../data/movementMatrix";
 import { EX } from "../../data/exercises";
 import { getYTId, getYTThumb } from "../../utils/youtube";
 import { localISO } from "../../utils/dates";
+import { getBookingsOn, getWaitlistOn, isBookedOn, isWaitlistedOn, addBookingOn, removeBookingOn, pruneOldDateBookings } from "../../utils/bookings";
 import { resizeImage } from "../../components/shared/ImageUpload";
 import StoriesBar from "../../components/shared/Stories";
 import MentionTextarea from "../../components/shared/MentionTextarea";
@@ -163,6 +164,7 @@ export default function ClientPortal() {
   const [, setPayments] = useLocalStorage("hf_payments", []);
   const [noShowSettings] = useLocalStorage("hf_noshow_settings", {});
   const [scheduleSettings] = useLocalStorage("hf_schedule_settings", {});
+  const [plans] = useLocalStorage("hf_plans", []);
   const [workouts] = useLocalStorage("hf_w", []);
   const [communityPosts, setCommunityPosts] = useLocalStorage("hf_community_posts", []);
   const [messages, setMessages] = useLocalStorage("hf_messages", []);
@@ -285,16 +287,51 @@ export default function ClientPortal() {
 
   // Today's classes this member is booked into
   const todayDow = getTodayDow();
+  const bookedOn = (c, dateISO) => member && isBookedOn(c, dateISO, member.id);
+
+  // ── Membership booking rules ──
+  // Booking requires an active membership; monthly plans with a session
+  // allotment can only book as many sessions as remain in that month.
+  const memberPlan = useMemo(
+    () => (Array.isArray(plans) ? plans : []).find(p => p.id === member?.membershipPlanId && p.active !== false) || null,
+    [plans, member]
+  );
+  const planIsMetered = memberPlan && memberPlan.billingCycle !== "per-session" && memberPlan.sessionsIncluded != null;
+  const sessionsUsedInMonth = (monthKey) => {
+    if (!member) return 0;
+    const attended = (Array.isArray(attendance) ? attendance : []).filter(a =>
+      a.memberId === member.id &&
+      (!a.noShow || a.countsAgainstAllotment) &&
+      a.checkInTime && localISO(new Date(a.checkInTime)).slice(0, 7) === monthKey
+    ).length;
+    const today = todayISO();
+    let futureBooked = 0;
+    for (const c of classes) {
+      for (const [d, list] of Object.entries(c.bookingsByDate || {})) {
+        if (d >= today && d.slice(0, 7) === monthKey && list.includes(member.id)) futureBooked++;
+      }
+    }
+    return attended + futureBooked;
+  };
+  const sessionsAllowedInMonth = (monthKey) => {
+    if (!planIsMetered) return Infinity;
+    const carry = monthKey === todayISO().slice(0, 7) ? (member?.carryoverSessions || 0) : 0;
+    return (memberPlan.sessionsIncluded || 0) + carry;
+  };
   const myBookedClasses = useMemo(() => {
     if (!member) return [];
-    return classes.filter(c => c.bookings?.includes(member.id));
+    // Booked today OR on any upcoming date (legacy standing bookings included)
+    return classes.filter(c =>
+      c.bookings?.includes(member.id) ||
+      Object.values(c.bookingsByDate || {}).some(list => list.includes(member.id))
+    );
   }, [classes, member]);
 
   const todayClasses = useMemo(() => {
     const now = new Date();
     const currentMin = now.getHours() * 60 + now.getMinutes();
     const today = todayISO();
-    return myBookedClasses
+    return myBookedClasses.filter(c => bookedOn(c, today))
       .filter(c => c.dayOfWeek === todayDow)
       .filter(c => !c.exceptions?.includes(today))
       .filter(c => {
@@ -317,7 +354,7 @@ export default function ClientPortal() {
       sessionDate.setDate(sessionDate.getDate() + offset);
       const sessionISO = localISO(sessionDate);
       const dayClasses = myBookedClasses
-        .filter(c => c.dayOfWeek === dow)
+        .filter(c => c.dayOfWeek === dow && bookedOn(c, sessionISO))
         .filter(c => !c.exceptions?.includes(sessionISO))
         .sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
       for (const c of dayClasses) {
@@ -331,7 +368,7 @@ export default function ClientPortal() {
         if (upcoming.some(u => u.id === c.id)) continue;
         if (upcoming.length < 3) {
           const dateStr = offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : `${DAYS_FULL[dow]}, ${MONTHS[sessionDate.getMonth()]} ${sessionDate.getDate()}`;
-          upcoming.push({ ...c, _dayLabel: dateStr });
+          upcoming.push({ ...c, _dayLabel: dateStr, _dateISO: sessionISO });
         }
       }
     }
@@ -925,7 +962,7 @@ export default function ClientPortal() {
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <span style={pillBadge(B.accent + "22", B.accent)}>Booked</span>
-                  <button onClick={() => handleCancel(cls.id)} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: B.red + "15", color: B.red, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                  <button onClick={() => handleCancel(cls.id, todayISO())} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: B.red + "15", color: B.red, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
                 </div>
               </div>
             ))}
@@ -1389,7 +1426,7 @@ export default function ClientPortal() {
 
   /* ─────────── BOOK TAB ─────────── */
   // Cancel booking — shared between Home and Book tabs
-  const handleCancel = (classId) => {
+  const handleCancel = (classId, cancelDateISO) => {
     if (!member) return;
     const cls = classes.find(c => c.id === classId);
     const nsSettings = noShowSettings || {};
@@ -1432,21 +1469,15 @@ export default function ClientPortal() {
 
     setClasses(prev => prev.map(c => {
       if (c.id !== classId) return c;
-      let newBookings = (c.bookings || []).filter(id => id !== member.id);
-      let newWaitlist = (c.waitlist || []).filter(id => id !== member.id);
-      if (newBookings.length < c.capacity && newWaitlist.length > 0 && (c.bookings || []).includes(member.id)) {
-        newBookings = [...newBookings, newWaitlist[0]];
-        newWaitlist = newWaitlist.slice(1);
-      }
-      return { ...c, bookings: newBookings, waitlist: newWaitlist };
+      return pruneOldDateBookings(removeBookingOn(c, cancelDateISO || todayISO(), member.id), todayISO());
     }));
   };
 
   const renderBook = () => {
-    // Rolling window starting TODAY (never trapped at the end of a week).
-    // Capped at 7 days: classes recur weekly, so beyond 7 the same class
-    // would appear twice. Gym controls the window via hf_schedule_settings.
-    const bookingWindowDays = Math.max(1, Math.min(7, Number(scheduleSettings?.bookingWindowDays) || 7));
+    // Rolling window starting TODAY. Bookings are date-scoped, so clients can
+    // book specific occurrences weeks ahead. Gym controls the window (1-30
+    // days) via hf_schedule_settings.bookingWindowDays.
+    const bookingWindowDays = Math.max(1, Math.min(30, Number(scheduleSettings?.bookingWindowDays) || 30));
     const todayD = new Date(); todayD.setHours(0, 0, 0, 0);
     const weekDates = Array.from({ length: bookingWindowDays }, (_, i) => {
       const d = new Date(todayD);
@@ -1454,15 +1485,24 @@ export default function ClientPortal() {
       return d;
     });
 
-    const handleBook = (classId) => {
+    const handleBook = (classId, dateISO) => {
       if (!member) return;
+      if (!memberPlan) {
+        alert("You need an active membership to book sessions — message your coach to get set up.");
+        return;
+      }
+      if (planIsMetered) {
+        const mk = dateISO.slice(0, 7);
+        const allowed = sessionsAllowedInMonth(mk);
+        const used = sessionsUsedInMonth(mk);
+        if (used >= allowed) {
+          alert(`You've used all ${allowed} sessions in your ${memberPlan.name} plan for ${mk === todayISO().slice(0, 7) ? "this month" : "that month"}. Message your coach if you need more.`);
+          return;
+        }
+      }
       setClasses(prev => prev.map(c => {
         if (c.id !== classId) return c;
-        if (c.bookings?.includes(member.id)) return c;
-        if ((c.bookings?.length || 0) < c.capacity) {
-          return { ...c, bookings: [...(c.bookings || []), member.id] };
-        }
-        return { ...c, waitlist: [...(c.waitlist || []), member.id] };
+        return pruneOldDateBookings(addBookingOn(c, dateISO, member.id), todayISO());
       }));
     };
 
@@ -1476,6 +1516,21 @@ export default function ClientPortal() {
 
         <h1 style={{ fontSize: 24, fontWeight: 800, color: B.text, margin: "20px 0 4px" }}>Book a Session</h1>
         <p style={mutedText}>{bookingWindowDays === 1 ? "Today's sessions" : `Next ${bookingWindowDays} days`}</p>
+        {!memberPlan && (
+          <div style={{ ...cardStyle, border: `1px solid ${B.orange || "#f59e0b"}55`, background: (B.orange || "#f59e0b") + "12", marginTop: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: B.text }}>{"🔒"} Membership required to book</div>
+            <div style={{ fontSize: 12, color: B.muted, marginTop: 2 }}>Message your coach to activate a plan and start booking sessions.</div>
+          </div>
+        )}
+        {planIsMetered && (() => {
+          const mk = todayISO().slice(0, 7);
+          const left = Math.max(0, sessionsAllowedInMonth(mk) - sessionsUsedInMonth(mk));
+          return (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, padding: "5px 12px", borderRadius: 12, background: left > 0 ? B.accent + "18" : "#ef444422", border: `1px solid ${left > 0 ? B.accent : "#ef4444"}44`, fontSize: 12, fontWeight: 700, color: left > 0 ? B.accent : "#ef4444" }}>
+              {"🎟️"} {left} of {sessionsAllowedInMonth(mk)} sessions left this month
+            </div>
+          );
+        })()}
 
         {/* Day selector pills — rolling from today */}
         <div style={{
@@ -1487,11 +1542,13 @@ export default function ClientPortal() {
             const isToday = i === 0;
             const dayClasses = classes.filter(c => c.dayOfWeek === dow && !c.exceptions?.includes(localISO(d)));
             return (
-              <div key={i} style={{
+              <div key={i}
+                onClick={() => document.getElementById("book-day-" + localISO(d))?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                style={{
                 textAlign: "center", padding: "10px 14px", borderRadius: 14,
                 background: isToday ? B.accent + "20" : B.card,
                 border: isToday ? `2px solid ${B.accent}` : `1px solid ${B.border}`,
-                minWidth: 52, flexShrink: 0,
+                minWidth: 52, flexShrink: 0, cursor: "pointer",
               }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? B.accent : B.muted }}>{isToday ? "Today" : DAYS_SHORT[dow]}</div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: isToday ? B.accent : B.text, marginTop: 2 }}>{d.getDate()}</div>
@@ -1552,19 +1609,20 @@ export default function ClientPortal() {
               : `${DAYS_FULL[dayIdx]}, ${MONTHS[dateObj.getMonth()]} ${dateObj.getDate()}`;
 
           return (
-            <div key={dayISO} style={{ marginTop: 20 }}>
+            <div key={dayISO} id={"book-day-" + dayISO} style={{ marginTop: 20, scrollMarginTop: 12 }}>
               <div style={{ ...labelText, marginBottom: 10 }}>{dateLabel}</div>
               {dayClasses.map(cls => {
-                const isBooked = cls.bookings?.includes(member.id);
-                const isWaitlisted = cls.waitlist?.includes(member.id);
+                const isBooked = isBookedOn(cls, dayISO, member.id);
+                const isWaitlisted = isWaitlistedOn(cls, dayISO, member.id);
                 // Check if session is in the past
                 const sessionDate = dateObj;
                 const now = new Date();
                 const [sh, sm] = (cls.endTime || "23:59").split(":").map(Number);
                 const sessionEnd = new Date(sessionDate); sessionEnd.setHours(sh, sm, 0, 0);
                 const isPast = now > sessionEnd;
-                const isFull = (cls.bookings?.length || 0) >= cls.capacity;
-                const spotsLeft = cls.capacity - (cls.bookings?.length || 0);
+                const bookedCount = getBookingsOn(cls, dayISO).length;
+                const isFull = bookedCount >= cls.capacity;
+                const spotsLeft = cls.capacity - bookedCount;
 
                 return (
                   <div key={cls.id} style={{
@@ -1591,7 +1649,7 @@ export default function ClientPortal() {
                           color: isFull ? B.orange : B.accent,
                         }}>
                           {isFull ? (
-                            <>&#x1F534; Full ({cls.waitlist?.length || 0} waitlisted)</>
+                            <>&#x1F534; Full ({getWaitlistOn(cls, dayISO).length} waitlisted)</>
                           ) : (
                             <>&#x1F7E2; {spotsLeft} spot{spotsLeft !== 1 ? "s" : ""} left</>
                           )}
@@ -1604,12 +1662,12 @@ export default function ClientPortal() {
                           null
                         ) : (isBooked || isWaitlisted) ? (
                           <button
-                            onClick={() => handleCancel(cls.id)}
+                            onClick={() => handleCancel(cls.id, dayISO)}
                             style={touchBtn(B.red + "15", B.red, { padding: "8px 16px", fontSize: 13, minHeight: 38 })}
                           >Cancel</button>
                         ) : (
                           <button
-                            onClick={() => handleBook(cls.id)}
+                            onClick={() => handleBook(cls.id, dayISO)}
                             style={touchBtn(
                               isFull ? B.orange + "20" : B.accent,
                               isFull ? B.orange : B.darker,

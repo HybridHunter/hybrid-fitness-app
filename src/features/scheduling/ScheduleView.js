@@ -5,7 +5,8 @@ import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useAuth } from "../../context/AuthContext";
 import Card from "../../components/ui/Card";
 import { sendLocalNotification, getNotificationPrefs } from "../../utils/pushNotifications";
-import { localISO } from "../../utils/dates";
+import { localISO, parseLocalDate } from "../../utils/dates";
+import { getBookingsOn, getWaitlistOn, isWaitlistedOn, addBookingOn, removeBookingOn, pruneOldDateBookings } from "../../utils/bookings";
 
 const DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 // Calendar hours — made dynamic via settings
@@ -40,6 +41,13 @@ function fmtTime(t) {
 function timeToMinutes(t) {
   const [h,m] = t.split(":").map(Number);
   return h * 60 + m;
+}
+
+// Housekeeping cutoff: drop per-date bookings older than 7 days on writes
+function pruneCutoffISO() {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  return localISO(d);
 }
 
 const INITIAL_CLASSES = [
@@ -152,8 +160,8 @@ export default function ScheduleView() {
   const handleDeleteClass = (id) => {
     const cls = classes.find(c => c.id === id);
     if (cls && cls.recurring) {
-      // The instance being viewed is this class's day within the currently displayed week
-      setDeleteConfirm({ id, name: cls.name, recurring: true, date: localISO(weekDates[cls.dayOfWeek]) });
+      // The instance being viewed is the occurrence the user clicked (falls back to this week's date)
+      setDeleteConfirm({ id, name: cls.name, recurring: true, date: selectedClass?.occurrenceDate || localISO(weekDates[cls.dayOfWeek]) });
     } else {
       setClasses(prev => prev.filter(c => c.id !== id));
       setSelectedClass(null);
@@ -177,17 +185,15 @@ export default function ScheduleView() {
     setClasses(prev => prev.map(c => c.id === classId ? { ...c, workoutId } : c));
   };
 
-  const handleBookMember = useCallback((classId, memberId) => {
+  const handleBookMember = useCallback((classId, memberId, dateISO) => {
     if (!memberId) return;
     const cls = classes.find(c => c.id === classId);
     const m = getMember(memberId);
+    const date = dateISO || localISO();
     setClasses(prev => prev.map(c => {
       if (c.id !== classId) return c;
-      const bookings = c.bookings || [];
-      const waitlist = c.waitlist || [];
-      if (bookings.includes(memberId) || waitlist.includes(memberId)) return c;
-      if (bookings.length < c.capacity) return { ...c, bookings: [...bookings, memberId] };
-      return { ...c, waitlist: [...waitlist, memberId] };
+      if (isWaitlistedOn(c, date, memberId)) return c;
+      return pruneOldDateBookings(addBookingOn(c, date, memberId), pruneCutoffISO());
     }));
 
     // Send notification
@@ -201,19 +207,11 @@ export default function ScheduleView() {
     setBookingMemberId("");
   }, [setClasses, classes, getMember]);
 
-  const handleRemoveMember = useCallback((classId, memberId) => {
+  const handleRemoveMember = useCallback((classId, memberId, dateISO) => {
+    const date = dateISO || localISO();
     setClasses(prev => prev.map(c => {
       if (c.id !== classId) return c;
-      const bookings = c.bookings || [];
-      const waitlist = c.waitlist || [];
-      let newBookings = bookings.filter(id => id !== memberId);
-      let newWaitlist = waitlist.filter(id => id !== memberId);
-      // Promote from waitlist if a booking spot opened
-      if (newBookings.length < c.capacity && newWaitlist.length > 0 && bookings.includes(memberId)) {
-        newBookings = [...newBookings, newWaitlist[0]];
-        newWaitlist = newWaitlist.slice(1);
-      }
-      return { ...c, bookings: newBookings, waitlist: newWaitlist };
+      return pruneOldDateBookings(removeBookingOn(c, date, memberId), pruneCutoffISO());
     }));
   }, [setClasses]);
 
@@ -252,8 +250,8 @@ export default function ScheduleView() {
       }]);
     }
 
-    // Remove from booking
-    handleRemoveMember(classId, memberId);
+    // Remove from booking (for the occurrence date shown in the modal)
+    handleRemoveMember(classId, memberId, noShowConfirm?.date || todayStr);
 
     // Charge no-show fee if enabled
     if (chargeFee && noShowSettings.feeAmount > 0) {
@@ -275,6 +273,10 @@ export default function ScheduleView() {
 
   // Keep selectedClass in sync with classes state
   const activeClass = selectedClass ? classes.find(c => c.id === selectedClass.id) || null : null;
+  // Date of the occurrence the user clicked (falls back to this week's occurrence)
+  const activeDate = activeClass ? (selectedClass?.occurrenceDate || localISO(weekDates[activeClass.dayOfWeek])) : null;
+  const activeBookings = activeClass ? getBookingsOn(activeClass, activeDate) : [];
+  const activeWaitlist = activeClass ? getWaitlistOn(activeClass, activeDate) : [];
 
   const btn = (extra={}) => ({
     padding:"8px 16px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,fontSize:13,...extra
@@ -319,10 +321,10 @@ export default function ScheduleView() {
           </div>
           <div style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:B.muted}} title="How far ahead clients can book in the app">
             <span>Clients book</span>
-            <select value={Math.max(1,Math.min(7,Number(scheduleSettings.bookingWindowDays)||7))}
+            <select value={Math.max(1,Math.min(30,Number(scheduleSettings.bookingWindowDays)||30))}
               onChange={e=>setScheduleSettings(p=>({...p,bookingWindowDays:Number(e.target.value)}))}
               style={{padding:"4px 6px",borderRadius:6,border:"1px solid "+B.border,background:B.darker,color:B.text,fontSize:12,outline:"none"}}>
-              {[1,2,3,4,5,6,7].map(d=><option key={d} value={d}>{d} day{d>1?"s":""} out</option>)}
+              {[1,2,3,5,7,10,14,21,30].map(d=><option key={d} value={d}>{d} day{d>1?"s":""} out</option>)}
             </select>
           </div>
           <button onClick={()=>{setForm({...EMPTY_FORM});setShowNewModal(true)}} style={btn({background:B.accent,color:B.darker,fontSize:14,padding:"10px 20px"})}>
@@ -395,8 +397,9 @@ export default function ScheduleView() {
                       const hasWorkout = cls.workoutId && getWorkout(cls.workoutId);
                       const minuteOffset = timeToMinutes(cls.startTime) % 60;
                       const isMidHour = minuteOffset > 0;
+                      const cellBooked = getBookingsOn(cls, cellDate).length;
                       return (
-                        <div key={cls.id} onClick={()=>setSelectedClass(cls)} style={{
+                        <div key={cls.id} onClick={()=>setSelectedClass({...cls, occurrenceDate: cellDate})} style={{
                           background:color+"22",border:`1px solid ${color}55`,borderLeft:`3px solid ${color}`,
                           borderRadius:6,padding:"4px 6px",marginBottom:2,cursor:"pointer",
                           transition:"transform 0.1s",
@@ -419,8 +422,8 @@ export default function ScheduleView() {
                           </div>
                           <div style={{fontSize: isMidHour ? 10 : 9,fontWeight: isMidHour ? 700 : 400,color: isMidHour ? color : B.muted}}>{fmtTime(cls.startTime)}-{fmtTime(cls.endTime)}</div>
                           <div style={{fontSize:9,color:B.muted}}>{cls.instructor}</div>
-                          <div style={{fontSize:9,fontWeight:600,color:(cls.bookings?.length || 0)>=cls.capacity?B.orange:color}}>
-                            {cls.bookings?.length || 0}/{cls.capacity} booked
+                          <div style={{fontSize:9,fontWeight:600,color:cellBooked>=cls.capacity?B.orange:color}}>
+                            {cellBooked}/{cls.capacity} booked
                           </div>
                         </div>
                       );
@@ -442,7 +445,7 @@ export default function ScheduleView() {
               <div>
                 <h2 style={{fontSize:20,fontWeight:800,color:B.text,margin:0}}>{activeClass.name}</h2>
                 <p style={{color:B.muted,fontSize:13,margin:"4px 0 0"}}>
-                  {DAYS[activeClass.dayOfWeek]} &middot; {fmtTime(activeClass.startTime)} - {fmtTime(activeClass.endTime)} &middot; {activeClass.instructor}
+                  {DAYS[activeClass.dayOfWeek]} {fmtDate(parseLocalDate(activeDate))} &middot; {fmtTime(activeClass.startTime)} - {fmtTime(activeClass.endTime)} &middot; {activeClass.instructor}
                 </p>
               </div>
               <button onClick={()=>setSelectedClass(null)} style={btn({background:B.border,color:B.text,padding:"4px 10px",fontSize:16})}>
@@ -492,15 +495,15 @@ export default function ScheduleView() {
             <div style={{marginBottom:20}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:B.muted,marginBottom:4}}>
                 <span>Capacity</span>
-                <span style={{fontWeight:700,color:(activeClass.bookings?.length || 0)>=activeClass.capacity?B.orange:B.accent}}>
-                  {activeClass.bookings?.length || 0}/{activeClass.capacity}
+                <span style={{fontWeight:700,color:activeBookings.length>=activeClass.capacity?B.orange:B.accent}}>
+                  {activeBookings.length}/{activeClass.capacity}
                 </span>
               </div>
               <div style={{height:6,background:B.border,borderRadius:3,overflow:"hidden"}}>
                 <div style={{
                   height:"100%",borderRadius:3,transition:"width 0.3s",
-                  width:`${Math.min(100,((activeClass.bookings?.length || 0)/activeClass.capacity)*100)}%`,
-                  background:(activeClass.bookings?.length || 0)>=activeClass.capacity?B.orange:B.accent
+                  width:`${Math.min(100,(activeBookings.length/activeClass.capacity)*100)}%`,
+                  background:activeBookings.length>=activeClass.capacity?B.orange:B.accent
                 }}/>
               </div>
             </div>
@@ -508,7 +511,7 @@ export default function ScheduleView() {
             {/* Booked Members */}
             <div style={{marginBottom:20}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                <h3 style={{fontSize:14,fontWeight:700,color:B.text,margin:0}}>Booked Members ({activeClass.bookings?.length || 0})</h3>
+                <h3 style={{fontSize:14,fontWeight:700,color:B.text,margin:0}}>Booked Members ({activeBookings.length})</h3>
                 <button onClick={()=>setShowNoShowSettings(!showNoShowSettings)} style={btn({background:"transparent",color:B.muted,padding:"2px 8px",fontSize:11,border:"1px solid "+B.border})}>
                   {"\u2699\uFE0F"} No-Show Settings
                 </button>
@@ -571,10 +574,13 @@ export default function ScheduleView() {
                 </div>
               )}
 
-              {(activeClass.bookings?.length || 0) === 0 && (
+              <p style={{color:B.dim,fontSize:11,margin:"0 0 8px"}}>
+                Showing bookings for {fmtDate(parseLocalDate(activeDate))}. Removing a member who has a standing weekly booking cancels their weekly reservation.
+              </p>
+              {activeBookings.length === 0 && (
                 <p style={{color:B.dim,fontSize:13,fontStyle:"italic"}}>No members booked yet.</p>
               )}
-              {(activeClass.bookings || []).map(mid => {
+              {activeBookings.map(mid => {
                 const m = getMember(mid);
                 const todayStr = localISO();
                 const isAutoCheckedIn = noShowSettings.autoCheckIn && attendance.some(a => a.memberId === mid && a.classId === activeClass.id && a.checkInTime && localISO(new Date(a.checkInTime)) === todayStr && a.method === "auto");
@@ -586,11 +592,11 @@ export default function ScheduleView() {
                       {isAutoCheckedIn && <span style={{fontSize:10,color:B.green,marginLeft:6}}>auto checked in</span>}
                     </span>
                     <div style={{display:"flex",gap:4}}>
-                      <button onClick={()=>setNoShowConfirm({classId:activeClass.id,memberId:mid,memberName:m?`${m.firstName} ${m.lastName}`:"Unknown"})} style={btn({background:(B.orange||"#f59e0b")+"22",color:B.orange||"#f59e0b",padding:"2px 10px",fontSize:11})}>
+                      <button onClick={()=>setNoShowConfirm({classId:activeClass.id,memberId:mid,memberName:m?`${m.firstName} ${m.lastName}`:"Unknown",date:activeDate})} style={btn({background:(B.orange||"#f59e0b")+"22",color:B.orange||"#f59e0b",padding:"2px 10px",fontSize:11})}>
                         {isAutoCheckedIn ? "Mark No-Show" : "No Show"}
                       </button>
                       {!isAutoCheckedIn && (
-                        <button onClick={()=>handleRemoveMember(activeClass.id,mid)} style={btn({background:B.red+"22",color:B.red,padding:"2px 10px",fontSize:11})}>
+                        <button onClick={()=>handleRemoveMember(activeClass.id,mid,activeDate)} style={btn({background:B.red+"22",color:B.red,padding:"2px 10px",fontSize:11})}>
                           Remove
                         </button>
                       )}
@@ -601,15 +607,15 @@ export default function ScheduleView() {
             </div>
 
             {/* Waitlist */}
-            {(activeClass.waitlist?.length || 0) > 0 && (
+            {activeWaitlist.length > 0 && (
               <div style={{marginBottom:20}}>
-                <h3 style={{fontSize:14,fontWeight:700,color:B.orange,marginBottom:8}}>Waitlist ({activeClass.waitlist?.length || 0})</h3>
-                {(activeClass.waitlist || []).map((mid,i) => {
+                <h3 style={{fontSize:14,fontWeight:700,color:B.orange,marginBottom:8}}>Waitlist ({activeWaitlist.length})</h3>
+                {activeWaitlist.map((mid,i) => {
                   const m = getMember(mid);
                   return (
                     <div key={mid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderRadius:8,background:B.darker,marginBottom:4}}>
                       <span style={{fontSize:13,color:B.muted}}>#{i+1} {m ? `${m.firstName} ${m.lastName}` : "Unknown"}</span>
-                      <button onClick={()=>handleRemoveMember(activeClass.id,mid)} style={btn({background:B.red+"22",color:B.red,padding:"2px 10px",fontSize:11})}>
+                      <button onClick={()=>handleRemoveMember(activeClass.id,mid,activeDate)} style={btn({background:B.red+"22",color:B.red,padding:"2px 10px",fontSize:11})}>
                         Remove
                       </button>
                     </div>
@@ -633,7 +639,7 @@ export default function ScheduleView() {
                   {bookingDropdownOpen && bookingSearch.trim() && (() => {
                     const q = bookingSearch.toLowerCase();
                     const results = members
-                      .filter(m => !(activeClass.bookings || []).includes(m.id) && !(activeClass.waitlist || []).includes(m.id))
+                      .filter(m => !activeBookings.includes(m.id) && !activeWaitlist.includes(m.id))
                       .filter(m => `${m.firstName} ${m.lastName}`.toLowerCase().includes(q))
                       .slice(0, 8);
                     if (results.length === 0) return null;
@@ -652,11 +658,11 @@ export default function ScheduleView() {
                     );
                   })()}
                 </div>
-                <button onClick={()=>{handleBookMember(activeClass.id,bookingMemberId);setBookingSearch("");}}
+                <button onClick={()=>{handleBookMember(activeClass.id,bookingMemberId,activeDate);setBookingSearch("");}}
                   style={btn({background:B.accent,color:B.darker,padding:"10px 16px",opacity:bookingMemberId?"1":"0.5"})}
                   disabled={!bookingMemberId}
                 >
-                  {(activeClass.bookings?.length || 0) >= activeClass.capacity ? "Add to Waitlist" : "Book Member"}
+                  {activeBookings.length >= activeClass.capacity ? "Add to Waitlist" : "Book Member"}
                 </button>
               </div>
             </div>

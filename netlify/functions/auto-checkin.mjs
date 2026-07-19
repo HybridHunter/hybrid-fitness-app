@@ -125,14 +125,16 @@ export default async (req) => {
       for (const cls of schedule) {
         if (cls.dayOfWeek !== todayDow) continue;
         if (cls.exceptions?.includes(todayStr)) continue; // per-date deleted instance
-        if (!cls.bookings || cls.bookings.length === 0) continue;
+        // Merge legacy standing bookings with today's date-scoped bookings
+        const todaysBooked = [...(cls.bookings || []), ...(((cls.bookingsByDate || {})[todayStr]) || [])];
+        if (todaysBooked.length === 0) continue;
 
         const [sh, sm] = (cls.startTime || '0:0').split(':').map(Number);
         const startMin = sh * 60 + sm;
 
         // Auto check-in for sessions that started (up to 4 hours window)
         if (currentMin >= startMin && currentMin <= startMin + 240) {
-          for (const memberId of cls.bookings) {
+          for (const memberId of todaysBooked) {
             if (!isDuplicate(existingAttendance, memberId, cls.id)) {
               newCheckins.push({
                 id: uuid(),

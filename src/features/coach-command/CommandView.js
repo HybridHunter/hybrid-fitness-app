@@ -10,6 +10,8 @@ import { autoIndividualize } from "../../utils/autoIndividualize";
 import Card from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import Badge from "../../components/ui/Badge";
+import { localISO } from "../../utils/dates";
+import { getBookingsOn } from "../../utils/bookings";
 
 /* ---------- helpers ---------- */
 // ScheduleView uses Mon=0 … Sun=6; JS getDay() uses Sun=0 … Sat=6
@@ -439,7 +441,11 @@ export default function CommandView() {
     }
     const cls = schedule.find((c) => c.id === sessionMode);
     if (!cls) return [];
-    const ids = cls.bookings || cls.memberIds || cls.members || [];
+    // Today's roster: legacy standing bookings + today's date-scoped bookings
+    // (fall back to older memberIds/members shapes when no bookings data exists)
+    const ids = (cls.bookings || cls.bookingsByDate)
+      ? getBookingsOn(cls, localISO())
+      : (cls.memberIds || cls.members || []);
     return members.filter((m) => ids.includes(m.id));
   }, [sessionMode, members, customSelected, schedule]);
 
